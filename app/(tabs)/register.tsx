@@ -1,15 +1,25 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Button, Alert, useColorScheme, ScrollView } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TextInput, 
+  Button, 
+  Alert, 
+  useColorScheme, 
+  ScrollView,
+  TouchableOpacity // Importamos para los íconos
+} from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../src/config/firebaseConfig';
-import { themes } from '../../src/config/theme'; // 1. Importamos nuestros temas
+import { themes } from '../../src/config/theme';
+import { Feather } from '@expo/vector-icons'; // Importamos los íconos
 
-// 2. Convertimos los estilos en una función que recibe el tema
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
   container: {
-    flexGrow: 1, // Usamos flexGrow para que el ScrollView funcione bien
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 20,
     backgroundColor: theme.background,
@@ -21,16 +31,26 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     marginBottom: 40,
     color: theme.text,
   },
-  input: {
-    height: 50,
+  // Contenedor para el campo de texto y el ícono
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
     borderColor: theme.borderColor,
     borderWidth: 1,
     borderRadius: 8,
-    paddingHorizontal: 15,
     marginBottom: 20,
+    backgroundColor: theme.inputBackground,
+  },
+  input: {
+    flex: 1,
+    height: 50,
+    paddingHorizontal: 15,
     fontSize: 16,
     color: theme.text,
-    backgroundColor: theme.inputBackground,
+  },
+  icon: {
+    padding: 10,
   },
   footer: {
     marginTop: 30,
@@ -49,7 +69,6 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
 });
 
 const Register: React.FC = () => {
-  // 3. Detectamos el tema y aplicamos los estilos
   const colorScheme = useColorScheme() || 'light';
   const theme = themes[colorScheme];
   const styles = getStyles(theme);
@@ -60,18 +79,21 @@ const Register: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
 
+  // NUEVO: Estados de visibilidad para cada campo de contraseña
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
+
   const handleRegister = async () => {
+    // La lógica de registro no cambia
     if (password !== confirmPassword) {
       return Alert.alert('Error', 'Las contraseñas no coinciden.');
     }
     if (!email || !password || !displayName) {
       return Alert.alert('Error', 'Por favor, completa todos los campos.');
     }
-
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-
       await setDoc(doc(db, "users", user.uid), {
         email: user.email,
         displayName: displayName,
@@ -79,12 +101,9 @@ const Register: React.FC = () => {
         partnerId: null,
         relationshipStartDate: null,
       });
-
-      // Navegamos directamente sin alerta para una mejor experiencia
       router.replace('/home');
-
     } catch (error: any) {
-      console.error(error);
+      // ... manejo de errores
       if (error.code === 'auth/email-already-in-use') {
         Alert.alert('Error', 'Este correo electrónico ya está en uso.');
       } else if (error.code === 'auth/weak-password') {
@@ -96,42 +115,65 @@ const Register: React.FC = () => {
   };
 
   return (
-    // Usamos ScrollView para evitar que el teclado tape los campos en pantallas pequeñas
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Crea tu Cuenta</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Tu Nombre"
-        placeholderTextColor={theme.placeholder}
-        value={displayName}
-        onChangeText={setDisplayName}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Correo Electrónico"
-        placeholderTextColor={theme.placeholder}
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Contraseña (mín. 6 caracteres)"
-        placeholderTextColor={theme.placeholder}
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Confirmar Contraseña"
-        placeholderTextColor={theme.placeholder}
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-        secureTextEntry
-      />
+      {/* Inputs de Nombre y Email */}
+      <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Tu Nombre"
+            placeholderTextColor={theme.placeholder}
+            value={displayName}
+            onChangeText={setDisplayName}
+            returnKeyType="next"
+          />
+      </View>
+      <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Correo Electrónico"
+            placeholderTextColor={theme.placeholder}
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            returnKeyType="next"
+          />
+      </View>
+      
+      {/* Input de Contraseña con el ojo */}
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          placeholder="Contraseña (mín. 6 caracteres)"
+          placeholderTextColor={theme.placeholder}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry={!isPasswordVisible}
+          returnKeyType="next"
+        />
+        <TouchableOpacity style={styles.icon} onPress={() => setIsPasswordVisible(!isPasswordVisible)}>
+          <Feather name={isPasswordVisible ? "eye-off" : "eye"} size={22} color={theme.placeholder} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Input de Confirmar Contraseña con el ojo */}
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          placeholder="Confirmar Contraseña"
+          placeholderTextColor={theme.placeholder}
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry={!isConfirmPasswordVisible}
+          returnKeyType="go"
+          onSubmitEditing={handleRegister} // Podemos añadir el submit aquí también
+        />
+        <TouchableOpacity style={styles.icon} onPress={() => setIsConfirmPasswordVisible(!isConfirmPasswordVisible)}>
+          <Feather name={isConfirmPasswordVisible ? "eye-off" : "eye"} size={22} color={theme.placeholder} />
+        </TouchableOpacity>
+      </View>
 
       <Button title="Registrarme" onPress={handleRegister} color={theme.primary} />
 

@@ -7,7 +7,7 @@ const WelcomeScreen: React.FC = () => {
     <View style={styles.container}>
       <Text style={styles.text}>¡Bienvenid@ a Conexión Diaria! ❤️</Text>
       
-      <Link href="/Login" asChild>
+      <Link href="/login" asChild>
         <Button title="Ir a Iniciar Sesión" />
       </Link>
     </View>
