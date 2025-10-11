@@ -1,20 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, useColorScheme, Platform, KeyboardAvoidingView } from 'react-native';
-import { GiftedChat, Composer, Send, IMessage, InputToolbar, Actions } from 'react-native-gifted-chat';
+import { View, useColorScheme, Platform, KeyboardAvoidingView, StyleSheet } from 'react-native';
+import { GiftedChat, IMessage, InputToolbar, Composer, Send, Actions } from 'react-native-gifted-chat';
 import { useRouter } from 'expo-router';
 import { auth, db } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
 import {
   collection,
   addDoc,
-  updateDoc,
-  increment,
   onSnapshot,
   query,
   orderBy,
   doc,
   getDoc,
   DocumentData,
+  updateDoc,
+  increment,
   setDoc,
 } from 'firebase/firestore';
 import { User as FirebaseUser } from 'firebase/auth';
@@ -28,19 +28,15 @@ const Chat: React.FC = () => {
     const [messages, setMessages] = useState<IMessage[]>([]);
     const [userData, setUserData] = useState<DocumentData | null>(null);
 
+    // ... (la lógica de useEffect y onSend no necesita cambios, está perfecta)
     useEffect(() => {
         const fetchUserData = async (currentUser: FirebaseUser) => {
             const userDocRef = doc(db, 'users', currentUser.uid);
             const userDocSnap = await getDoc(userDocRef);
-            if (userDocSnap.exists()) {
-                setUserData(userDocSnap.data());
-            } else {
-                router.replace('/home');
-            }
+            if (userDocSnap.exists()) { setUserData(userDocSnap.data()); }
+            else { router.replace('/home'); }
         };
-        if (auth.currentUser) {
-            fetchUserData(auth.currentUser);
-        }
+        if (auth.currentUser) { fetchUserData(auth.currentUser); }
     }, []);
 
     useEffect(() => {
@@ -54,17 +50,14 @@ const Chat: React.FC = () => {
             const fetchedMessages = snapshot.docs.map(doc => {
                 const data = doc.data();
                 return {
-                    _id: doc.id,
-                    text: data.text,
-                    createdAt: data.createdAt.toDate(),
-                    user: data.user,
+                    _id: doc.id, text: data.text, createdAt: data.createdAt.toDate(), user: data.user,
                 };
             });
             setMessages(fetchedMessages as IMessage[]);
         });
         return () => unsubscribe();
     }, [userData]);
-
+    
     const onSend = useCallback(async (newMessages: IMessage[] = []) => {
         if (!userData || !userData.partnerId) return;
         const currentUserUid = auth.currentUser!.uid;
@@ -75,10 +68,7 @@ const Chat: React.FC = () => {
         await addDoc(messagesCollectionRef, {
             text: messageToSend.text,
             createdAt: messageToSend.createdAt,
-            user: {
-                _id: currentUserUid,
-                name: userData.displayName,
-            },
+            user: { _id: currentUserUid, name: userData.displayName, },
         });
     }, [userData]);
 
@@ -89,9 +79,7 @@ const Chat: React.FC = () => {
         const chatId = [currentUserUid, partnerUid].sort().join('_');
         const relationshipDocRef = doc(db, 'relationships', chatId);
         try {
-            await updateDoc(relationshipDocRef, {
-                missYouCount: increment(1)
-            });
+            await updateDoc(relationshipDocRef, { missYouCount: increment(1) });
         } catch (error) {
             if ((error as any).code === 'not-found') {
                 await setDoc(relationshipDocRef, { missYouCount: 1 }, { merge: true });
@@ -101,14 +89,10 @@ const Chat: React.FC = () => {
         }
     }, [userData]);
 
-    if (!theme) {
-        return null;
-    }
+    if (!theme) return null;
 
-    const MAX_COMPOSER_HEIGHT = 100;
-
-    // --- CORRECCIÓN: Un único y correcto return ---
     return (
+        // 1. Contenedor principal que ocupa toda la pantalla
         <View style={{ flex: 1, backgroundColor: theme.background }}>
             <GiftedChat
                 messages={messages}
@@ -118,22 +102,26 @@ const Chat: React.FC = () => {
                     name: userData?.displayName || 'Tú',
                 }}
                 placeholder="Escribe un mensaje..."
-                messagesContainerStyle={{ backgroundColor: theme.background }}
+                messagesContainerStyle={{ backgroundColor: theme.background, paddingBottom: 20 }}
                 renderUsernameOnMessage={true}
                 alwaysShowSend={true}
-                minInputToolbarHeight={MAX_COMPOSER_HEIGHT}
+                minInputToolbarHeight={100}
 
+                // 2. Personalizamos el Input Toolbar para que ocupe todo el ancho
                 renderInputToolbar={props => (
                     <InputToolbar
                         {...props}
                         containerStyle={{
                             backgroundColor: theme.background,
                             borderTopColor: 'transparent',
+                            paddingHorizontal: 0, // Sin padding horizontal en el contenedor
+                            paddingVertical: 6,
                         }}
                         primaryStyle={{ alignItems: 'flex-end' }}
                     />
                 )}
                 
+                // 3. El Composer (campo de texto) ahora tiene márgenes para dar espacio a los botones
                 renderComposer={props => (
                     <Composer
                         {...props}
@@ -144,24 +132,18 @@ const Chat: React.FC = () => {
                             paddingTop: 10,
                             paddingBottom: 10,
                             paddingHorizontal: 12,
-                            marginLeft: 0,
-                            marginRight: 10,
+                            marginLeft: 10, // Margen para el botón de corazón
+                            marginRight: 10, // Margen para el botón de enviar
                             lineHeight: 20,
                         }}
                         textInputProps={{ multiline: true }}
                     />
                 )}
 
+                // 4. El botón de enviar ahora está dentro de los límites
                 renderSend={props => (
-                    <Send {...props} containerStyle={{ justifyContent: 'center', height: '100%', marginRight: 10 }}>
-                        <View style={{ 
-                            backgroundColor: theme.primary, 
-                            borderRadius: 25, 
-                            width: 44, 
-                            height: 44, 
-                            justifyContent: 'center', 
-                            alignItems: 'center' 
-                        }}>
+                    <Send {...props} containerStyle={{ justifyContent: 'center', height: '100%', paddingRight: 10 }}>
+                        <View style={{ backgroundColor: theme.primary, borderRadius: 25, width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }}>
                             <Feather name="arrow-up" size={24} color={theme.white} />
                         </View>
                     </Send>
@@ -171,22 +153,19 @@ const Chat: React.FC = () => {
                     <Actions
                         {...props}
                         containerStyle={{
-                            width: 44,
-                            height: 44,
-                            alignItems: 'center',
                             justifyContent: 'center',
-                            marginLeft: 4,
-                            marginRight: 4,
-                            marginBottom: 0,
+                            alignItems: 'center',
+                            height: '100%',
+                            paddingLeft: 10,
                         }}
-                        icon={() => (
-                            <Ionicons name="heart-circle-outline" size={32} color={theme.primary} />
-                        )}
+                        icon={() => (<Ionicons name="heart-circle-outline" size={32} color={theme.primary} />)}
                         onPressActionButton={handleMissYouPress}
                     />
                 )}
             />
-            {Platform.OS === 'android' && <KeyboardAvoidingView behavior="padding" />}
+            
+            {/* 5. KeyboardAvoidingView para iOS, para que el teclado empuje el chat hacia arriba */}
+            {Platform.OS === 'ios' && <KeyboardAvoidingView behavior="padding" />}
         </View>
     );
 };
