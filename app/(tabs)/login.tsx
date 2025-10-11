@@ -1,5 +1,5 @@
 import { Link, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -81,6 +81,8 @@ const Login: React.FC = () => {
   // NUEVO: Estado para controlar la visibilidad de la contraseña
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
+  const passwordInputRef = useRef<TextInput>(null);
+
   const handleLogin = async () => {
     if (!email || !password) {
       return Alert.alert('Error', 'Por favor, completa ambos campos.');
@@ -109,12 +111,14 @@ const Login: React.FC = () => {
           keyboardType="email-address"
           autoCapitalize="none"
           returnKeyType="next" // El teclado muestra "Siguiente"
+          onSubmitEditing={() => passwordInputRef.current?.focus()} // MEJORA: Mueve el foco al input de contraseña
         />
       </View>
       
       {/* Input de Contraseña con el ojo */}
       <View style={styles.inputContainer}>
         <TextInput
+          ref={passwordInputRef}
           style={styles.input}
           placeholder="Contraseña"
           placeholderTextColor={theme.placeholder}
