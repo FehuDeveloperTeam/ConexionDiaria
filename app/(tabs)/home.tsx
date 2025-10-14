@@ -1,19 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { 
-    View, Text, StyleSheet, Button, useColorScheme, 
-    ActivityIndicator, TextInput, TouchableOpacity, 
-    Alert, Modal, ScrollView 
+import {
+    View, Text, StyleSheet, Button, useColorScheme,
+    ActivityIndicator, TextInput, TouchableOpacity,
+    Alert, Modal, ScrollView, FlatList
 } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { doc, getDoc, DocumentData, writeBatch, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, DocumentData, writeBatch, onSnapshot, updateDoc, collection, query, orderBy } from 'firebase/firestore';
 import { auth, db } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
 import * as Clipboard from 'expo-clipboard';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 
-// Lista universal de estados de ánimo
 const MOODS = [
     { emoji: '😊', name: 'Feliz' }, { emoji: '🥰', name: 'Amado/a' },
     { emoji: '😴', name: 'Cansado/a' }, { emoji: '😎', name: 'Genial' },
@@ -25,8 +24,6 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: theme.background, gap: 15 },
     title: { fontSize: 24, fontWeight: 'bold', color: theme.text, textAlign: 'center' },
     subtitle: { fontSize: 18, color: theme.text, textAlign: 'center', marginBottom: 20 },
-    missYouContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.inputBackground, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 50, borderWidth: 1, borderColor: theme.borderColor, gap: 10, marginVertical: 20 },
-    missYouText: { fontSize: 20, fontWeight: 'bold', color: theme.primary },
     codeBox: { backgroundColor: theme.inputBackground, paddingVertical: 15, paddingHorizontal: 20, borderRadius: 8, borderWidth: 1, borderColor: theme.borderColor, width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     codeText: { fontSize: 16, color: theme.primary, fontWeight: 'bold', textAlign: 'center' },
     input: { height: 50, width: '100%', borderColor: theme.borderColor, borderWidth: 1, borderRadius: 8, paddingHorizontal: 15, fontSize: 16, color: theme.text, backgroundColor: theme.inputBackground, textAlign: 'center' },
@@ -38,13 +35,26 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     moodName: { fontSize: 14, fontWeight: 'bold', color: theme.primary },
     moodDisplayName: { fontSize: 16, fontWeight: '600', color: theme.text },
     moodStatus: { fontSize: 12, fontStyle: 'italic', color: theme.placeholder, textAlign: 'center', height: 40 },
+    missYouContainer: { alignItems: 'center', marginVertical: 20, gap: 5 },
+    countersRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 20 },
+    counterItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    receivedText: { fontSize: 32, fontWeight: 'bold', color: theme.primary },
+    sentText: { fontSize: 18, color: theme.placeholder },
+    historyLink: { fontSize: 12, color: theme.link, marginTop: 10 },
     modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.5)' },
-    modalContainer: { width: '80%', backgroundColor: theme.background, borderRadius: 20, padding: 20, alignItems: 'center' },
+    modalContainer: { width: '90%', maxHeight: '70%', backgroundColor: theme.background, borderRadius: 20, padding: 20, alignItems: 'center' },
     modalTitle: { fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 20 },
     emojiScrollView: { maxHeight: 150 },
     emojiSelector: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
     emojiButton: { padding: 8 },
     emojiInSelector: { fontSize: 36 },
+    tableHeader: { flexDirection: 'row', borderBottomWidth: 2, borderBottomColor: theme.primary, paddingBottom: 10, marginBottom: 5, width: '100%' },
+    tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: theme.borderColor, paddingVertical: 10, width: '100%' },
+    headerText: { fontWeight: 'bold', color: theme.text },
+    columnContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    columnText: { color: theme.text },
+    statusInput: { height: 40, width: '100%', borderColor: theme.borderColor, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, color: theme.text, backgroundColor: theme.inputBackground, marginBottom: 20 },
+    modalButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '100%' },
 });
 
 const Home: React.FC = () => {
@@ -57,74 +67,72 @@ const Home: React.FC = () => {
     const [userData, setUserData] = useState<DocumentData | null>(null);
     const [relationshipData, setRelationshipData] = useState<DocumentData | null>(null);
     const [partnerData, setPartnerData] = useState<DocumentData | null>(null);
+    const [missYouHistory, setMissYouHistory] = useState<DocumentData[]>([]);
     const [loading, setLoading] = useState(true);
     const [partnerCode, setPartnerCode] = useState('');
     const [isMoodSelectorVisible, setIsMoodSelectorVisible] = useState(false);
+    const [isHistoryVisible, setIsHistoryVisible] = useState(false);
+    const [isStatusPromptVisible, setIsStatusPromptVisible] = useState(false);
+    const [statusInput, setStatusInput] = useState('');
+    const [selectedMood, setSelectedMood] = useState<{ emoji: string, name: string } | null>(null);
 
-    // --- LÓGICA DE LISTENERS CORREGIDA Y OPTIMIZADA ---
     useEffect(() => {
-        // Listener principal para el estado de autenticación
         const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-            setUser(currentUser); // Actualizamos el usuario de Auth
+            setUser(currentUser);
             if (!currentUser) {
-                // Si no hay usuario, limpiamos todo y paramos de cargar
                 setLoading(false);
+                router.replace('/login');
             }
         });
-        return unsubscribeAuth; // Limpiamos al salir
-    }, []);
+        return unsubscribeAuth;
+    }, [router]);
 
     useEffect(() => {
-        // Si no hay usuario, no hacemos nada más
-        if (!user) {
-            // Si el estado de no-usuario ya se confirmó, redirigimos
-            if (!loading) router.replace('/login');
-            return;
-        }
+        if (!user) return;
 
-        // Si hay usuario, escuchamos su perfil en Firestore
         const userDocRef = doc(db, 'users', user.uid);
         const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
             if (docSnap.exists()) {
-                const data = docSnap.data();
-                setUserData(data);
-
-                // Si el usuario tiene pareja, iniciamos los otros listeners
-                let unsubscribeRelationship: () => void = () => {};
-                let unsubscribePartner: () => void = () => {};
-
-                if (data.partnerId) {
-                    const relationshipId = [user.uid, data.partnerId].sort().join('_');
-                    const relationshipDocRef = doc(db, 'relationships', relationshipId);
-                    unsubscribeRelationship = onSnapshot(relationshipDocRef, (relSnap) => {
-                        setRelationshipData(relSnap.data() || { missYouCount: 0 });
-                    });
-
-                    const partnerDocRef = doc(db, 'users', data.partnerId);
-                    unsubscribePartner = onSnapshot(partnerDocRef, (partnerSnap) => {
-                        setPartnerData(partnerSnap.data() || null);
-                    });
-                } else {
-                    // Si no tiene pareja, limpiamos los datos
-                    setPartnerData(null);
-                    setRelationshipData(null);
-                }
-                
-                // ¡CORRECCIÓN CLAVE! Paramos de cargar solo después de tener el perfil del usuario
-                setLoading(false);
-
-                // Devolvemos la función que limpia los listeners de la pareja
-                return () => {
-                    unsubscribeRelationship();
-                    unsubscribePartner();
-                };
+                setUserData(docSnap.data());
             } else {
-                signOut(auth); // El perfil no existe, deslogueamos
+                signOut(auth);
             }
+            setLoading(false);
         });
 
-        return () => unsubscribeUser(); // Limpia el listener del usuario
-    }, [user, loading]); // Este efecto reacciona al usuario de Auth
+        return () => unsubscribeUser();
+    }, [user]);
+    
+    useEffect(() => {
+        if (!userData?.partnerId || !user?.uid) {
+            setPartnerData(null);
+            setRelationshipData(null);
+            setMissYouHistory([]);
+            return;
+        };
+
+        const relationshipId = [user.uid, userData.partnerId].sort().join('_');
+        
+        const unsubscribeRelationship = onSnapshot(doc(db, 'relationships', relationshipId), (relSnap) => {
+            setRelationshipData(relSnap.data() || {});
+        });
+
+        const unsubscribePartner = onSnapshot(doc(db, 'users', userData.partnerId), (partnerSnap) => {
+            setPartnerData(partnerSnap.data() || null);
+        });
+
+        const historyCollectionRef = collection(db, 'relationships', relationshipId, 'missYouHistory');
+        const q = query(historyCollectionRef, orderBy('__name__', 'desc'));
+        const unsubscribeHistory = onSnapshot(q, (querySnapshot) => {
+            setMissYouHistory(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+
+        return () => {
+            unsubscribeRelationship();
+            unsubscribePartner();
+            unsubscribeHistory();
+        };
+    }, [userData, user]);
 
     const handleLogout = async () => { await signOut(auth); };
     
@@ -139,13 +147,10 @@ const Home: React.FC = () => {
         const code = partnerCode.trim();
         if (!code || !user) return;
         if (code === user.uid) return Toast.show({ type: 'error', text1: '¡Oops!', text2: 'No puedes conectarte contigo mismo.' });
-
         const partnerDocRef = doc(db, 'users', code);
         const partnerDocSnap = await getDoc(partnerDocRef);
-
         if (!partnerDocSnap.exists()) return Toast.show({ type: 'error', text1: 'Código Inválido' });
         if (partnerDocSnap.data().partnerId) return Toast.show({ type: 'info', text1: 'Lo sentimos', text2: 'Esa persona ya está conectada.' });
-
         try {
             const batch = writeBatch(db);
             const currentUserRef = doc(db, 'users', user.uid);
@@ -153,75 +158,32 @@ const Home: React.FC = () => {
             batch.update(partnerDocRef, { partnerId: user.uid });
             await batch.commit();
             Toast.show({ type: 'success', text1: '¡Conexión Exitosa!' });
-        } catch (error) {
-            Toast.show({ type: 'error', text1: 'Error al conectar' });
-        }
+        } catch (error) { Toast.show({ type: 'error', text1: 'Error al conectar' }); }
     };
 
     const openMoodSelector = () => { setIsMoodSelectorVisible(true); };
 
-    const handleSelectMood = (selectedMood: { emoji: string, name: string }) => {
+    const handleSelectMood = (mood: { emoji: string, name: string }) => {
         setIsMoodSelectorVisible(false);
-        Alert.prompt(
-            `¿Te sientes ${selectedMood.name.toLowerCase()}?`, 'Añade un breve mensaje (opcional)',
-            [{ text: 'Cancelar' }, {
-                text: 'Guardar',
-                onPress: async (status: string | undefined) => {
-                    const userDocRef = doc(db, 'users', auth.currentUser!.uid);
-                    await updateDoc(userDocRef, {
-                        currentMood: { emoji: selectedMood.emoji, name: selectedMood.name, status: status || '' }
-                    });
-                },
-            }], 'plain-text', userData?.currentMood?.status || ''
-        );
+        setSelectedMood(mood);
+        setStatusInput(userData?.currentMood?.status || '');
+        setIsStatusPromptVisible(true);
+    };
+
+    const handleSaveStatus = async () => {
+        if (!auth.currentUser || !selectedMood) return;
+        const userDocRef = doc(db, 'users', auth.currentUser.uid);
+        try {
+            await updateDoc(userDocRef, {
+                currentMood: { emoji: selectedMood.emoji, name: selectedMood.name, status: statusInput.trim() }
+            });
+        } catch (error) { console.error("Error al actualizar el estado:", error); }
+        setIsStatusPromptVisible(false);
+        setStatusInput('');
     };
 
     if (loading) {
         return <View style={styles.container}><ActivityIndicator size="large" color={theme.primary} /></View>;
-    }
-
-    if (userData && userData.partnerId) {
-        return (
-            <View style={styles.container}>
-                <Modal animationType="fade" transparent={true} visible={isMoodSelectorVisible} onRequestClose={() => setIsMoodSelectorVisible(false)}>
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContainer}>
-                            <Text style={styles.modalTitle}>¿Cómo te sientes hoy?</Text>
-                            <ScrollView style={styles.emojiScrollView}>
-                                <View style={styles.emojiSelector}>
-                                    {MOODS.map((mood) => (
-                                        <TouchableOpacity key={mood.emoji} style={styles.emojiButton} onPress={() => handleSelectMood(mood)}>
-                                            <Text style={styles.emojiInSelector}>{mood.emoji}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-                            </ScrollView>
-                        </View>
-                    </View>
-                </Modal>
-                <Text style={styles.title}>Conexión Diaria</Text>
-                <View style={styles.moodsRow}>
-                    <TouchableOpacity style={styles.moodContainer} onPress={openMoodSelector}>
-                        <Text style={styles.moodName}>{userData.currentMood?.name || 'Tu Ánimo'}</Text>
-                        <View style={styles.moodCircle}><Text style={styles.moodEmoji}>{userData.currentMood?.emoji || '😐'}</Text></View>
-                        <Text style={styles.moodStatus}>{userData.currentMood?.status ? `"${userData.currentMood.status}"` : ''}</Text>
-                        <Text style={styles.moodDisplayName}>{userData.displayName}</Text>
-                    </TouchableOpacity>
-                    <View style={styles.moodContainer}>
-                        <Text style={styles.moodName}>{partnerData?.currentMood?.name || 'Su Ánimo'}</Text>
-                        <View style={styles.moodCircle}><Text style={styles.moodEmoji}>{partnerData?.currentMood?.emoji || '😐'}</Text></View>
-                        <Text style={styles.moodStatus}>{partnerData?.currentMood?.status ? `"${partnerData.currentMood.status}"` : ''}</Text>
-                        <Text style={styles.moodDisplayName}>{partnerData?.displayName || '...'}</Text>
-                    </View>
-                </View>
-                <View style={styles.missYouContainer}>
-                    <Ionicons name="heart" size={24} color={theme.primary} />
-                    <Text style={styles.missYouText}>{relationshipData?.missYouCount || 0}</Text>
-                </View>
-                <Link href="/chat" asChild><Button title="Ir al Chat" color={theme.primary} /></Link>
-                <Button title="Cerrar Sesión" onPress={handleLogout} color="grey" />
-            </View>
-        );
     }
 
     if (userData && !userData.partnerId) {
@@ -230,14 +192,32 @@ const Home: React.FC = () => {
                 <Text style={styles.title}>¡Hola, {userData.displayName}!</Text>
                 <Text style={styles.subtitle}>Para empezar, conecta con tu pareja.</Text>
                 <Text style={styles.infoText}>Tu código de conexión:</Text>
-                <View style={styles.codeBox}>
-                    <Text style={styles.codeText}>{user?.uid}</Text>
-                    <TouchableOpacity onPress={handleCopyCode}>
-                        <Feather name="copy" size={24} color={theme.primary} />
-                    </TouchableOpacity>
-                </View>
+                <View style={styles.codeBox}><Text style={styles.codeText}>{user?.uid}</Text><TouchableOpacity onPress={handleCopyCode}><Feather name="copy" size={24} color={theme.primary} /></TouchableOpacity></View>
                 <TextInput style={styles.input} placeholder="Introduce el código de tu pareja" placeholderTextColor={theme.placeholder} value={partnerCode} onChangeText={setPartnerCode} />
                 <Button title="Conectar" onPress={handleConnectPartner} color={theme.primary} />
+                <Button title="Cerrar Sesión" onPress={handleLogout} color="grey" />
+            </View>
+        );
+    }
+    
+    if (user && userData && userData.partnerId) {
+        const myId = user.uid;
+        const partnerId = userData.partnerId;
+        const sentCount = relationshipData?.missYouCounters?.[myId] || 0;
+        const receivedCount = relationshipData?.missYouCounters?.[partnerId] || 0;
+        return (
+            <View style={styles.container}>
+                <Modal animationType="fade" transparent={true} visible={isMoodSelectorVisible} onRequestClose={() => setIsMoodSelectorVisible(false)}><TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPressOut={() => setIsMoodSelectorVisible(false)}><TouchableOpacity style={styles.modalContainer} activeOpacity={1}><Text style={styles.modalTitle}>¿Cómo te sientes hoy?</Text><ScrollView style={styles.emojiScrollView}><View style={styles.emojiSelector}>{MOODS.map((mood) => (<TouchableOpacity key={mood.emoji} style={styles.emojiButton} onPress={() => handleSelectMood(mood)}><Text style={styles.emojiInSelector}>{mood.emoji}</Text></TouchableOpacity>))}</View></ScrollView></TouchableOpacity></TouchableOpacity></Modal>
+                <Modal animationType="fade" transparent={true} visible={isStatusPromptVisible} onRequestClose={() => setIsStatusPromptVisible(false)}><View style={styles.modalOverlay}><View style={styles.modalContainer}><Text style={styles.modalTitle}>¿Te sientes {selectedMood?.name.toLowerCase()}?</Text><Text style={styles.subtitle}>Añade un breve mensaje</Text><TextInput style={styles.statusInput} value={statusInput} onChangeText={setStatusInput} placeholder="Opcional..." placeholderTextColor={theme.placeholder} maxLength={25} /><View style={styles.modalButtons}><Button title="Cancelar" onPress={() => setIsStatusPromptVisible(false)} color="grey" /><Button title="Guardar" onPress={handleSaveStatus} color={theme.primary} /></View></View></View></Modal>
+                <Modal animationType="slide" transparent={true} visible={isHistoryVisible} onRequestClose={() => setIsHistoryVisible(false)}><View style={styles.modalOverlay}><View style={styles.modalContainer}><Text style={styles.modalTitle}>Historial Extrañómetro</Text><View style={styles.tableHeader}><View style={styles.columnContainer}><Text style={styles.headerText}>Fecha</Text></View><View style={styles.columnContainer}><Text style={styles.headerText}>Recibidos</Text></View><View style={styles.columnContainer}><Text style={styles.headerText}>Enviados</Text></View></View><FlatList data={missYouHistory} keyExtractor={item => item.id} renderItem={({ item }) => (<View style={styles.tableRow}><View style={styles.columnContainer}><Text style={styles.columnText}>{item.id}</Text></View><View style={styles.columnContainer}><Text style={styles.columnText}>{item[partnerId] || 0}</Text></View><View style={styles.columnContainer}><Text style={styles.columnText}>{item[myId] || 0}</Text></View></View>)} ListEmptyComponent={<Text style={{ color: theme.placeholder, marginTop: 20 }}>Aún no hay historial.</Text>} /><Button title="Cerrar" onPress={() => setIsHistoryVisible(false)} color={theme.primary} /></View></View></Modal>
+
+                <Text style={styles.title}>Conexión Diaria</Text>
+                <View style={styles.moodsRow}>
+                    <TouchableOpacity style={styles.moodContainer} onPress={openMoodSelector}><Text style={styles.moodName}>{userData.currentMood?.name || 'Tu Ánimo'}</Text><View style={styles.moodCircle}><Text style={styles.moodEmoji}>{userData.currentMood?.emoji || '😐'}</Text></View><Text style={styles.moodStatus}>{userData.currentMood?.status ? `"${userData.currentMood.status}"` : ''}</Text><Text style={styles.moodDisplayName}>{userData.displayName}</Text></TouchableOpacity>
+                    <View style={styles.moodContainer}><Text style={styles.moodName}>{partnerData?.currentMood?.name || 'Su Ánimo'}</Text><View style={styles.moodCircle}><Text style={styles.moodEmoji}>{partnerData?.currentMood?.emoji || '😐'}</Text></View><Text style={styles.moodStatus}>{partnerData?.currentMood?.status ? `"${partnerData.currentMood.status}"` : ''}</Text><Text style={styles.moodDisplayName}>{partnerData?.displayName || '...'}</Text></View>
+                </View>
+                <View style={styles.missYouContainer}><Text style={styles.subtitle}>Extrañómetro</Text><View style={styles.countersRow}><View style={styles.counterItem}><Ionicons name="heart" size={32} color={theme.primary} /><Text style={styles.receivedText}>{receivedCount}</Text></View><View style={styles.counterItem}><Ionicons name="heart-outline" size={18} color={theme.placeholder} /><Text style={styles.sentText}>{sentCount}</Text></View></View><TouchableOpacity onPress={() => setIsHistoryVisible(true)}><Text style={styles.historyLink}>Ver historial</Text></TouchableOpacity></View>
+                <View style={{ flexDirection: 'row', gap: 15 }}><Link href="/(tabs)/chat" asChild><Button title="Ir al Chat" color={theme.primary} /></Link><Link href="/(tabs)/notes" asChild><Button title="Ver Notas" color={theme.primary} /></Link></View>
                 <Button title="Cerrar Sesión" onPress={handleLogout} color="grey" />
             </View>
         );
