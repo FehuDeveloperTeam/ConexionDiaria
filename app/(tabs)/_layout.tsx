@@ -1,19 +1,74 @@
-import { Stack } from 'expo-router';
 import React from 'react';
-import Toast from 'react-native-toast-message'; // <-- 1. Importa Toast
+import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useColorScheme } from 'react-native';
+import { themes } from '../../src/config/theme'; // Asegúrate que la ruta sea correcta
 
-const RootLayout: React.FC = () => {
-  return (
-    <>
-      <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} /> 
-        <Stack.Screen name="login" options={{ title: 'Iniciar Sesión' }} />
-        <Stack.Screen name="register" options={{ title: 'Crear Cuenta' }} />
-        <Stack.Screen name="home" options={{ title: 'Mi Conexión Diaria', headerShown: false }} />
-      </Stack>
-      <Toast /> {/* <-- 2. Añade el componente Toast aquí al final */}
-    </>
-  );
-}
+const TabLayout: React.FC = () => {
+    const colorScheme = useColorScheme() || 'light';
+    const theme = themes[colorScheme];
 
-export default RootLayout;
+    return (
+        <Tabs
+            screenOptions={{
+                tabBarActiveTintColor: theme.primary,
+                tabBarInactiveTintColor: theme.placeholder,
+                tabBarStyle: {
+                    backgroundColor: theme.background,
+                    borderTopColor: theme.borderColor,
+                },
+                headerStyle: {
+                    backgroundColor: theme.background,
+                },
+                headerTintColor: theme.text,
+            }}
+        >
+            <Tabs.Screen
+                name="home"
+                options={{
+                    title: 'Inicio',
+                    tabBarIcon: ({ color }) => <Ionicons name="home-outline" size={24} color={color} />,
+                    headerShown: false,
+                }}
+            />
+            <Tabs.Screen
+                name="chat"
+                options={{
+                    title: 'Chat',
+                    tabBarIcon: ({ color }) => <Ionicons name="chatbubbles-outline" size={24} color={color} />,
+                    headerShown: false, // Para usar nuestro header personalizado
+                }}
+            />
+            <Tabs.Screen
+                name="notes"
+                options={{
+                    title: 'Notas',
+                    tabBarIcon: ({ color }) => <Ionicons name="document-text-outline" size={24} color={color} />,
+                    headerShown: false,
+                }}
+            />
+            <Tabs.Screen
+                name="album"
+                options={{
+                    title: 'Álbum',
+                    tabBarIcon: ({ color }) => <Ionicons name="images-outline" size={24} color={color} />,
+                    headerShown: false,
+                }}
+            />
+            {/* --- ¡NUEVA PESTAÑA AÑADIDA AQUÍ! --- */}
+            <Tabs.Screen
+                name="config"
+                options={{
+                    title: 'Ajustes',
+                    tabBarIcon: ({ color }) => <Ionicons name="settings-outline" size={24} color={color} />,
+                    headerShown: false,
+                }}
+            />
+            
+             {/* Ocultamos las pantallas que no son pestañas */}
+            
+        </Tabs>
+    );
+};
+
+export default TabLayout;

@@ -5,18 +5,16 @@ import {
     Alert, Modal, ScrollView, FlatList
 } from 'react-native';
 import { useRouter, Link } from 'expo-router';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-// Añadimos Timestamp
+import { onAuthStateChanged, signOut, User } from 'firebase/auth'; // onAuthStateChanged sigue siendo útil aquí
 import { doc, getDoc, DocumentData, writeBatch, onSnapshot, updateDoc, collection, query, orderBy, Timestamp } from 'firebase/firestore';
 import { auth, db } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
 import * as Clipboard from 'expo-clipboard';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
-// --- NUEVAS IMPORTACIONES PARA LA FECHA ---
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { formatDistanceStrict } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { es } from 'date-fns/locale/es';
 
 // --- Constantes ---
 const MOODS = [
@@ -62,27 +60,8 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     columnText: { color: theme.text },
     statusInput: { height: 40, width: '100%', borderColor: theme.borderColor, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, color: theme.text, backgroundColor: theme.inputBackground, marginBottom: 20 },
     modalButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '100%' },
-    // --- ESTILOS NUEVOS PARA CONTADOR DE RELACIÓN ---
-    relationshipCounterContainer: {
-        alignItems: 'center',
-        marginVertical: 15,
-        padding: 15,
-        backgroundColor: theme.inputBackground,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: theme.borderColor,
-        width: '90%',
-    },
-    counterText: {
-        fontSize: 18,
-        color: theme.text,
-        textAlign: 'center',
-        lineHeight: 24,
-    },
-    counterHighlight: { // (No usado en esta versión simple, pero útil para futuro)
-        fontWeight: 'bold',
-        color: theme.primary,
-    },
+    relationshipCounterContainer: { alignItems: 'center', marginVertical: 15, padding: 15, backgroundColor: theme.inputBackground, borderRadius: 10, borderWidth: 1, borderColor: theme.borderColor, width: '90%' },
+    counterText: { fontSize: 18, color: theme.text, textAlign: 'center', lineHeight: 24 },
 });
 
 // --- Componente Principal ---
@@ -91,116 +70,167 @@ const Home: React.FC = () => {
     const colorScheme = useColorScheme() || 'light';
     const theme = themes[colorScheme];
     const styles = getStyles(theme);
-    const router = useRouter();
-
+    
     // Estados
-    const [user, setUser] = useState<User | null>(null);
+    // ¡CORRECCIÓN! Obtenemos el usuario directamente de auth, el _layout ya hizo la verificación
+    const [user, setUser] = useState<User | null>(auth.currentUser); 
     const [userData, setUserData] = useState<DocumentData | null>(null);
     const [relationshipData, setRelationshipData] = useState<DocumentData | null>(null);
     const [partnerData, setPartnerData] = useState<DocumentData | null>(null);
     const [missYouHistory, setMissYouHistory] = useState<DocumentData[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(true); // Controla la carga de datos de Firestore
     const [partnerCode, setPartnerCode] = useState('');
     const [isMoodSelectorVisible, setIsMoodSelectorVisible] = useState(false);
     const [isHistoryVisible, setIsHistoryVisible] = useState(false);
     const [isStatusPromptVisible, setIsStatusPromptVisible] = useState(false);
     const [statusInput, setStatusInput] = useState('');
     const [selectedMood, setSelectedMood] = useState<{ emoji: string, name: string } | null>(null);
-    // --- ESTADOS NUEVOS ---
     const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
     const [relationshipDuration, setRelationshipDuration] = useState<string | null>(null);
 
     // --- Efectos para cargar datos ---
 
-    // Efecto 1: Manejo de Autenticación
+    // ¡CORRECCIÓN! Eliminamos el onAuthStateChanged de aquí.
+    // El _layout ya garantiza que esta pantalla solo se muestre si hay un usuario.
+    // Solo necesitamos un listener para el *perfil* del usuario en Firestore.
     useEffect(() => {
-        setLoading(true);
-        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-            setUser(currentUser);
-            if (!currentUser) {
-                setUserData(null); setPartnerData(null); setRelationshipData(null); setMissYouHistory([]);
-                setLoading(false);
-                router.replace('/(tabs)/login');
-            }
-        });
-        return () => unsubscribeAuth();
-    }, [router]);
+        if (!user) return; // Si por alguna razón el usuario es null, no hacer nada
 
-    // Efecto 2: Carga de Datos del Perfil del Usuario
-    useEffect(() => {
-        if (!user) return;
+        setLoading(true); // Empezar a cargar datos del perfil
         const userDocRef = doc(db, 'users', user.uid);
         const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
             if (docSnap.exists()) {
-                setUserData(docSnap.data());
-                // Si no tiene pareja, ya podemos parar de cargar aquí
-                if (!docSnap.data().partnerId) {
-                     setLoading(false);
+                const data = docSnap.data();
+                setUserData(data);
+                // Si no tiene pareja, ya podemos parar de cargar
+                if (!data.partnerId) {
+                    setLoading(false);
                 }
             } else {
-                signOut(auth); setLoading(false);
+                // Perfil no existe, algo muy raro. Forzamos logout.
+                signOut(auth);
+                setLoading(false);
             }
         }, (error) => { console.error("Error user listener:", error); signOut(auth); setLoading(false); });
+        
         return () => unsubscribeUser();
     }, [user]);
 
-    // Efecto 3: Carga de Datos de Pareja y Relación
+    // Efecto 3: Carga de Datos de Pareja y Relación (depende de 'userData')
     useEffect(() => {
         if (!user || !userData || !userData.partnerId) {
+            // Limpiar datos de pareja si ya no hay partnerId
             setPartnerData(null); setRelationshipData(null); setMissYouHistory([]);
-            // Si userData no es null pero no hay partnerId, ya paramos de cargar en el useEffect anterior
+            // Si userData no es null (ya cargó) pero no hay partnerId, aseguramos que loading sea false
+            if (userData !== null && !userData.partnerId) setLoading(false);
             return;
         }
+
         const relationshipId = [user.uid, userData.partnerId].sort().join('_');
+
+        // Listener para la relación
+        const relationshipDocRef = doc(db, 'relationships', relationshipId);
         const unsubscribeRelationship = onSnapshot(doc(db, 'relationships', relationshipId), (relSnap) => {
             setRelationshipData(relSnap.data() || {});
         });
+
+        // Listener para el perfil de la pareja
+        const partnerDocRef = doc(db, 'users', userData.partnerId);
         const unsubscribePartner = onSnapshot(doc(db, 'users', userData.partnerId), (partnerSnap) => {
             setPartnerData(partnerSnap.data() || null);
         });
+
+        // Listener para el historial
         const historyCollectionRef = collection(db, 'relationships', relationshipId, 'missYouHistory');
         const q = query(historyCollectionRef, orderBy('__name__', 'desc'));
         const unsubscribeHistory = onSnapshot(q, (querySnapshot) => {
             setMissYouHistory(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            setLoading(false); // Paramos de cargar cuando tenemos todos los datos de relación
+            setLoading(false); // Paramos de cargar CUANDO tenemos todos los datos de relación
         }, (error) => { console.error("Error history listener:", error); setLoading(false); });
-        return () => { unsubscribeRelationship(); unsubscribePartner(); unsubscribeHistory(); };
-    }, [user, userData]); // Depende de user y userData
 
-    // --- NUEVO EFECTO: Calcular Duración ---
+        return () => { unsubscribeRelationship(); unsubscribePartner(); unsubscribeHistory(); };
+    }, [user, userData]); // Se ejecuta cuando 'user' o 'userData' cambian
+
+    // Efecto 4: Calcular Duración de la Relación (sin cambios)
     useEffect(() => {
         if (userData?.relationshipStartDate) {
             const startDate = (userData.relationshipStartDate as Timestamp).toDate();
             const now = new Date();
-            // Calcula la duración (ej. "aproximadamente 2 años")
-            const duration = formatDistanceStrict(startDate, now, { locale: es, addSuffix: false });
-            // Podríamos implementar lógica más compleja aquí para mostrar Años, Meses, Días
-            // Ejemplo simple:
-            const years = now.getFullYear() - startDate.getFullYear();
+            let years = now.getFullYear() - startDate.getFullYear();
             let months = now.getMonth() - startDate.getMonth();
             let days = now.getDate() - startDate.getDate();
             if (days < 0) { months -= 1; days += new Date(now.getFullYear(), now.getMonth(), 0).getDate(); }
-            if (months < 0) { months += 12; /* No necesitamos restar años aquí */ }
-            // Formatear el string final como queramos
-            setRelationshipDuration(`Juntos por ${years > 0 ? `${years} ${years === 1 ? 'año' : 'años'}, ` : ''}${months > 0 ? `${months} ${months === 1 ? 'mes' : 'meses'} y ` : ''}${days} ${days === 1 ? 'día' : 'días'}`);
-            // setRelationshipDuration(`Llevan juntos ${duration}`); // Versión simple de date-fns
+            if (months < 0) { years -= 1; months += 12; }
+            let durationString = "Juntos por ";
+            if (years > 0) durationString += `${years} ${years === 1 ? 'año' : 'años'}${months > 0 || days > 0 ? ', ' : ''}`;
+            if (months > 0) durationString += `${months} ${months === 1 ? 'mes' : 'meses'}${days > 0 ? ' y ' : ''}`;
+            if (days > 0) durationString += `${days} ${days === 1 ? 'día' : 'días'}`;
+            if (years === 0 && months === 0 && days === 0) durationString = "¡Empezaron hoy!";
+            setRelationshipDuration(durationString);
         } else {
             setRelationshipDuration(null);
         }
     }, [userData?.relationshipStartDate]);
 
-
     // --- Funciones de Manejo de Eventos ---
-    const handleLogout = useCallback(async () => { /* ... */ }, []);
-    const handleCopyCode = useCallback(async () => { /* ... */ }, [user]);
-    const handleConnectPartner = useCallback(async () => { /* ... */ }, [partnerCode, user]);
-    const openMoodSelector = useCallback(() => { /* ... */ }, []);
-    const handleSelectMood = useCallback((mood: { emoji: string, name: string }) => { /* ... */ }, [userData]);
-    const handleSaveStatus = useCallback(async () => { /* ... */ }, [user, selectedMood, statusInput]);
 
-    // --- NUEVAS FUNCIONES PARA DATE PICKER ---
+    const handleLogout = useCallback(async () => {
+        // ¡CORRECCIÓN! Solo llamamos a signOut. El _layout se encargará de redirigir.
+        await signOut(auth);
+    }, []);
+
+    const handleCopyCode = useCallback(async () => {
+        if (user?.uid) {
+            await Clipboard.setStringAsync(user.uid);
+            Toast.show({ type: 'success', text1: '¡Código Copiado!' });
+        }
+    }, [user]);
+
+    const handleConnectPartner = useCallback(async () => {
+        const code = partnerCode.trim();
+        if (!code || !user) return;
+        if (code === user.uid) return Toast.show({ type: 'error', text1: '¡Oops!', text2: 'No puedes conectarte contigo mismo.' });
+        const partnerDocRef = doc(db, 'users', code);
+        try {
+            const partnerDocSnap = await getDoc(partnerDocRef);
+            if (!partnerDocSnap.exists()) return Toast.show({ type: 'error', text1: 'Código Inválido' });
+            if (partnerDocSnap.data().partnerId) return Toast.show({ type: 'info', text1: 'Lo sentimos', text2: 'Esa persona ya está conectada.' });
+            const batch = writeBatch(db);
+            const currentUserRef = doc(db, 'users', user.uid);
+            batch.update(currentUserRef, { partnerId: code });
+            batch.update(partnerDocRef, { partnerId: user.uid });
+            await batch.commit();
+            setPartnerCode('');
+            Toast.show({ type: 'success', text1: '¡Conexión Exitosa!' });
+        } catch (error) { Toast.show({ type: 'error', text1: 'Error al conectar' }); console.error(error); }
+    }, [partnerCode, user]);
+
+    const openMoodSelector = useCallback(() => { setIsMoodSelectorVisible(true); }, []);
+
+    const handleSelectMood = useCallback((mood: { emoji: string, name: string }) => {
+        setIsMoodSelectorVisible(false);
+        setSelectedMood(mood);
+        setStatusInput(userData?.currentMood?.status || '');
+        setIsStatusPromptVisible(true);
+    }, [userData]);
+
+    const handleSaveStatus = useCallback(async () => {
+        if (!user || !selectedMood) return;
+        const userDocRef = doc(db, 'users', user.uid);
+        try {
+            await updateDoc(userDocRef, {
+                currentMood: { emoji: selectedMood.emoji, name: selectedMood.name, status: statusInput.trim() }
+            });
+            Toast.show({ type: 'success', text1: 'Ánimo actualizado' });
+        } catch (error) { console.error("Error al actualizar el estado:", error); Toast.show({ type: 'error', text1: 'Error al guardar' }); }
+        setIsStatusPromptVisible(false);
+        setStatusInput('');
+        setSelectedMood(null);
+    }, [user, selectedMood, statusInput]);
+
     const showDatePicker = useCallback(() => { setDatePickerVisibility(true); }, []);
     const hideDatePicker = useCallback(() => { setDatePickerVisibility(false); }, []);
+    
     const handleConfirmDate = useCallback(async (date: Date) => {
         hideDatePicker();
         if (!user || !userData?.partnerId) return;
@@ -214,8 +244,7 @@ const Home: React.FC = () => {
             await batch.commit();
             Toast.show({ type: 'success', text1: '¡Fecha de inicio guardada!' });
         } catch (error) { Toast.show({ type: 'error', text1: 'Error al guardar la fecha' }); }
-    }, [user, userData, hideDatePicker]); // Incluimos hideDatePicker
-
+    }, [user, userData, hideDatePicker]);
 
     // --- Renderizado ---
 
@@ -260,7 +289,6 @@ const Home: React.FC = () => {
                 <Modal animationType="fade" transparent={true} visible={isMoodSelectorVisible} onRequestClose={() => setIsMoodSelectorVisible(false)}><TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPressOut={() => setIsMoodSelectorVisible(false)}><TouchableOpacity style={styles.modalContainer} activeOpacity={1}><Text style={styles.modalTitle}>¿Cómo te sientes hoy?</Text><ScrollView style={styles.emojiScrollView}><View style={styles.emojiSelector}>{MOODS.map((mood) => (<TouchableOpacity key={mood.emoji} style={styles.emojiButton} onPress={() => handleSelectMood(mood)}><Text style={styles.emojiInSelector}>{mood.emoji}</Text></TouchableOpacity>))}</View></ScrollView></TouchableOpacity></TouchableOpacity></Modal>
                 <Modal animationType="fade" transparent={true} visible={isStatusPromptVisible} onRequestClose={() => setIsStatusPromptVisible(false)}><View style={styles.modalOverlay}><View style={styles.modalContainer}><Text style={styles.modalTitle}>¿Te sientes {selectedMood?.name.toLowerCase()}?</Text><Text style={styles.subtitle}>Añade un breve mensaje</Text><TextInput style={styles.statusInput} value={statusInput} onChangeText={setStatusInput} placeholder="Opcional..." placeholderTextColor={theme.placeholder} maxLength={25} /><View style={styles.modalButtons}><Button title="Cancelar" onPress={() => setIsStatusPromptVisible(false)} color="grey" /><Button title="Guardar" onPress={handleSaveStatus} color={theme.primary} /></View></View></View></Modal>
                 <Modal animationType="slide" transparent={true} visible={isHistoryVisible} onRequestClose={() => setIsHistoryVisible(false)}><View style={styles.modalOverlay}><View style={styles.modalContainer}><Text style={styles.modalTitle}>Historial Extrañómetro</Text><View style={styles.tableHeader}><View style={styles.columnContainer}><Text style={styles.headerText}>Fecha</Text></View><View style={styles.columnContainer}><Text style={styles.headerText}>Recibidos</Text></View><View style={styles.columnContainer}><Text style={styles.headerText}>Enviados</Text></View></View><FlatList data={missYouHistory} keyExtractor={item => item.id} renderItem={({ item }) => (<View style={styles.tableRow}><View style={styles.columnContainer}><Text style={styles.columnText}>{item.id}</Text></View><View style={styles.columnContainer}><Text style={styles.columnText}>{item[partnerId] || 0}</Text></View><View style={styles.columnContainer}><Text style={styles.columnText}>{item[myId] || 0}</Text></View></View>)} ListEmptyComponent={<Text style={{ color: theme.placeholder, marginTop: 20 }}>Aún no hay historial.</Text>} /><Button title="Cerrar" onPress={() => setIsHistoryVisible(false)} color={theme.primary} /></View></View></Modal>
-                {/* --- NUEVO: Modal Selector de Fecha --- */}
                 <DateTimePickerModal
                     isVisible={isDatePickerVisible}
                     mode="date"
@@ -273,11 +301,10 @@ const Home: React.FC = () => {
                 {/* Contenido Principal */}
                 <Text style={styles.title}>Conexión Diaria</Text>
 
-                {/* --- NUEVO: Contador de Relación o Botón --- */}
                 {relationshipDuration ? (
-                    <View style={styles.relationshipCounterContainer}>
+                    <TouchableOpacity style={styles.relationshipCounterContainer} onPress={showDatePicker} onLongPress={() => Alert.alert("Restablecer Fecha", "¿Quieren cambiar su fecha de inicio?", [{text: 'Cancelar'}, {text: 'OK', onPress: showDatePicker}])}>
                         <Text style={styles.counterText}>{relationshipDuration}</Text>
-                    </View>
+                    </TouchableOpacity>
                 ) : (
                     <Button title="Establecer Fecha de Inicio" onPress={showDatePicker} color={theme.primary} />
                 )}
