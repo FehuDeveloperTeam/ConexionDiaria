@@ -1,42 +1,172 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, useColorScheme, Platform, KeyboardAvoidingView, StyleSheet, ActivityIndicator, Text } from 'react-native';
+import { 
+    View, useColorScheme, Platform, KeyboardAvoidingView, StyleSheet, 
+    ActivityIndicator, Text, TouchableOpacity, Image, LayoutAnimation, UIManager
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GiftedChat, IMessage, InputToolbar, Composer, Send, Actions } from 'react-native-gifted-chat';
+import { GiftedChat, IMessage, InputToolbar, Composer, Send, Actions, Bubble } from 'react-native-gifted-chat';
 import { useRouter } from 'expo-router';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { auth, db } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
 import {
-  collection,
-  addDoc,
-  onSnapshot,
-  query,
-  orderBy,
-  doc,
-  DocumentData,
-  writeBatch,
-  increment
+    collection, addDoc, onSnapshot, query, orderBy, doc,
+    DocumentData, writeBatch, increment
 } from 'firebase/firestore';
 import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
 import { Feather, Ionicons } from '@expo/vector-icons';
 
+// Habilitar LayoutAnimation en Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+// Componente ChatHeader
+const ChatHeader: React.FC<{
+    partnerData: DocumentData | null;
+    theme: any;
+    onBack: () => void;
+}> = ({ partnerData, theme, onBack }) => {
+    const insets = useSafeAreaInsets();
+    
+    // Simulación de estado online (deberías implementar esto con Firestore)
+    const isOnline = false; // Cambia esto según tu lógica
+    const lastSeen = "Hace 2 horas"; // Implementa esto con datos reales
+
+    return (
+        <View style={{
+            backgroundColor: theme.background,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            borderBottomColor: theme.borderColor,
+            paddingTop: insets.top,
+            paddingHorizontal: 16,
+            paddingBottom: 12,
+            flexDirection: 'row',
+            alignItems: 'center',
+        }}>
+            {/* Botón de regreso */}
+            <TouchableOpacity onPress={onBack} style={{ marginRight: 12 }}>
+                <Ionicons name="chevron-back" size={28} color={theme.primary} />
+            </TouchableOpacity>
+
+            {/* Foto de perfil */}
+            <View style={{
+                width: 40,
+                height: 40,
+                borderRadius: 8,
+                backgroundColor: theme.placeholder,
+                marginRight: 12,
+                overflow: 'hidden',
+            }}>
+                {partnerData?.photoURL ? (
+                    <Image 
+                        source={{ uri: partnerData.photoURL }} 
+                        style={{ width: '100%', height: '100%' }}
+                    />
+                ) : (
+                    <View style={{ 
+                        width: '100%', 
+                        height: '100%', 
+                        justifyContent: 'center', 
+                        alignItems: 'center',
+                        backgroundColor: theme.primary + '20'
+                    }}>
+                        <Text style={{ 
+                            color: theme.primary, 
+                            fontSize: 18, 
+                            fontWeight: '600' 
+                        }}>
+                            {partnerData?.displayName?.[0]?.toUpperCase() || 'P'}
+                        </Text>
+                    </View>
+                )}
+                
+                {/* Indicador online */}
+                {isOnline && (
+                    <View style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        right: 0,
+                        width: 12,
+                        height: 12,
+                        borderRadius: 6,
+                        backgroundColor: '#4CAF50',
+                        borderWidth: 2,
+                        borderColor: theme.background,
+                    }} />
+                )}
+            </View>
+
+            {/* Nombre y estado */}
+            <View style={{ flex: 1 }}>
+                <Text style={{ 
+                    color: theme.text, 
+                    fontSize: 16, 
+                    fontWeight: '600',
+                    marginBottom: 2,
+                }}>
+                    {partnerData?.displayName || 'Tu pareja'}
+                </Text>
+                <Text style={{ 
+                    color: theme.placeholder, 
+                    fontSize: 12,
+                }}>
+                    {isOnline ? 'En línea' : lastSeen}
+                </Text>
+            </View>
+        </View>
+    );
+};
+
 const ChatScreen: React.FC = () => {
-    // --- Hooks ---
     const colorScheme = useColorScheme() || 'light';
     const theme = themes[colorScheme];
     const router = useRouter();
     const headerHeight = useHeaderHeight();
     const insets = useSafeAreaInsets();
 
-    // --- Estados ---
     const [messages, setMessages] = useState<IMessage[]>([]);
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [userData, setUserData] = useState<DocumentData | null>(null);
     const [partnerData, setPartnerData] = useState<DocumentData | null>(null);
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(true);
+    const [keyboardVisible, setKeyboardVisible] = useState(false);
 
-    // --- Efectos para Carga de Datos ---
+    // Animación suave del teclado
+    useEffect(() => {
+        const configureAnimation = () => {
+            LayoutAnimation.configureNext(
+                LayoutAnimation.create(
+                    250, // Duración en ms
+                    LayoutAnimation.Types.easeInEaseOut,
+                    LayoutAnimation.Properties.opacity
+                )
+            );
+        };
+
+        const keyboardWillShow = () => {
+            configureAnimation();
+            setKeyboardVisible(true);
+        };
+
+        const keyboardWillHide = () => {
+            configureAnimation();
+            setKeyboardVisible(false);
+        };
+
+        const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+        const showListener = require('react-native').Keyboard.addListener(showEvent, keyboardWillShow);
+        const hideListener = require('react-native').Keyboard.addListener(hideEvent, keyboardWillHide);
+
+        return () => {
+            showListener.remove();
+            hideListener.remove();
+        };
+    }, []);
+
     useEffect(() => {
         setLoading(true);
         const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -46,7 +176,7 @@ const ChatScreen: React.FC = () => {
                 setPartnerData(null);
                 setMessages([]);
                 setLoading(false);
-                router.replace('/(tabs)/login');
+                router.replace('/login');
             }
         });
         return () => unsubscribeAuth();
@@ -106,7 +236,6 @@ const ChatScreen: React.FC = () => {
         };
     }, [user]);
 
-    // --- Funciones de Manejo ---
     const onSend = useCallback(async (newMessages: IMessage[] = []) => {
         if (!userData || !userData.partnerId || !user) return;
         setInputText('');
@@ -135,7 +264,6 @@ const ChatScreen: React.FC = () => {
         } catch (error) { console.error("Error al enviar 'miss you':", error); }
     }, [userData, user]);
 
-    // --- Renderizado ---
     if (!theme) return null;
     if (loading) {
         return (
@@ -153,14 +281,18 @@ const ChatScreen: React.FC = () => {
     }
 
     return (
-        <SafeAreaView 
-            style={{ flex: 1, backgroundColor: theme.background }}
-            edges={['top', 'left', 'right']}
-        >
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['left', 'right']}>
+            {/* Header del chat */}
+            <ChatHeader 
+                partnerData={partnerData} 
+                theme={theme}
+                onBack={() => router.back()}
+            />
+
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
                 <GiftedChat
                     messages={messages}
@@ -170,25 +302,40 @@ const ChatScreen: React.FC = () => {
                         name: userData?.displayName || 'Tú',
                     }}
                     placeholder="Escribe un mensaje..."
-                    
-                    // Estilos del contenedor de mensajes - SIN padding extra
                     messagesContainerStyle={{ 
                         backgroundColor: theme.background,
                         paddingBottom: 0,
                     }}
-                    
                     alwaysShowSend={true}
                     text={inputText}
                     onInputTextChanged={text => setInputText(text)}
-                    
-                    // KeyboardAvoidingView maneja el teclado
                     isKeyboardInternallyHandled={false}
                     bottomOffset={0}
-                    
-                    // Sin altura mínima forzada
                     minInputToolbarHeight={undefined}
-                    
                     keyboardShouldPersistTaps="handled"
+                    
+                    // Estilo de las burbujas
+                    renderBubble={(props) => (
+                        <Bubble
+                            {...props}
+                            wrapperStyle={{
+                                left: {
+                                    backgroundColor: theme.inputBackground,
+                                },
+                                right: {
+                                    backgroundColor: theme.primary,
+                                },
+                            }}
+                            textStyle={{
+                                left: {
+                                    color: theme.text,
+                                },
+                                right: {
+                                    color: theme.white,
+                                },
+                            }}
+                        />
+                    )}
                     
                     renderInputToolbar={(toolbarProps) => (
                         <InputToolbar
@@ -199,29 +346,16 @@ const ChatScreen: React.FC = () => {
                                 borderTopWidth: StyleSheet.hairlineWidth,
                                 paddingHorizontal: 8,
                                 paddingTop: 8,
-                                // Solo añadir insets.bottom si existe (iOS con notch)
                                 paddingBottom: Platform.OS === 'ios' && insets.bottom > 0 ? insets.bottom : 8,
-                                // Sin minHeight forzado
                             }}
                             renderActions={() => (
                                 <Actions
                                     {...toolbarProps}
                                     containerStyle={{ 
-                                        width: 36, 
-                                        height: 36, 
-                                        alignItems: 'center', 
-                                        justifyContent: 'center', 
-                                        marginLeft: 4,
-                                        marginRight: 4,
-                                        marginBottom: 4
+                                        width: 36, height: 36, alignItems: 'center', 
+                                        justifyContent: 'center', marginLeft: 4, marginRight: 4, marginBottom: 4 
                                     }}
-                                    icon={() => (
-                                        <Ionicons 
-                                            name="heart-circle-outline" 
-                                            size={32} 
-                                            color={theme.primary} 
-                                        />
-                                    )}
+                                    icon={() => (<Ionicons name="heart-circle-outline" size={32} color={theme.primary} />)}
                                     onPressActionButton={handleMissYouPress}
                                 />
                             )}
@@ -253,13 +387,8 @@ const ChatScreen: React.FC = () => {
                                     {...sendProps}
                                     disabled={!inputText.trim()}
                                     containerStyle={{
-                                        width: 44,
-                                        height: 44,
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        marginLeft: 4,
-                                        marginRight: 4,
-                                        marginBottom: 4,
+                                        width: 44, height: 44, alignItems: 'center',
+                                        justifyContent: 'center', marginLeft: 4, marginRight: 4, marginBottom: 4,
                                     }}
                                 >
                                     <View
@@ -267,11 +396,8 @@ const ChatScreen: React.FC = () => {
                                             backgroundColor: inputText.trim().length > 0 
                                                 ? theme.primary 
                                                 : theme.placeholder,
-                                            borderRadius: 22,
-                                            width: 44,
-                                            height: 44,
-                                            justifyContent: 'center',
-                                            alignItems: 'center',
+                                            borderRadius: 22, width: 44, height: 44,
+                                            justifyContent: 'center', alignItems: 'center',
                                         }}
                                     >
                                         <Feather name="arrow-up" size={24} color={theme.white} />

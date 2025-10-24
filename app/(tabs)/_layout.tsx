@@ -47,6 +47,17 @@ const TabLayout: React.FC = () => {
                     headerShown: false,
                 }}
             />
+            
+            {/* --- ¡NUEVA PESTAÑA DE TAREAS AÑADIDA AQUÍ! --- */}
+            <Tabs.Screen
+                name="tasks"
+                options={{
+                    title: 'Tareas',
+                    tabBarIcon: ({ color }) => <Ionicons name="checkmark-done-outline" size={24} color={color} />,
+                    headerShown: false,
+                }}
+            />
+
             <Tabs.Screen
                 name="album"
                 options={{
@@ -55,7 +66,6 @@ const TabLayout: React.FC = () => {
                     headerShown: false,
                 }}
             />
-            {/* --- ¡NUEVA PESTAÑA AÑADIDA AQUÍ! --- */}
             <Tabs.Screen
                 name="config"
                 options={{
@@ -65,7 +75,8 @@ const TabLayout: React.FC = () => {
                 }}
             />
             
-             {/* Ocultamos las pantallas que no son pestañas */}
+            {/* Ocultamos las pantallas que no son pestañas (como login, register, etc.) */}
+            {/* Expo Router lo maneja automáticamente si no están en esta lista */}
             
         </Tabs>
     );

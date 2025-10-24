@@ -4,9 +4,9 @@ import {
     ActivityIndicator, TextInput, TouchableOpacity,
     Alert, Modal, ScrollView, FlatList
 } from 'react-native';
-import { useRouter, Link } from 'expo-router';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth'; // onAuthStateChanged sigue siendo útil aquí
-import { doc, getDoc, DocumentData, writeBatch, onSnapshot, updateDoc, collection, query, orderBy, Timestamp } from 'firebase/firestore';
+import { useRouter } from 'expo-router';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { doc, getDoc, DocumentData, writeBatch, onSnapshot, updateDoc, collection, query, orderBy, Timestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
 import * as Clipboard from 'expo-clipboard';
@@ -23,6 +23,15 @@ const MOODS = [
     { emoji: '😜', name: 'Juguetón/a' }, { emoji: '😢', name: 'Triste' },
     { emoji: '🤔', name: 'Pensativo/a' }, { emoji: '😐', name: 'Neutral' },
 ];
+
+// Función para obtener la fecha en formato YYYY-MM-DD
+const getTodayDateKey = (): string => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
 // --- Estilos ---
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
@@ -47,38 +56,95 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     sentText: { fontSize: 18, color: theme.placeholder },
     historyLink: { fontSize: 12, color: theme.link, marginTop: 10 },
     modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.5)' },
-    modalContainer: { width: '90%', maxHeight: '70%', backgroundColor: theme.background, borderRadius: 20, padding: 20, alignItems: 'center' },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 20 },
+    modalContainer: { 
+        width: '90%', 
+        height: '60%',
+        backgroundColor: theme.background, 
+        borderRadius: 20, 
+        padding: 20
+    },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 15, textAlign: 'center' },
     emojiScrollView: { maxHeight: 150 },
     emojiSelector: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
     emojiButton: { padding: 8 },
     emojiInSelector: { fontSize: 36 },
-    tableHeader: { flexDirection: 'row', borderBottomWidth: 2, borderBottomColor: theme.primary, paddingBottom: 10, marginBottom: 5, width: '100%' },
-    tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: theme.borderColor, paddingVertical: 10, width: '100%' },
-    headerText: { fontWeight: 'bold', color: theme.text, textAlign: 'center' },
-    columnContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    columnText: { color: theme.text },
+    tableHeader: { 
+        flexDirection: 'row', 
+        borderBottomWidth: 2, 
+        borderBottomColor: theme.primary, 
+        paddingBottom: 10, 
+        marginBottom: 10, 
+        width: '100%' 
+    },
+    tableRow: { 
+        flexDirection: 'row', 
+        borderBottomWidth: 1, 
+        borderBottomColor: theme.borderColor, 
+        paddingVertical: 12, 
+        width: '100%',
+        alignItems: 'center'
+    },
+    headerText: { 
+        fontWeight: 'bold', 
+        color: theme.text, 
+        textAlign: 'center',
+        fontSize: 14
+    },
+    dateColumn: { 
+        flex: 2, 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        paddingHorizontal: 5
+    },
+    numberColumn: { 
+        flex: 1, 
+        alignItems: 'center', 
+        justifyContent: 'center' 
+    },
+    columnText: { 
+        color: theme.text,
+        textAlign: 'center',
+        fontSize: 13
+    },
+    historyContentContainer: {
+        flex: 1,
+        width: '100%'
+    },
+    historyFlatList: {
+        width: '100%',
+        height: 300
+    },
+    emptyHistoryText: {
+        color: theme.placeholder,
+        marginTop: 20,
+        textAlign: 'center',
+        fontSize: 14
+    },
     statusInput: { height: 40, width: '100%', borderColor: theme.borderColor, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, color: theme.text, backgroundColor: theme.inputBackground, marginBottom: 20 },
     modalButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '100%' },
     relationshipCounterContainer: { alignItems: 'center', marginVertical: 15, padding: 15, backgroundColor: theme.inputBackground, borderRadius: 10, borderWidth: 1, borderColor: theme.borderColor, width: '90%' },
     counterText: { fontSize: 18, color: theme.text, textAlign: 'center', lineHeight: 24 },
+    closeButtonContainer: {
+        marginTop: 15,
+        width: '100%'
+    }
 });
 
 // --- Componente Principal ---
 const Home: React.FC = () => {
     // Hooks
+    const router = useRouter();
     const colorScheme = useColorScheme() || 'light';
     const theme = themes[colorScheme];
     const styles = getStyles(theme);
     
     // Estados
-    // ¡CORRECCIÓN! Obtenemos el usuario directamente de auth, el _layout ya hizo la verificación
     const [user, setUser] = useState<User | null>(auth.currentUser); 
     const [userData, setUserData] = useState<DocumentData | null>(null);
     const [relationshipData, setRelationshipData] = useState<DocumentData | null>(null);
     const [partnerData, setPartnerData] = useState<DocumentData | null>(null);
     const [missYouHistory, setMissYouHistory] = useState<DocumentData[]>([]);
-    const [loading, setLoading] = useState(true); // Controla la carga de datos de Firestore
+    const [loading, setLoading] = useState(true);
     const [partnerCode, setPartnerCode] = useState('');
     const [isMoodSelectorVisible, setIsMoodSelectorVisible] = useState(false);
     const [isHistoryVisible, setIsHistoryVisible] = useState(false);
@@ -88,26 +154,55 @@ const Home: React.FC = () => {
     const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
     const [relationshipDuration, setRelationshipDuration] = useState<string | null>(null);
 
+    // --- Función para verificar y reiniciar el Extrañómetro ---
+    const checkAndResetMissYouCounter = useCallback(async (relationshipId: string, currentData: DocumentData) => {
+        const today = getTodayDateKey();
+        const lastResetDate = currentData?.lastResetDate;
+
+        // Si no hay fecha de reset o es diferente a hoy, necesitamos resetear
+        if (!lastResetDate || lastResetDate !== today) {
+            console.log('Reseteando Extrañómetro para el nuevo día:', today);
+            
+            try {
+                const relationshipRef = doc(db, 'relationships', relationshipId);
+                const currentCounters = currentData?.missYouCounters || {};
+                
+                // Solo guardar en historial si hay contadores con valores
+                if (lastResetDate && (Object.values(currentCounters).some((val: any) => val > 0))) {
+                    // Guardar el historial del día anterior
+                    const historyRef = doc(db, 'relationships', relationshipId, 'missYouHistory', lastResetDate);
+                    await setDoc(historyRef, currentCounters);
+                    console.log('Historial guardado para:', lastResetDate, currentCounters);
+                }
+                
+                // Resetear los contadores para hoy
+                await updateDoc(relationshipRef, {
+                    missYouCounters: {},
+                    lastResetDate: today
+                });
+                
+                console.log('Contadores reseteados para hoy:', today);
+            } catch (error) {
+                console.error('Error al resetear Extrañómetro:', error);
+            }
+        }
+    }, []);
+
     // --- Efectos para cargar datos ---
 
-    // ¡CORRECCIÓN! Eliminamos el onAuthStateChanged de aquí.
-    // El _layout ya garantiza que esta pantalla solo se muestre si hay un usuario.
-    // Solo necesitamos un listener para el *perfil* del usuario en Firestore.
     useEffect(() => {
-        if (!user) return; // Si por alguna razón el usuario es null, no hacer nada
+        if (!user) return;
 
-        setLoading(true); // Empezar a cargar datos del perfil
+        setLoading(true);
         const userDocRef = doc(db, 'users', user.uid);
         const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 setUserData(data);
-                // Si no tiene pareja, ya podemos parar de cargar
                 if (!data.partnerId) {
                     setLoading(false);
                 }
             } else {
-                // Perfil no existe, algo muy raro. Forzamos logout.
                 signOut(auth);
                 setLoading(false);
             }
@@ -116,12 +211,10 @@ const Home: React.FC = () => {
         return () => unsubscribeUser();
     }, [user]);
 
-    // Efecto 3: Carga de Datos de Pareja y Relación (depende de 'userData')
+    // Efecto para cargar datos de Pareja y Relación con reset automático
     useEffect(() => {
         if (!user || !userData || !userData.partnerId) {
-            // Limpiar datos de pareja si ya no hay partnerId
             setPartnerData(null); setRelationshipData(null); setMissYouHistory([]);
-            // Si userData no es null (ya cargó) pero no hay partnerId, aseguramos que loading sea false
             if (userData !== null && !userData.partnerId) setLoading(false);
             return;
         }
@@ -129,13 +222,15 @@ const Home: React.FC = () => {
         const relationshipId = [user.uid, userData.partnerId].sort().join('_');
 
         // Listener para la relación
-        const relationshipDocRef = doc(db, 'relationships', relationshipId);
-        const unsubscribeRelationship = onSnapshot(doc(db, 'relationships', relationshipId), (relSnap) => {
-            setRelationshipData(relSnap.data() || {});
+        const unsubscribeRelationship = onSnapshot(doc(db, 'relationships', relationshipId), async (relSnap) => {
+            const data = relSnap.data() || {};
+            setRelationshipData(data);
+            
+            // Verificar y resetear si es necesario
+            await checkAndResetMissYouCounter(relationshipId, data);
         });
 
         // Listener para el perfil de la pareja
-        const partnerDocRef = doc(db, 'users', userData.partnerId);
         const unsubscribePartner = onSnapshot(doc(db, 'users', userData.partnerId), (partnerSnap) => {
             setPartnerData(partnerSnap.data() || null);
         });
@@ -145,13 +240,27 @@ const Home: React.FC = () => {
         const q = query(historyCollectionRef, orderBy('__name__', 'desc'));
         const unsubscribeHistory = onSnapshot(q, (querySnapshot) => {
             setMissYouHistory(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            setLoading(false); // Paramos de cargar CUANDO tenemos todos los datos de relación
+            setLoading(false);
         }, (error) => { console.error("Error history listener:", error); setLoading(false); });
 
         return () => { unsubscribeRelationship(); unsubscribePartner(); unsubscribeHistory(); };
-    }, [user, userData]); // Se ejecuta cuando 'user' o 'userData' cambian
+    }, [user, userData, checkAndResetMissYouCounter]);
 
-    // Efecto 4: Calcular Duración de la Relación (sin cambios)
+    // Efecto para verificar reset cada minuto (detecta cambio de día)
+    useEffect(() => {
+        if (!user || !userData || !userData.partnerId || !relationshipData) return;
+
+        const relationshipId = [user.uid, userData.partnerId].sort().join('_');
+        
+        // Verificar cada minuto si cambió el día
+        const intervalId = setInterval(() => {
+            checkAndResetMissYouCounter(relationshipId, relationshipData);
+        }, 60000); // Cada 60 segundos
+
+        return () => clearInterval(intervalId);
+    }, [user, userData, relationshipData, checkAndResetMissYouCounter]);
+
+    // Efecto 4: Calcular Duración de la Relación
     useEffect(() => {
         if (userData?.relationshipStartDate) {
             const startDate = (userData.relationshipStartDate as Timestamp).toDate();
@@ -175,9 +284,15 @@ const Home: React.FC = () => {
     // --- Funciones de Manejo de Eventos ---
 
     const handleLogout = useCallback(async () => {
-        // ¡CORRECCIÓN! Solo llamamos a signOut. El _layout se encargará de redirigir.
-        await signOut(auth);
-    }, []);
+        try {
+            await signOut(auth);
+            // Redirigir al landing después del logout
+            router.replace('/');
+        } catch (error) {
+            console.error('Error al cerrar sesión:', error);
+            Toast.show({ type: 'error', text1: 'Error al cerrar sesión' });
+        }
+    }, [router]);
 
     const handleCopyCode = useCallback(async () => {
         if (user?.uid) {
@@ -261,7 +376,9 @@ const Home: React.FC = () => {
                 <Text style={styles.infoText}>Tu código de conexión:</Text>
                 <View style={styles.codeBox}>
                     <Text style={styles.codeText}>{user?.uid}</Text>
-                    <TouchableOpacity onPress={handleCopyCode}><Feather name="copy" size={24} color={theme.primary} /></TouchableOpacity>
+                    <TouchableOpacity onPress={handleCopyCode}>
+                        <Feather name="copy" size={24} color={theme.primary} />
+                    </TouchableOpacity>
                 </View>
                 <TextInput
                     style={styles.input}
@@ -283,12 +400,148 @@ const Home: React.FC = () => {
         const partnerId = userData.partnerId;
         const sentCount = relationshipData?.missYouCounters?.[myId] || 0;
         const receivedCount = relationshipData?.missYouCounters?.[partnerId] || 0;
+        
         return (
             <View style={styles.container}>
-                {/* Modales */}
-                <Modal animationType="fade" transparent={true} visible={isMoodSelectorVisible} onRequestClose={() => setIsMoodSelectorVisible(false)}><TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPressOut={() => setIsMoodSelectorVisible(false)}><TouchableOpacity style={styles.modalContainer} activeOpacity={1}><Text style={styles.modalTitle}>¿Cómo te sientes hoy?</Text><ScrollView style={styles.emojiScrollView}><View style={styles.emojiSelector}>{MOODS.map((mood) => (<TouchableOpacity key={mood.emoji} style={styles.emojiButton} onPress={() => handleSelectMood(mood)}><Text style={styles.emojiInSelector}>{mood.emoji}</Text></TouchableOpacity>))}</View></ScrollView></TouchableOpacity></TouchableOpacity></Modal>
-                <Modal animationType="fade" transparent={true} visible={isStatusPromptVisible} onRequestClose={() => setIsStatusPromptVisible(false)}><View style={styles.modalOverlay}><View style={styles.modalContainer}><Text style={styles.modalTitle}>¿Te sientes {selectedMood?.name.toLowerCase()}?</Text><Text style={styles.subtitle}>Añade un breve mensaje</Text><TextInput style={styles.statusInput} value={statusInput} onChangeText={setStatusInput} placeholder="Opcional..." placeholderTextColor={theme.placeholder} maxLength={25} /><View style={styles.modalButtons}><Button title="Cancelar" onPress={() => setIsStatusPromptVisible(false)} color="grey" /><Button title="Guardar" onPress={handleSaveStatus} color={theme.primary} /></View></View></View></Modal>
-                <Modal animationType="slide" transparent={true} visible={isHistoryVisible} onRequestClose={() => setIsHistoryVisible(false)}><View style={styles.modalOverlay}><View style={styles.modalContainer}><Text style={styles.modalTitle}>Historial Extrañómetro</Text><View style={styles.tableHeader}><View style={styles.columnContainer}><Text style={styles.headerText}>Fecha</Text></View><View style={styles.columnContainer}><Text style={styles.headerText}>Recibidos</Text></View><View style={styles.columnContainer}><Text style={styles.headerText}>Enviados</Text></View></View><FlatList data={missYouHistory} keyExtractor={item => item.id} renderItem={({ item }) => (<View style={styles.tableRow}><View style={styles.columnContainer}><Text style={styles.columnText}>{item.id}</Text></View><View style={styles.columnContainer}><Text style={styles.columnText}>{item[partnerId] || 0}</Text></View><View style={styles.columnContainer}><Text style={styles.columnText}>{item[myId] || 0}</Text></View></View>)} ListEmptyComponent={<Text style={{ color: theme.placeholder, marginTop: 20 }}>Aún no hay historial.</Text>} /><Button title="Cerrar" onPress={() => setIsHistoryVisible(false)} color={theme.primary} /></View></View></Modal>
+                {/* Modal Selector de Ánimo */}
+                <Modal 
+                    animationType="fade" 
+                    transparent={true} 
+                    visible={isMoodSelectorVisible} 
+                    onRequestClose={() => setIsMoodSelectorVisible(false)}
+                >
+                    <TouchableOpacity 
+                        style={styles.modalOverlay} 
+                        activeOpacity={1} 
+                        onPressOut={() => setIsMoodSelectorVisible(false)}
+                    >
+                        <TouchableOpacity style={styles.modalContainer} activeOpacity={1}>
+                            <Text style={styles.modalTitle}>¿Cómo te sientes hoy?</Text>
+                            <ScrollView style={styles.emojiScrollView}>
+                                <View style={styles.emojiSelector}>
+                                    {MOODS.map((mood) => (
+                                        <TouchableOpacity 
+                                            key={mood.emoji} 
+                                            style={styles.emojiButton} 
+                                            onPress={() => handleSelectMood(mood)}
+                                        >
+                                            <Text style={styles.emojiInSelector}>{mood.emoji}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </ScrollView>
+                        </TouchableOpacity>
+                    </TouchableOpacity>
+                </Modal>
+
+                {/* Modal Prompt de Estado */}
+                <Modal 
+                    animationType="fade" 
+                    transparent={true} 
+                    visible={isStatusPromptVisible} 
+                    onRequestClose={() => setIsStatusPromptVisible(false)}
+                >
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContainer}>
+                            <Text style={styles.modalTitle}>
+                                ¿Te sientes {selectedMood?.name.toLowerCase()}?
+                            </Text>
+                            <Text style={styles.subtitle}>Añade un breve mensaje</Text>
+                            <TextInput 
+                                style={styles.statusInput} 
+                                value={statusInput} 
+                                onChangeText={setStatusInput} 
+                                placeholder="Opcional..." 
+                                placeholderTextColor={theme.placeholder} 
+                                maxLength={25} 
+                            />
+                            <View style={styles.modalButtons}>
+                                <Button 
+                                    title="Cancelar" 
+                                    onPress={() => setIsStatusPromptVisible(false)} 
+                                    color="grey" 
+                                />
+                                <Button 
+                                    title="Guardar" 
+                                    onPress={handleSaveStatus} 
+                                    color={theme.primary} 
+                                />
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
+
+                {/* Modal Historial Extrañómetro */}
+                <Modal 
+                    animationType="slide" 
+                    transparent={true} 
+                    visible={isHistoryVisible} 
+                    onRequestClose={() => setIsHistoryVisible(false)}
+                >
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContainer}>
+                            <Text style={styles.modalTitle}>Historial Extrañómetro</Text>
+                            
+                            <View style={styles.historyContentContainer}>
+                                {/* Header de la tabla */}
+                                <View style={styles.tableHeader}>
+                                    <View style={styles.dateColumn}>
+                                        <Text style={styles.headerText}>Fecha</Text>
+                                    </View>
+                                    <View style={styles.numberColumn}>
+                                        <Text style={styles.headerText}>Recibidos</Text>
+                                    </View>
+                                    <View style={styles.numberColumn}>
+                                        <Text style={styles.headerText}>Enviados</Text>
+                                    </View>
+                                </View>
+
+                                {/* FlatList con altura fija para iOS */}
+                                <FlatList
+                                    style={styles.historyFlatList}
+                                    data={missYouHistory}
+                                    keyExtractor={item => item.id}
+                                    showsVerticalScrollIndicator={true}
+                                    nestedScrollEnabled={true}
+                                    renderItem={({ item }) => (
+                                        <View style={styles.tableRow}>
+                                            <View style={styles.dateColumn}>
+                                                <Text style={styles.columnText} numberOfLines={1}>
+                                                    {item.id}
+                                                </Text>
+                                            </View>
+                                            <View style={styles.numberColumn}>
+                                                <Text style={styles.columnText}>
+                                                    {item[partnerId] || 0}
+                                                </Text>
+                                            </View>
+                                            <View style={styles.numberColumn}>
+                                                <Text style={styles.columnText}>
+                                                    {item[myId] || 0}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    )}
+                                    ListEmptyComponent={
+                                        <Text style={styles.emptyHistoryText}>
+                                            Aún no hay historial.
+                                        </Text>
+                                    }
+                                />
+                            </View>
+
+                            <View style={styles.closeButtonContainer}>
+                                <Button 
+                                    title="Cerrar" 
+                                    onPress={() => setIsHistoryVisible(false)} 
+                                    color={theme.primary} 
+                                />
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
+
+                {/* DatePicker */}
                 <DateTimePickerModal
                     isVisible={isDatePickerVisible}
                     mode="date"
@@ -302,26 +555,90 @@ const Home: React.FC = () => {
                 <Text style={styles.title}>Conexión Diaria</Text>
 
                 {relationshipDuration ? (
-                    <TouchableOpacity style={styles.relationshipCounterContainer} onPress={showDatePicker} onLongPress={() => Alert.alert("Restablecer Fecha", "¿Quieren cambiar su fecha de inicio?", [{text: 'Cancelar'}, {text: 'OK', onPress: showDatePicker}])}>
+                    <TouchableOpacity 
+                        style={styles.relationshipCounterContainer} 
+                        onPress={showDatePicker} 
+                        onLongPress={() => Alert.alert(
+                            "Restablecer Fecha", 
+                            "¿Quieren cambiar su fecha de inicio?", 
+                            [
+                                { text: 'Cancelar' }, 
+                                { text: 'OK', onPress: showDatePicker }
+                            ]
+                        )}
+                    >
                         <Text style={styles.counterText}>{relationshipDuration}</Text>
                     </TouchableOpacity>
                 ) : (
-                    <Button title="Establecer Fecha de Inicio" onPress={showDatePicker} color={theme.primary} />
+                    <Button 
+                        title="Establecer Fecha de Inicio" 
+                        onPress={showDatePicker} 
+                        color={theme.primary} 
+                    />
                 )}
 
                 <View style={styles.moodsRow}>
-                    <TouchableOpacity style={styles.moodContainer} onPress={openMoodSelector}><Text style={styles.moodName}>{userData.currentMood?.name || 'Tu Ánimo'}</Text><View style={styles.moodCircle}><Text style={styles.moodEmoji}>{userData.currentMood?.emoji || '😐'}</Text></View><Text style={styles.moodStatus}>{userData.currentMood?.status ? `"${userData.currentMood.status}"` : ''}</Text><Text style={styles.moodDisplayName}>{userData.displayName}</Text></TouchableOpacity>
-                    <View style={styles.moodContainer}><Text style={styles.moodName}>{partnerData?.currentMood?.name || 'Su Ánimo'}</Text><View style={styles.moodCircle}><Text style={styles.moodEmoji}>{partnerData?.currentMood?.emoji || '😐'}</Text></View><Text style={styles.moodStatus}>{partnerData?.currentMood?.status ? `"${partnerData.currentMood.status}"` : ''}</Text><Text style={styles.moodDisplayName}>{partnerData?.displayName || '...'}</Text></View>
+                    <TouchableOpacity style={styles.moodContainer} onPress={openMoodSelector}>
+                        <Text style={styles.moodName}>
+                            {userData.currentMood?.name || 'Tu Ánimo'}
+                        </Text>
+                        <View style={styles.moodCircle}>
+                            <Text style={styles.moodEmoji}>
+                                {userData.currentMood?.emoji || '😐'}
+                            </Text>
+                        </View>
+                        <Text style={styles.moodStatus}>
+                            {userData.currentMood?.status ? `"${userData.currentMood.status}"` : ''}
+                        </Text>
+                        <Text style={styles.moodDisplayName}>{userData.displayName}</Text>
+                    </TouchableOpacity>
+                    
+                    <View style={styles.moodContainer}>
+                        <Text style={styles.moodName}>
+                            {partnerData?.currentMood?.name || 'Su Ánimo'}
+                        </Text>
+                        <View style={styles.moodCircle}>
+                            <Text style={styles.moodEmoji}>
+                                {partnerData?.currentMood?.emoji || '😐'}
+                            </Text>
+                        </View>
+                        <Text style={styles.moodStatus}>
+                            {partnerData?.currentMood?.status ? `"${partnerData.currentMood.status}"` : ''}
+                        </Text>
+                        <Text style={styles.moodDisplayName}>
+                            {partnerData?.displayName || '...'}
+                        </Text>
+                    </View>
                 </View>
-                <View style={styles.missYouContainer}><Text style={styles.subtitle}>Extrañómetro</Text><View style={styles.countersRow}><View style={styles.counterItem}><Ionicons name="heart" size={32} color={theme.primary} /><Text style={styles.receivedText}>{receivedCount}</Text></View><View style={styles.counterItem}><Ionicons name="heart-outline" size={18} color={theme.placeholder} /><Text style={styles.sentText}>{sentCount}</Text></View></View><TouchableOpacity onPress={() => setIsHistoryVisible(true)}><Text style={styles.historyLink}>Ver historial</Text></TouchableOpacity></View>
-                <View style={{ flexDirection: 'row', gap: 15 }}><Link href="/(tabs)/chat" asChild><Button title="Ir al Chat" color={theme.primary} /></Link><Link href="/(tabs)/notes" asChild><Button title="Ver Notas" color={theme.primary} /></Link></View>
+
+                <View style={styles.missYouContainer}>
+                    <Text style={styles.subtitle}>Extrañómetro</Text>
+                    <View style={styles.countersRow}>
+                        <View style={styles.counterItem}>
+                            <Ionicons name="heart" size={32} color={theme.primary} />
+                            <Text style={styles.receivedText}>{receivedCount}</Text>
+                        </View>
+                        <View style={styles.counterItem}>
+                            <Ionicons name="heart-outline" size={18} color={theme.placeholder} />
+                            <Text style={styles.sentText}>{sentCount}</Text>
+                        </View>
+                    </View>
+                    <TouchableOpacity onPress={() => setIsHistoryVisible(true)}>
+                        <Text style={styles.historyLink}>Ver historial</Text>
+                    </TouchableOpacity>
+                </View>
+
                 <Button title="Cerrar Sesión" onPress={handleLogout} color="grey" />
             </View>
         );
     }
     
     // Fallback final
-    return <View style={styles.container}><ActivityIndicator size="large" color={theme.primary} /></View>;
+    return (
+        <View style={styles.container}>
+            <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+    );
 };
 
 export default Home;
