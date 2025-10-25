@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput as RNTextInput, Button, Alert, useColorScheme, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../src/config/firebaseConfig';
 import { themes } from '../src/config/theme';
 import { Feather } from '@expo/vector-icons';
@@ -57,9 +57,8 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
         color: theme.link,
         fontWeight: 'bold',
     },
-    // Estilo para el loader
     loadingContainer: {
-        paddingVertical: 14, // Simula la altura del botón
+        paddingVertical: 14,
         alignItems: 'center',
         justifyContent: 'center',
     }
@@ -77,34 +76,38 @@ const Register: React.FC = () => {
     const [displayName, setDisplayName] = useState('');
     const [isPasswordVisible, setIsPasswordVisible] = useState(false);
     const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
-    // --- ESTADO DE CARGA AÑADIDO ---
     const [loading, setLoading] = useState(false);
 
     const handleRegister = async () => {
         if (password !== confirmPassword) return Toast.show({ type: 'error', text1: 'Error', text2: 'Las contraseñas no coinciden.' });
         if (!email || !password || !displayName) return Toast.show({ type: 'error', text1: 'Error', text2: 'Por favor, completa todos los campos.' });
         
-        setLoading(true); // Inicia la carga
+        setLoading(true);
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
             const user = userCredential.user;
+            
+            // ⭐ ACTUALIZADO: Incluye isOnline y lastSeen
             await setDoc(doc(db, "users", user.uid), {
                 email: user.email,
                 displayName: displayName.trim(),
-                createdAt: new Date(),
+                createdAt: serverTimestamp(),
                 partnerId: null,
                 relationshipStartDate: null,
-                currentMood: { emoji: '😐', name: 'Neutral', status: '' }
+                currentMood: { emoji: '😊', name: 'Neutral', status: '' },
+                // ⭐ CAMPOS NUEVOS PARA ESTADO ONLINE ⭐
+                isOnline: true,              // Usuario online al registrarse
+                lastSeen: serverTimestamp()  // Timestamp actual
             });
-            router.replace('/(tabs)/home'); // Redirige a la app
+            
+            router.replace('/(tabs)/home');
         } catch (error: any) {
             console.error(error);
             if (error.code === 'auth/email-already-in-use') Toast.show({ type: 'error', text1: 'Error', text2: 'Este correo ya está en uso.' });
             else if (error.code === 'auth/weak-password') Toast.show({ type: 'error', text1: 'Error', text2: 'La contraseña debe tener al menos 6 caracteres.' });
             else Toast.show({ type: 'error', text1: 'Error', text2: 'Ocurrió un problema al crear la cuenta.' });
-            setLoading(false); // Detiene la carga si hay error
+            setLoading(false);
         }
-        // No es necesario setLoading(false) si el registro es exitoso, porque la pantalla se desmontará
     };
 
     return (
@@ -166,7 +169,6 @@ const Register: React.FC = () => {
                     </TouchableOpacity>
                 </View>
 
-                {/* --- LÓGICA DE CARGA AÑADIDA --- */}
                 {loading ? (
                     <View style={styles.loadingContainer}>
                         <ActivityIndicator size="large" color={theme.primary} />

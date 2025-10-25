@@ -29,9 +29,28 @@ const ChatHeader: React.FC<{
 }> = ({ partnerData, theme, onBack }) => {
     const insets = useSafeAreaInsets();
     
-    // Simulación de estado online (deberías implementar esto con Firestore)
-    const isOnline = false; // Cambia esto según tu lógica
-    const lastSeen = "Hace 2 horas"; // Implementa esto con datos reales
+    // Estado online y última conexión con datos reales
+    const isOnline = partnerData?.isOnline || false;
+    const lastSeenDate = partnerData?.lastSeen?.toDate();
+    
+    const getLastSeenText = () => {
+        if (!lastSeenDate) return "Sin conexión reciente";
+        
+        const now = new Date();
+        const diffMs = now.getTime() - lastSeenDate.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        
+        if (diffMins < 1) return "Hace un momento";
+        if (diffMins < 60) return `Hace ${diffMins} min`;
+        if (diffHours < 24) return `Hace ${diffHours}h`;
+        if (diffDays === 1) return "Ayer";
+        if (diffDays < 7) return `Hace ${diffDays} días`;
+        return lastSeenDate.toLocaleDateString();
+    };
+    
+    const lastSeen = getLastSeenText();
 
     return (
         <View style={{
@@ -313,6 +332,9 @@ const ChatScreen: React.FC = () => {
                     bottomOffset={0}
                     minInputToolbarHeight={undefined}
                     keyboardShouldPersistTaps="handled"
+                    renderAvatar={null}
+                    showUserAvatar={false}
+                    showAvatarForEveryMessage={false}
                     
                     // Estilo de las burbujas
                     renderBubble={(props) => (
@@ -346,7 +368,7 @@ const ChatScreen: React.FC = () => {
                                 borderTopWidth: StyleSheet.hairlineWidth,
                                 paddingHorizontal: 8,
                                 paddingTop: 8,
-                                paddingBottom: Platform.OS === 'ios' && insets.bottom > 0 ? insets.bottom : 8,
+                                paddingBottom: Platform.OS === 'ios' && insets.bottom > 0 ? insets.bottom / 2 : 4,
                             }}
                             renderActions={() => (
                                 <Actions

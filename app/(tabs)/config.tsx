@@ -1,7 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, useColorScheme, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { themes } from '../../src/config/theme';
+import { MigrationButton } from '../../src/utils/migrateUsers';
+
+
 
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     safeArea: {
@@ -40,6 +43,9 @@ const ConfigScreen: React.FC = () => {
                 <Text style={styles.placeholderText}>
                     Próximamente: ajustes de perfil, temas, notificaciones y más.
                 </Text>
+                <TouchableOpacity onPress={MigrationButton}>
+                    <Text>Migrar Usuarios (ejecutar solo una vez)</Text>
+                </TouchableOpacity>
             </View>
         </SafeAreaView>
     );
