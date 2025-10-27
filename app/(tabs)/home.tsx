@@ -285,6 +285,13 @@ const Home: React.FC = () => {
 
     const handleLogout = useCallback(async () => {
         try {
+            const user = auth.currentUser;
+        if (user) {
+            await setDoc(doc(db, 'users', user.uid), {
+                isOnline: false,
+                lastSeen: new Date(),
+            }, { merge: true });
+        }
             await signOut(auth);
             // Redirigir al landing después del logout
             router.replace('/');

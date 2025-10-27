@@ -67,6 +67,14 @@ const TabLayout: React.FC = () => {
                 }}
             />
             <Tabs.Screen
+                name="calendar"
+                options={{
+                    title: 'Calendario',
+                    tabBarIcon: ({ color }) => <Ionicons name="calendar-outline" size={24} color={color} />,
+                    headerShown: false,
+                }}
+            />
+            <Tabs.Screen
                 name="config"
                 options={{
                     title: 'Ajustes',
