@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     View, Text, StyleSheet, useColorScheme, ActivityIndicator,
-    Modal, TextInput, Button, FlatList, Alert, TouchableOpacity
+    Modal, TextInput, Button, FlatList, Alert, TouchableOpacity,
+    ScrollView, Switch // Added ScrollView and Switch
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -14,8 +15,9 @@ import {
 } from 'firebase/firestore';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import Toast from 'react-native-toast-message';
+import DateTimePickerModal from "react-native-modal-datetime-picker";
+import { Ionicons } from '@expo/vector-icons'; // Added for icons
 
-// --- Configuración de idioma para el calendario ---
 LocaleConfig.locales['es'] = {
   monthNames: ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'],
   monthNamesShort: ['Ene.','Feb.','Mar.','Abr.','May.','Jun.','Jul.','Ago.','Sep.','Oct.','Nov.','Dic.'],
@@ -24,15 +26,12 @@ LocaleConfig.locales['es'] = {
 };
 LocaleConfig.defaultLocale = 'es';
 
-// --- Estilos ---
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.background },
     container: { flex: 1, padding: 15 },
     title: { fontSize: 28, fontWeight: 'bold', color: theme.text, textAlign: 'center', marginBottom: 20 },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background },
     placeholderText: { fontSize: 16, color: theme.placeholder, textAlign: 'center', marginTop: 50 },
-    
-    // Lista de eventos
     listHeader: { fontSize: 18, fontWeight: '600', color: theme.text, marginTop: 20, marginBottom: 10 },
     eventItem: {
         backgroundColor: theme.inputBackground,
@@ -43,38 +42,81 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
         borderWidth: 1,
     },
     eventTitle: { fontSize: 16, fontWeight: 'bold', color: theme.text },
+    eventTimeText: { fontSize: 14, color: theme.text, marginTop: 5 },
+    eventDescription: { fontSize: 14, color: theme.placeholder, marginTop: 5, fontStyle: 'italic' }, // Style for description
     eventAuthor: { fontSize: 12, fontStyle: 'italic', color: theme.placeholder, marginTop: 5 },
-
-    // Modal
-    modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.5)' },
-    modalContainer: { width: '90%', backgroundColor: theme.background, borderRadius: 20, padding: 20 },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 20 },
+    modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.6)' },
+    // Updated Modal Container for scrolling
+    modalContainer: {
+        width: '90%',
+        maxHeight: '80%', // Limit height
+        backgroundColor: theme.background,
+        borderRadius: 20,
+        padding: 20,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        elevation: 5,
+    },
+    modalTitle: { fontSize: 20, fontWeight: 'bold', color: theme.text, marginBottom: 20, textAlign: 'center' },
+    modalScrollView: { width: '100%' }, // ScrollView inside modal
+    modalSection: { marginBottom: 20, width: '100%' },
+    modalLabel: { fontSize: 16, color: theme.placeholder, marginBottom: 8 },
     modalInput: {
-        height: 50,
+        minHeight: 50, // Use minHeight for multiline
         width: '100%',
         borderColor: theme.borderColor,
         borderWidth: 1,
         borderRadius: 8,
         padding: 10,
+        fontSize: 16,
         color: theme.text,
         backgroundColor: theme.inputBackground,
-        marginBottom: 20,
+        textAlignVertical: 'top', // For multiline
     },
-    modalButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '100%' },
+    dateTimePickerButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: theme.inputBackground,
+        padding: 15,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: theme.borderColor,
+    },
+    dateTimePickerText: {
+        fontSize: 16,
+        color: theme.text,
+    },
+    reminderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginTop: 10,
+    },
+    modalButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: 10 },
 });
 
 interface CalendarEvent {
     id: string;
     title: string;
-    date: Timestamp; // ¡Aquí le decimos que 'date' existe y es un Timestamp!
+    dateTime: Timestamp;
+    description?: string; // Optional description
+    reminder?: boolean; // Optional reminder flag
     authorId: string;
     authorName: string;
     createdAt: Timestamp;
 }
 
-// Helper para formatear fecha a YYYY-MM-DD
 const toDateString = (date: Date): string => {
     return date.toISOString().split('T')[0];
+};
+
+const formatModalDateTime = (date: Date): string => {
+    return date.toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' }) +
+           ' ' +
+           date.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
 };
 
 const CalendarScreen: React.FC = () => {
@@ -89,10 +131,18 @@ const CalendarScreen: React.FC = () => {
 
     const [allEvents, setAllEvents] = useState<CalendarEvent[]>([]);
     const [selectedDate, setSelectedDate] = useState<string>(toDateString(new Date()));
-    const [isModalVisible, setIsModalVisible] = useState(false);
-    const [newEventTitle, setNewEventTitle] = useState('');
 
-    // --- Carga de Autenticación y Perfil ---
+    // State for the new event modal
+    const [isEventModalVisible, setIsEventModalVisible] = useState(false);
+    const [eventTitle, setEventTitle] = useState('');
+    const [eventDescription, setEventDescription] = useState('');
+    const [eventDateTime, setEventDateTime] = useState<Date>(new Date());
+    const [eventReminder, setEventReminder] = useState(false);
+
+    // State for DateTimePicker (now used within the modal)
+    const [isDateTimePickerVisible, setDateTimePickerVisibility] = useState(false);
+    const [dateTimePickerMode, setDateTimePickerMode] = useState<'date' | 'time'>('date');
+
     useEffect(() => {
         setLoading(true);
         const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -105,7 +155,6 @@ const CalendarScreen: React.FC = () => {
         return () => unsubscribeAuth();
     }, [router]);
 
-    // --- Carga de Eventos ---
     useEffect(() => {
         if (!user) return;
         let unsubscribeUser: () => void = () => {};
@@ -121,13 +170,12 @@ const CalendarScreen: React.FC = () => {
                 if (data.partnerId) {
                     const chatId = [user.uid, data.partnerId].sort().join('_');
                     const eventsCollectionRef = collection(db, 'relationships', chatId, 'events');
-                    const q = query(eventsCollectionRef); // Traemos todos
-                    
+                    const q = query(eventsCollectionRef);
+
                     unsubscribeEvents = onSnapshot(q, (snapshot) => {
                         const eventsList = snapshot.docs
                             .map(doc => ({ id: doc.id, ...doc.data() } as CalendarEvent))
-                            // Ordenamos en JS para evitar índices de Firestore por ahora
-                            .sort((a, b) => a.date.toDate().getTime() - b.date.toDate().getTime());
+                            .sort((a, b) => a.dateTime.toDate().getTime() - b.dateTime.toDate().getTime());
                         setAllEvents(eventsList);
                         setLoading(false);
                     }, (error) => { console.error("Error fetching events:", error); setLoading(false); });
@@ -142,19 +190,12 @@ const CalendarScreen: React.FC = () => {
         return () => { unsubscribeUser(); unsubscribeEvents(); };
     }, [user]);
 
-    // --- Lógica de Marcadores para el Calendario ---
     const markedDates = useMemo(() => {
-        const markers: { [key: string]: { 
-            marked?: boolean, 
-            dotColor?: string, 
-            selected?: boolean, 
-            selectedColor?: string 
-} } = {};
+        const markers: { [key: string]: { marked?: boolean, dotColor?: string, selected?: boolean, selectedColor?: string } } = {};
         allEvents.forEach(event => {
-            const dateString = toDateString(event.date.toDate());
+            const dateString = toDateString(event.dateTime.toDate());
             markers[dateString] = { marked: true, dotColor: theme.primary };
         });
-        // Marca también el día seleccionado
         if (markers[selectedDate]) {
             markers[selectedDate] = { ...markers[selectedDate], selected: true, selectedColor: theme.primary + '50' };
         } else {
@@ -163,55 +204,101 @@ const CalendarScreen: React.FC = () => {
         return markers;
     }, [allEvents, selectedDate, theme.primary]);
 
-    // --- Lógica para filtrar eventos del día ---
     const eventsForSelectedDay = useMemo(() => {
         return allEvents.filter(event => {
-            const eventDateString = toDateString(event.date.toDate());
+            const eventDateString = toDateString(event.dateTime.toDate());
             return eventDateString === selectedDate;
         });
     }, [allEvents, selectedDate]);
 
-    // --- Manejadores de Eventos ---
-    const handleDayPress = (day: { dateString: string }) => {
-        setSelectedDate(day.dateString);
+    // --- Modal and DateTimePicker Handlers ---
+    const openEventModal = () => {
+        // Set initial date/time for the modal based on selectedDate
+        const now = new Date();
+        const initialDateTime = new Date(selectedDate);
+        initialDateTime.setHours(now.getHours(), Math.round(now.getMinutes() / 5) * 5, 0, 0); // Use current rounded time
+
+        setEventDateTime(initialDateTime);
+        setEventTitle('');
+        setEventDescription('');
+        setEventReminder(false);
+        setIsEventModalVisible(true);
     };
 
+    const closeEventModal = () => {
+        setIsEventModalVisible(false);
+    };
+
+    const showDatePicker = () => {
+        setDateTimePickerMode('date');
+        setDateTimePickerVisibility(true);
+    };
+
+    const showTimePicker = () => {
+        setDateTimePickerMode('time');
+        setDateTimePickerVisibility(true);
+    };
+
+    const hideDateTimePicker = () => {
+        setDateTimePickerVisibility(false);
+    };
+
+    const handleConfirmDateTime = (date: Date) => {
+        hideDateTimePicker();
+        const currentEventDateTime = new Date(eventDateTime); // Copy current state
+
+        if (dateTimePickerMode === 'date') {
+            // Update only the date part
+            currentEventDateTime.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+        } else { // 'time' mode
+            // Round minutes
+            const minutes = date.getMinutes();
+            const roundedMinutes = Math.round(minutes / 5) * 5;
+            // Update only the time part
+            currentEventDateTime.setHours(date.getHours(), roundedMinutes, 0, 0);
+        }
+        setEventDateTime(currentEventDateTime); // Update the state for the modal
+    };
+
+    // --- Calendar Day Press Handler (Simplified) ---
+    const handleDayPress = (day: { dateString: string }) => {
+        setSelectedDate(day.dateString); // Only update the selected date
+    };
+
+    // --- Add Event Handler (Updated) ---
     const handleAddEvent = useCallback(async () => {
-        const title = newEventTitle.trim();
-        if (title === '' || !userData || !userData.partnerId || !user || !selectedDate) {
+        const title = eventTitle.trim();
+        if (title === '' || !userData || !userData.partnerId || !user || !eventDateTime) {
+            Toast.show({ type: 'error', text1: 'Por favor completa el título.' });
             return;
         }
-
         const chatId = [user.uid, userData.partnerId].sort().join('_');
         const eventsCollectionRef = collection(db, 'relationships', chatId, 'events');
-        
-        // Almacenamos la fecha en UTC mediodía para evitar problemas de zona horaria
-        const eventDate = new Date(`${selectedDate}T12:00:00Z`);
 
         try {
             await addDoc(eventsCollectionRef, {
                 title: title,
-                date: Timestamp.fromDate(eventDate),
+                dateTime: Timestamp.fromDate(eventDateTime),
+                description: eventDescription.trim() || null, // Save description or null
+                reminder: eventReminder, // Save reminder flag
                 authorId: user.uid,
                 authorName: userData.displayName,
                 createdAt: serverTimestamp(),
             });
-            setNewEventTitle('');
-            setIsModalVisible(false);
+            closeEventModal(); // Close modal on success
             Toast.show({ type: 'success', text1: 'Evento añadido' });
         } catch (error) {
             console.error("Error al añadir evento:", error);
             Toast.show({ type: 'error', text1: 'Error al guardar el evento' });
         }
-    }, [newEventTitle, selectedDate, userData, user]);
+    }, [eventTitle, eventDescription, eventDateTime, eventReminder, userData, user]);
 
-    // Eliminar un evento (solo el autor)
+    // --- Delete Event Handler ---
     const handleDeleteEvent = (eventId: string, authorId: string) => {
         if (user?.uid !== authorId) {
             Toast.show({ type: 'error', text1: 'Solo el autor puede borrarlo' });
             return;
         }
-        
         Alert.alert("Confirmar Eliminación", "¿Borrar este evento?",
             [ { text: "Cancelar", style: "cancel" }, {
                 text: "Eliminar", style: "destructive",
@@ -226,11 +313,10 @@ const CalendarScreen: React.FC = () => {
         );
     };
 
-    // --- Renderizado ---
     if (loading) {
         return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={theme.primary} /></View>;
     }
-    
+
     if (userData && !userData.partnerId) {
          return (
              <SafeAreaView style={styles.safeArea}>
@@ -250,63 +336,46 @@ const CalendarScreen: React.FC = () => {
         <SafeAreaView style={styles.safeArea}>
             <View style={styles.container}>
                 <Text style={styles.title}>Calendario Compartido</Text>
-                
-                {/* Componente del Calendario */}
+
                 <Calendar
                     style={{
                         borderWidth: 1,
                         borderColor: theme.borderColor,
                         borderRadius: 8,
                     }}
-                    theme={{
-                        backgroundColor: theme.background,
-                        calendarBackground: theme.background,
-                        textSectionTitleColor: theme.placeholder,
-                        selectedDayBackgroundColor: theme.primary,
-                        selectedDayTextColor: theme.white,
-                        todayTextColor: theme.primary,
-                        dayTextColor: theme.text,
-                        textDisabledColor: theme.placeholder + '50',
-                        dotColor: theme.primary,
-                        selectedDotColor: theme.white,
-                        arrowColor: theme.primary,
-                        monthTextColor: theme.text,
-                        indicatorColor: theme.primary,
-                        textDayFontWeight: '300',
-                        textMonthFontWeight: 'bold',
-                        textDayHeaderFontWeight: '300',
-                        textDayFontSize: 16,
-                        textMonthFontSize: 16,
-                        textDayHeaderFontSize: 16
-                    }}
-                    current={selectedDate}
-                    onDayPress={handleDayPress}
+                    theme={{ /* ... theme properties ... */ }}
+                    // Removed 'current' prop
+                    onDayPress={handleDayPress} // Now only selects the date
                     markedDates={markedDates}
                 />
 
-                {/* Botón para añadir evento */}
-                <View style={{ marginVertical: 15 }}>
-                    <Button 
-                        title={`Añadir evento el ${selectedDate}`}
-                        onPress={() => setIsModalVisible(true)}
+                {/* --- Add Event Button --- */}
+                <View style={{ marginVertical: 15, width: '100%' }}>
+                    <Button
+                        title="Añadir Evento"
+                        onPress={openEventModal} // Opens the new detailed modal
                         color={theme.primary}
-                        disabled={!selectedDate}
                     />
                 </View>
 
-                {/* Lista de eventos del día */}
                 <FlatList
                     data={eventsForSelectedDay}
                     keyExtractor={item => item.id}
-                    renderItem={({ item }) => (
-                        <TouchableOpacity 
-                            style={styles.eventItem}
-                            onLongPress={() => handleDeleteEvent(item.id, item.authorId)}
-                        >
-                            <Text style={styles.eventTitle}>{item.title}</Text>
-                            <Text style={styles.eventAuthor}>Añadido por: {item.authorName}</Text>
-                        </TouchableOpacity>
-                    )}
+                    renderItem={({ item }) => {
+                        const eventTime = item.dateTime.toDate().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+                        return (
+                            <TouchableOpacity
+                                style={styles.eventItem}
+                                onLongPress={() => handleDeleteEvent(item.id, item.authorId)}
+                            >
+                                <Text style={styles.eventTitle}>{item.title}</Text>
+                                <Text style={styles.eventTimeText}>Hora: {eventTime}</Text>
+                                {/* Display description if it exists */}
+                                {item.description && <Text style={styles.eventDescription}>{item.description}</Text>}
+                                <Text style={styles.eventAuthor}>Añadido por: {item.authorName}</Text>
+                            </TouchableOpacity>
+                        );
+                    }}
                     ListHeaderComponent={
                         <Text style={styles.listHeader}>
                             Eventos del {selectedDate}:
@@ -318,30 +387,114 @@ const CalendarScreen: React.FC = () => {
                 />
             </View>
 
-            {/* --- Modal para Añadir Evento --- */}
-            <Modal 
-                animationType="fade" 
-                transparent={true} 
-                visible={isModalVisible} 
-                onRequestClose={() => setIsModalVisible(false)}
+            {/* --- New Event Input Modal --- */}
+            <Modal
+                animationType="slide"
+                transparent={true}
+                visible={isEventModalVisible}
+                onRequestClose={closeEventModal}
             >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContainer}>
-                        <Text style={styles.modalTitle}>Añadir evento el {selectedDate}</Text>
-                        <TextInput
-                            style={styles.modalInput}
-                            placeholder="Título del evento (ej. Aniversario)"
-                            placeholderTextColor={theme.placeholder}
-                            value={newEventTitle}
-                            onChangeText={setNewEventTitle}
-                        />
-                        <View style={styles.modalButtons}>
-                            <Button title="Cancelar" onPress={() => setIsModalVisible(false)} color="grey" />
-                            <Button title="Guardar" onPress={handleAddEvent} color={theme.primary} />
-                        </View>
-                    </View>
-                </View>
+                <TouchableOpacity
+                    style={styles.modalOverlay}
+                    activeOpacity={1}
+                    onPressOut={closeEventModal} // Close on tapping outside
+                >
+                    <TouchableOpacity style={styles.modalContainer} activeOpacity={1}>
+                        <ScrollView style={styles.modalScrollView} keyboardShouldPersistTaps="handled">
+                            <Text style={styles.modalTitle}>Nuevo Evento</Text>
+
+                            {/* Title Input */}
+                            <View style={styles.modalSection}>
+                                <Text style={styles.modalLabel}>Título</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    placeholder="Ej. Aniversario, Cumpleaños..."
+                                    placeholderTextColor={theme.placeholder}
+                                    value={eventTitle}
+                                    onChangeText={setEventTitle}
+                                />
+                            </View>
+
+                            {/* Date Picker Button */}
+                            <View style={styles.modalSection}>
+                                <Text style={styles.modalLabel}>Fecha</Text>
+                                <TouchableOpacity style={styles.dateTimePickerButton} onPress={showDatePicker}>
+                                    <Text style={styles.dateTimePickerText}>
+                                        {eventDateTime.toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                    </Text>
+                                    <Ionicons name="calendar-outline" size={20} color={theme.placeholder} />
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Time Picker Button */}
+                            <View style={styles.modalSection}>
+                                <Text style={styles.modalLabel}>Hora</Text>
+                                <TouchableOpacity style={styles.dateTimePickerButton} onPress={showTimePicker}>
+                                    <Text style={styles.dateTimePickerText}>
+                                        {eventDateTime.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                                    </Text>
+                                    <Ionicons name="time-outline" size={20} color={theme.placeholder} />
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Description Input */}
+                            <View style={styles.modalSection}>
+                                <Text style={styles.modalLabel}>Descripción (Opcional)</Text>
+                                <TextInput
+                                    style={[styles.modalInput, { height: 100 }]} // Taller for multiline
+                                    placeholder="Añade detalles..."
+                                    placeholderTextColor={theme.placeholder}
+                                    value={eventDescription}
+                                    onChangeText={setEventDescription}
+                                    multiline={true}
+                                />
+                            </View>
+
+                            {/* Reminder Toggle */}
+                            <View style={[styles.modalSection, styles.reminderRow]}>
+                                <Text style={styles.modalLabel}>¿Activar Recordatorio?</Text>
+                                <Switch
+                                    trackColor={{ false: theme.placeholder + '50', true: theme.primary + '50' }}
+                                    thumbColor={eventReminder ? theme.primary : theme.placeholder}
+                                    ios_backgroundColor={theme.placeholder + '30'}
+                                    onValueChange={setEventReminder}
+                                    value={eventReminder}
+                                />
+                            </View>
+
+                            {/* Placeholder for Reminder Settings (appears if eventReminder is true) */}
+                            {eventReminder && (
+                                <View style={styles.modalSection}>
+                                     <Text style={[styles.modalLabel, { fontStyle: 'italic', textAlign: 'center' }]}>
+                                         (Próximamente: Configuración de recordatorio aquí)
+                                     </Text>
+                                     {/* Add inputs for reminder time (e.g., 15 mins before), repeat, etc. */}
+                                </View>
+                            )}
+
+                            {/* Action Buttons */}
+                            <View style={styles.modalButtons}>
+                                <Button title="Cancelar" onPress={closeEventModal} color="grey" />
+                                <Button title="Guardar Evento" onPress={handleAddEvent} color={theme.primary} />
+                            </View>
+                        </ScrollView>
+                    </TouchableOpacity>
+                </TouchableOpacity>
             </Modal>
+
+            {/* DateTimePickerModal (now controlled by the new modal) */}
+            <DateTimePickerModal
+                isVisible={isDateTimePickerVisible}
+                mode={dateTimePickerMode} // Can be 'date' or 'time'
+                date={eventDateTime} // Use the modal's date state
+                onConfirm={handleConfirmDateTime}
+                onCancel={hideDateTimePicker}
+                locale="es_ES"
+                confirmTextIOS="Confirmar"
+                cancelTextIOS="Cancelar"
+                minuteInterval={5}
+                // minimumDate={new Date()} // Optional
+            />
         </SafeAreaView>
     );
 };

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
     View, useColorScheme, Platform, KeyboardAvoidingView, StyleSheet, 
     ActivityIndicator, Text, TouchableOpacity, Image, LayoutAnimation, UIManager, AppState,
-    Alert, Linking, Keyboard
+    Alert, Linking, Keyboard, Modal, Dimensions, Animated
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GiftedChat, IMessage, InputToolbar, Composer, Send, Actions, Bubble } from 'react-native-gifted-chat';
@@ -12,7 +12,7 @@ import { auth, db, storage } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
 import {
     collection, addDoc, onSnapshot, query, orderBy, doc,
-    DocumentData, updateDoc, Timestamp
+    DocumentData, updateDoc, Timestamp, deleteDoc, setDoc
 } from 'firebase/firestore';
 import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
 import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -25,12 +25,19 @@ import * as Crypto from 'expo-crypto';
 import { Audio } from 'expo-av';
 import Toast from 'react-native-toast-message';
 
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 // Extender el tipo IMessage para incluir campos personalizados
 interface ExtendedMessage extends IMessage {
     audio?: string;
     file?: string;
     fileName?: string;
     fileSize?: number;
+    delivered?: boolean;
+    read?: boolean;
+    audioPlayed?: boolean;
+    deleted?: boolean;
+    sentAt?: Date;
 }
 
 // Habilitar LayoutAnimation en Android
@@ -51,6 +58,139 @@ const uriToBlob = (uri: string): Promise<Blob> => {
         xhr.open('GET', uri, true);
         xhr.send(null);
     });
+};
+
+// Componente de palomas de estado
+const MessageStatus: React.FC<{ message: ExtendedMessage; isOwn: boolean }> = ({ message, isOwn }) => {
+    if (!isOwn || message.deleted) return null;
+
+    const getStatusIcon = () => {
+        if (message.read) {
+            return (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: -4 }}>
+                    <Ionicons name="checkmark" size={14} color="#FF69B4" />
+                    <Ionicons name="checkmark" size={14} color="#FF69B4" />
+                </View>
+            );
+        }
+        if (message.delivered) {
+            return (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: -4 }}>
+                    <Ionicons name="checkmark" size={14} color="#FFF" />
+                    <Ionicons name="checkmark" size={14} color="#FFF" />
+                </View>
+            );
+        }
+        return <Ionicons name="checkmark" size={14} color="#FFF" />;
+    };
+
+    return (
+        <View style={{ marginLeft: 4, marginTop: 2 }}>
+            {getStatusIcon()}
+        </View>
+    );
+};
+
+// Componente ImageViewer Modal
+const ImageViewerModal: React.FC<{
+    visible: boolean;
+    imageUri: string;
+    onClose: () => void;
+}> = ({ visible, imageUri, onClose }) => {
+    return (
+        <Modal
+            visible={visible}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={onClose}
+        >
+            <View style={{
+                flex: 1,
+                backgroundColor: 'rgba(0,0,0,0.95)',
+                justifyContent: 'center',
+                alignItems: 'center',
+            }}>
+                <TouchableOpacity 
+                    style={{
+                        position: 'absolute',
+                        top: 50,
+                        left: 20,
+                        zIndex: 10,
+                        backgroundColor: 'rgba(255,255,255,0.2)',
+                        borderRadius: 20,
+                        padding: 8,
+                    }}
+                    onPress={onClose}
+                >
+                    <Ionicons name="close" size={28} color="#FFF" />
+                </TouchableOpacity>
+
+                <Image
+                    source={{ uri: imageUri }}
+                    style={{
+                        width: SCREEN_WIDTH,
+                        height: SCREEN_HEIGHT * 0.8,
+                        resizeMode: 'contain',
+                    }}
+                />
+            </View>
+        </Modal>
+    );
+};
+
+// Componente VideoViewer Modal
+const VideoViewerModal: React.FC<{
+    visible: boolean;
+    videoUri: string;
+    onClose: () => void;
+}> = ({ visible, videoUri, onClose }) => {
+    return (
+        <Modal
+            visible={visible}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={onClose}
+        >
+            <View style={{
+                flex: 1,
+                backgroundColor: 'rgba(0,0,0,0.95)',
+                justifyContent: 'center',
+                alignItems: 'center',
+            }}>
+                <TouchableOpacity 
+                    style={{
+                        position: 'absolute',
+                        top: 50,
+                        left: 20,
+                        zIndex: 10,
+                        backgroundColor: 'rgba(255,255,255,0.2)',
+                        borderRadius: 20,
+                        padding: 8,
+                    }}
+                    onPress={onClose}
+                >
+                    <Ionicons name="close" size={28} color="#FFF" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={{
+                        width: SCREEN_WIDTH * 0.9,
+                        height: SCREEN_HEIGHT * 0.6,
+                        backgroundColor: '#000',
+                        borderRadius: 12,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                    }}
+                    onPress={() => Linking.openURL(videoUri)}
+                >
+                    <Ionicons name="play-circle" size={80} color="#FFF" />
+                    <Text style={{ color: '#FFF', marginTop: 16, fontSize: 16 }}>
+                        Toca para reproducir en reproductor externo
+                    </Text>
+                </TouchableOpacity>
+            </View>
+        </Modal>
+    );
 };
 
 // Componente ChatHeader
@@ -165,50 +305,165 @@ const ChatHeader: React.FC<{
     );
 };
 
-// Componente para renderizar nota de voz
-const AudioMessage: React.FC<{ currentMessage: any; theme: any }> = ({ currentMessage, theme }) => {
-    const [sound, setSound] = useState<Audio.Sound | null>(null);
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [duration, setDuration] = useState(0);
-    const [position, setPosition] = useState(0);
+// Componente de animación de onda sonora
+const SoundWaveAnimation: React.FC = () => {
+    const [animations] = useState([
+        new Animated.Value(0.3),
+        new Animated.Value(0.5),
+        new Animated.Value(0.7),
+        new Animated.Value(0.5),
+        new Animated.Value(0.3),
+    ]);
 
     useEffect(() => {
-        return sound ? () => { sound.unloadAsync(); } : undefined;
-    }, [sound]);
+        const animateWaves = () => {
+            animations.forEach((anim, index) => {
+                Animated.loop(
+                    Animated.sequence([
+                        Animated.timing(anim, {
+                            toValue: 1,
+                            duration: 300 + index * 100,
+                            useNativeDriver: true,
+                        }),
+                        Animated.timing(anim, {
+                            toValue: 0.3,
+                            duration: 300 + index * 100,
+                            useNativeDriver: true,
+                        }),
+                    ])
+                ).start();
+            });
+        };
+
+        animateWaves();
+    }, []);
+
+    return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, height: 24 }}>
+            {animations.map((anim, index) => (
+                <Animated.View
+                    key={index}
+                    style={{
+                        width: 3,
+                        height: 24,
+                        backgroundColor: '#FF5252',
+                        borderRadius: 2,
+                        transform: [{ scaleY: anim }],
+                    }}
+                />
+            ))}
+        </View>
+    );
+};
+
+// Componente para renderizar nota de voz
+const AudioMessage: React.FC<{ 
+    currentMessage: any; 
+    theme: any; 
+    isOwn: boolean;
+    onAudioPlayed: () => void;
+}> = ({ currentMessage, theme, isOwn, onAudioPlayed }) => {
+    const [sound, setSound] = useState<Audio.Sound | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [duration, setDuration] = useState(0);
+    const [position, setPosition] = useState(0);
+    const [error, setError] = useState(false);
+    const [hasPlayed, setHasPlayed] = useState(currentMessage.audioPlayed || false);
+
+    useEffect(() => {
+        loadAudio();
+        return () => {
+            if (sound) {
+                sound.unloadAsync();
+            }
+        };
+    }, [currentMessage.audio]);
+
+    const loadAudio = async () => {
+        try {
+            setIsLoading(true);
+            setError(false);
+            
+            await Audio.setAudioModeAsync({
+                allowsRecordingIOS: false,
+                playsInSilentModeIOS: true,
+                staysActiveInBackground: false,
+                shouldDuckAndroid: true,
+                playThroughEarpieceAndroid: false,
+            });
+
+            console.log('Cargando audio desde:', currentMessage.audio);
+            
+            const { sound: newSound } = await Audio.Sound.createAsync(
+                { uri: currentMessage.audio },
+                { shouldPlay: false, progressUpdateIntervalMillis: 100 },
+                onPlaybackStatusUpdate
+            );
+            
+            setSound(newSound);
+            
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            const status = await newSound.getStatusAsync();
+            
+            if (status.isLoaded && status.durationMillis) {
+                setDuration(status.durationMillis);
+            }
+            setIsLoading(false);
+        } catch (err) {
+            console.error('Error loading audio:', err);
+            setError(true);
+            setIsLoading(false);
+        }
+    };
 
     const playSound = async () => {
+        if (!sound || error) return;
+        
         try {
-            if (sound) {
-                if (isPlaying) {
-                    await sound.pauseAsync();
-                    setIsPlaying(false);
-                } else {
-                    await sound.playAsync();
-                    setIsPlaying(true);
-                }
+            await Audio.setAudioModeAsync({
+                allowsRecordingIOS: false,
+                playsInSilentModeIOS: true,
+                staysActiveInBackground: false,
+                shouldDuckAndroid: true,
+                playThroughEarpieceAndroid: false,
+            });
+
+            if (isPlaying) {
+                await sound.pauseAsync();
+                setIsPlaying(false);
             } else {
-                const { sound: newSound } = await Audio.Sound.createAsync(
-                    { uri: currentMessage.audio },
-                    { shouldPlay: true },
-                    onPlaybackStatusUpdate
-                );
-                setSound(newSound);
+                await sound.playAsync();
                 setIsPlaying(true);
+                
+                // Marcar como reproducido solo si no es del usuario actual
+                if (!isOwn && !hasPlayed) {
+                    setHasPlayed(true);
+                    onAudioPlayed();
+                }
             }
         } catch (error) {
             console.error('Error playing audio:', error);
+            setError(true);
+            Alert.alert('Error', 'No se pudo reproducir el audio');
         }
     };
 
     const onPlaybackStatusUpdate = (status: any) => {
         if (status.isLoaded) {
-            setDuration(status.durationMillis || 0);
+            if (status.durationMillis && status.durationMillis > 0) {
+                setDuration(status.durationMillis);
+            }
             setPosition(status.positionMillis || 0);
             
             if (status.didJustFinish) {
                 setIsPlaying(false);
                 setPosition(0);
             }
+        } else if (status.error) {
+            console.error('Error en reproducción:', status.error);
+            setError(true);
         }
     };
 
@@ -219,6 +474,22 @@ const AudioMessage: React.FC<{ currentMessage: any; theme: any }> = ({ currentMe
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     };
 
+    const buttonColor = !isOwn && hasPlayed ? '#FF69B4' : (isOwn ? '#FFF' : theme.primary);
+    const textColor = isOwn ? '#FFF' : theme.text;
+
+    if (error) {
+        return (
+            <View style={{ padding: 12, alignItems: 'center' }}>
+                <TouchableOpacity onPress={loadAudio}>
+                    <Ionicons name="refresh" size={24} color={textColor} />
+                    <Text style={{ color: textColor, fontSize: 12, marginTop: 4 }}>
+                        Error al cargar. Toca para reintentar
+                    </Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
+
     return (
         <View style={{
             flexDirection: 'row',
@@ -226,38 +497,46 @@ const AudioMessage: React.FC<{ currentMessage: any; theme: any }> = ({ currentMe
             padding: 8,
             minWidth: 200,
         }}>
-            <TouchableOpacity onPress={playSound} style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: theme.primary + '20',
-                justifyContent: 'center',
-                alignItems: 'center',
-                marginRight: 8,
-            }}>
-                <Ionicons 
-                    name={isPlaying ? "pause" : "play"} 
-                    size={20} 
-                    color={theme.primary} 
-                />
+            <TouchableOpacity 
+                onPress={playSound} 
+                disabled={isLoading}
+                style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    backgroundColor: buttonColor + '30',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    marginRight: 8,
+                }}
+            >
+                {isLoading ? (
+                    <ActivityIndicator size="small" color={buttonColor} />
+                ) : (
+                    <Ionicons 
+                        name={isPlaying ? "pause" : "play"} 
+                        size={20} 
+                        color={buttonColor} 
+                    />
+                )}
             </TouchableOpacity>
             
             <View style={{ flex: 1 }}>
                 <View style={{
                     height: 3,
-                    backgroundColor: theme.placeholder + '30',
+                    backgroundColor: textColor + '30',
                     borderRadius: 1.5,
                     overflow: 'hidden',
                 }}>
                     <View style={{
                         height: '100%',
-                        backgroundColor: theme.primary,
+                        backgroundColor: buttonColor,
                         width: duration > 0 ? `${(position / duration) * 100}%` : '0%',
                     }} />
                 </View>
                 <Text style={{
                     fontSize: 11,
-                    color: theme.placeholder,
+                    color: textColor,
                     marginTop: 4,
                 }}>
                     {formatTime(position)} / {formatTime(duration)}
@@ -268,7 +547,7 @@ const AudioMessage: React.FC<{ currentMessage: any; theme: any }> = ({ currentMe
 };
 
 // Componente para renderizar archivos
-const FileMessage: React.FC<{ currentMessage: any; theme: any }> = ({ currentMessage, theme }) => {
+const FileMessage: React.FC<{ currentMessage: any; theme: any; isOwn: boolean }> = ({ currentMessage, theme, isOwn }) => {
     const formatFileSize = (bytes?: number) => {
         if (!bytes) return '';
         if (bytes < 1024) return bytes + ' B';
@@ -281,6 +560,9 @@ const FileMessage: React.FC<{ currentMessage: any; theme: any }> = ({ currentMes
             Linking.openURL(currentMessage.file);
         }
     };
+
+    const iconColor = isOwn ? '#FFF' : theme.primary;
+    const textColor = isOwn ? '#FFF' : theme.text;
 
     return (
         <TouchableOpacity 
@@ -296,18 +578,18 @@ const FileMessage: React.FC<{ currentMessage: any; theme: any }> = ({ currentMes
                 width: 40,
                 height: 40,
                 borderRadius: 8,
-                backgroundColor: theme.primary + '20',
+                backgroundColor: iconColor + '30',
                 justifyContent: 'center',
                 alignItems: 'center',
                 marginRight: 12,
             }}>
-                <MaterialIcons name="insert-drive-file" size={24} color={theme.primary} />
+                <MaterialIcons name="insert-drive-file" size={24} color={iconColor} />
             </View>
             
             <View style={{ flex: 1 }}>
                 <Text style={{
                     fontSize: 14,
-                    color: theme.text,
+                    color: textColor,
                     fontWeight: '500',
                     marginBottom: 2,
                 }} numberOfLines={1}>
@@ -315,13 +597,13 @@ const FileMessage: React.FC<{ currentMessage: any; theme: any }> = ({ currentMes
                 </Text>
                 <Text style={{
                     fontSize: 12,
-                    color: theme.placeholder,
+                    color: textColor + 'CC',
                 }}>
                     {formatFileSize(currentMessage.fileSize)}
                 </Text>
             </View>
 
-            <Ionicons name="download-outline" size={20} color={theme.primary} />
+            <Ionicons name="download-outline" size={20} color={iconColor} />
         </TouchableOpacity>
     );
 };
@@ -347,6 +629,11 @@ const ChatScreen: React.FC = () => {
     const [recording, setRecording] = useState<Audio.Recording | null>(null);
     const [isRecording, setIsRecording] = useState(false);
     const [recordingDuration, setRecordingDuration] = useState(0);
+
+    // Estados para visualización de multimedia
+    const [imageViewerVisible, setImageViewerVisible] = useState(false);
+    const [videoViewerVisible, setVideoViewerVisible] = useState(false);
+    const [selectedMediaUri, setSelectedMediaUri] = useState('');
 
     useEffect(() => {
         const configureAnimation = () => {
@@ -517,7 +804,7 @@ const ChatScreen: React.FC = () => {
                     const messagesCollectionRef = collection(db, 'relationships', chatId, 'messages');
                     const q = query(messagesCollectionRef, orderBy('createdAt', 'desc'));
                     unsubscribeMessages = onSnapshot(q, (snapshot) => {
-                        setMessages(snapshot.docs.map(doc => ({
+                        const fetchedMessages = snapshot.docs.map(doc => ({
                             _id: doc.id,
                             text: doc.data().text || '',
                             createdAt: doc.data().createdAt.toDate(),
@@ -528,7 +815,33 @@ const ChatScreen: React.FC = () => {
                             file: doc.data().file || undefined,
                             fileName: doc.data().fileName || undefined,
                             fileSize: doc.data().fileSize || undefined,
-                        })) as ExtendedMessage[]);
+                            delivered: doc.data().delivered || false,
+                            read: doc.data().read || false,
+                            audioPlayed: doc.data().audioPlayed || false,
+                            deleted: doc.data().deleted || false,
+                            sentAt: doc.data().sentAt?.toDate() || doc.data().createdAt.toDate(),
+                        })) as ExtendedMessage[];
+
+                        setMessages(fetchedMessages);
+
+                        // Marcar mensajes como leídos si el chat está abierto
+                        if (AppState.currentState === 'active') {
+                            fetchedMessages.forEach(async (msg) => {
+                                if (msg.user._id !== user.uid && !msg.read && !msg.deleted) {
+                                    const messageRef = doc(db, 'relationships', chatId, 'messages', msg._id);
+                                    await updateDoc(messageRef, { read: true });
+                                }
+                            });
+                        }
+
+                        // Marcar como entregados los mensajes propios
+                        fetchedMessages.forEach(async (msg) => {
+                            if (msg.user._id === user.uid && !msg.delivered && !msg.deleted) {
+                                const messageRef = doc(db, 'relationships', chatId, 'messages', msg._id);
+                                await updateDoc(messageRef, { delivered: true });
+                            }
+                        });
+
                         setLoading(false);
                     }, (error) => { console.error("Error fetching messages:", error); setLoading(false); });
 
@@ -563,14 +876,21 @@ const ChatScreen: React.FC = () => {
         
         const messageData: any = {
             createdAt: message.createdAt,
+            sentAt: Timestamp.now(),
             user: { _id: currentUserUid, name: userData.displayName },
             text: message.text || '',
+            delivered: false,
+            read: false,
+            deleted: false,
         };
 
         // Agregar campos multimedia si existen
         if (message.image) messageData.image = message.image;
         if (message.video) messageData.video = message.video;
-        if (message.audio) messageData.audio = message.audio;
+        if (message.audio) {
+            messageData.audio = message.audio;
+            messageData.audioPlayed = false;
+        }
         if (message.file) {
             messageData.file = message.file;
             messageData.fileName = message.fileName;
@@ -584,6 +904,95 @@ const ChatScreen: React.FC = () => {
             Toast.show({ type: 'error', text1: 'Error al enviar mensaje' });
         }
     }, [userData, user]);
+
+    // Función para manejar audio reproducido
+    const handleAudioPlayed = async (messageId: string) => {
+        if (!user || !userData?.partnerId) return;
+        
+        try {
+            const chatId = [user.uid, userData.partnerId].sort().join('_');
+            const messageRef = doc(db, 'relationships', chatId, 'messages', messageId);
+            await updateDoc(messageRef, { audioPlayed: true });
+        } catch (error) {
+            console.error('Error marking audio as played:', error);
+        }
+    };
+
+    // Función para eliminar mensaje
+    const handleDeleteMessage = async (messageId: string, sentAt: Date) => {
+        if (!user || !userData?.partnerId) return;
+
+        const now = new Date();
+        const timeDiff = now.getTime() - sentAt.getTime();
+        const threeMinutes = 3 * 60 * 1000;
+
+        if (timeDiff > threeMinutes) {
+            Alert.alert('Tiempo excedido', 'Solo puedes eliminar mensajes dentro de los 3 minutos posteriores al envío');
+            return;
+        }
+
+        Alert.alert(
+            'Eliminar mensaje',
+            '¿Estás seguro de que quieres eliminar este mensaje?',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const chatId = [user.uid, userData.partnerId].sort().join('_');
+                            const messageRef = doc(db, 'relationships', chatId, 'messages', messageId);
+                            await updateDoc(messageRef, {
+                                deleted: true,
+                                text: 'Mensaje eliminado',
+                                image: null,
+                                video: null,
+                                audio: null,
+                                file: null,
+                            });
+                            Toast.show({ type: 'success', text1: 'Mensaje eliminado' });
+                        } catch (error) {
+                            console.error('Error deleting message:', error);
+                            Toast.show({ type: 'error', text1: 'Error al eliminar mensaje' });
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    // Función para mostrar opciones de mensaje
+    const showMessageOptions = (message: ExtendedMessage) => {
+        if (message.user._id !== user?.uid || message.deleted) return;
+
+        const now = new Date();
+        const timeDiff = now.getTime() - (message.sentAt?.getTime() || 0);
+        const threeMinutes = 3 * 60 * 1000;
+
+        if (timeDiff > threeMinutes) {
+            Alert.alert('Información', 'Solo puedes eliminar mensajes dentro de los 3 minutos posteriores al envío');
+            return;
+        }
+
+        const options = ['Eliminar mensaje', 'Cancelar'];
+        const destructiveButtonIndex = 0;
+        const cancelButtonIndex = 1;
+
+        showActionSheetWithOptions(
+            {
+                options,
+                cancelButtonIndex,
+                destructiveButtonIndex,
+                title: 'Opciones de mensaje',
+            },
+            (buttonIndex) => {
+                if (buttonIndex === 0) {
+                    handleDeleteMessage(message._id, message.sentAt || new Date());
+                }
+            }
+        );
+    };
 
     // Función para subir archivo a Firebase Storage
     const uploadFile = async (fileUri: string, fileType: 'image' | 'video' | 'audio' | 'file', fileName?: string) => {
@@ -646,6 +1055,7 @@ const ChatScreen: React.FC = () => {
         let result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images', 'videos'],
             quality: 0.7,
+            videoMaxDuration: 60,
         });
 
         if (result.canceled || !result.assets || !result.assets[0]) return;
@@ -671,6 +1081,7 @@ const ChatScreen: React.FC = () => {
             setUploadProgress(0);
             Toast.show({ type: 'success', text1: 'Archivo enviado' });
         } catch (error) {
+            console.error('Error uploading media:', error);
             setIsUploading(false);
             setUploadProgress(0);
             Toast.show({ type: 'error', text1: 'Error al subir el archivo' });
@@ -747,19 +1158,28 @@ const ChatScreen: React.FC = () => {
     const stopRecording = async () => {
         if (!recording) return;
 
-        setIsRecording(false);
-        await recording.stopAndUnloadAsync();
-        const uri = recording.getURI();
-        setRecording(null);
-
-        if (!uri) return;
-
-        setIsUploading(true);
-        Toast.show({ type: 'info', text1: 'Enviando nota de voz...' });
-
         try {
-            const downloadURL = await uploadFile(uri, 'audio');
+            setIsRecording(false);
             
+            await recording.stopAndUnloadAsync();
+            await Audio.setAudioModeAsync({
+                allowsRecordingIOS: false,
+                playsInSilentModeIOS: true,
+            });
+            
+            const uri = recording.getURI();
+            setRecording(null);
+
+            if (!uri) {
+                Alert.alert('Error', 'No se pudo obtener el audio grabado');
+                return;
+            }
+
+            setIsUploading(true);
+            Toast.show({ type: 'info', text1: 'Enviando nota de voz...' });
+
+            const downloadURL = await uploadFile(uri, 'audio');
+
             const newMessage: ExtendedMessage = {
                 _id: Crypto.randomUUID(),
                 createdAt: new Date(),
@@ -768,11 +1188,12 @@ const ChatScreen: React.FC = () => {
                 audio: downloadURL,
             };
 
-            onSend([newMessage]);
+            await onSend([newMessage]);
             setIsUploading(false);
             setUploadProgress(0);
             Toast.show({ type: 'success', text1: 'Nota de voz enviada' });
         } catch (error) {
+            console.error('Error al detener grabación:', error);
             setIsUploading(false);
             setUploadProgress(0);
             Toast.show({ type: 'error', text1: 'Error al enviar nota de voz' });
@@ -801,7 +1222,6 @@ const ChatScreen: React.FC = () => {
 
             const asset = result.assets[0];
             
-            // Límite de 10MB para archivos
             if (asset.size && asset.size > 10 * 1024 * 1024) {
                 Alert.alert('Archivo muy grande', 'El archivo no puede superar los 10MB');
                 return;
@@ -888,7 +1308,6 @@ const ChatScreen: React.FC = () => {
                 onBack={() => router.back()}
             />
 
-            {/* Indicador de subida */}
             {isUploading && (
                 <View style={{
                     padding: 8,
@@ -902,55 +1321,6 @@ const ChatScreen: React.FC = () => {
                     <Text style={{ color: theme.placeholder, fontSize: 12 }}>
                         Subiendo... {Math.round(uploadProgress)}%
                     </Text>
-                </View>
-            )}
-
-            {/* Indicador de grabación */}
-            {isRecording && (
-                <View style={{
-                    padding: 12,
-                    backgroundColor: '#FF5252',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <View style={{
-                            width: 12,
-                            height: 12,
-                            borderRadius: 6,
-                            backgroundColor: '#FFF',
-                        }} />
-                        <Text style={{ color: '#FFF', fontWeight: '600' }}>
-                            Grabando... {formatRecordingTime(recordingDuration)}
-                        </Text>
-                    </View>
-
-                    <View style={{ flexDirection: 'row', gap: 12 }}>
-                        <TouchableOpacity 
-                            onPress={cancelRecording}
-                            style={{
-                                paddingHorizontal: 16,
-                                paddingVertical: 6,
-                                borderRadius: 16,
-                                backgroundColor: 'rgba(255,255,255,0.2)',
-                            }}
-                        >
-                            <Text style={{ color: '#FFF', fontWeight: '600' }}>Cancelar</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity 
-                            onPress={stopRecording}
-                            style={{
-                                paddingHorizontal: 16,
-                                paddingVertical: 6,
-                                borderRadius: 16,
-                                backgroundColor: '#FFF',
-                            }}
-                        >
-                            <Text style={{ color: '#FF5252', fontWeight: '600' }}>Enviar</Text>
-                        </TouchableOpacity>
-                    </View>
                 </View>
             )}
 
@@ -981,15 +1351,17 @@ const ChatScreen: React.FC = () => {
                     renderAvatar={null}
                     showUserAvatar={false}
                     showAvatarForEveryMessage={false}
+                    onLongPress={(context, message) => showMessageOptions(message)}
                     
-                    // Props para renderizar multimedia
                     renderMessageImage={(props) => {
+                        if (props.currentMessage?.deleted) return null;
                         return (
                             <TouchableOpacity 
                                 activeOpacity={0.8}
                                 onPress={() => {
                                     if (props.currentMessage?.image) {
-                                        Linking.openURL(props.currentMessage.image);
+                                        setSelectedMediaUri(props.currentMessage.image);
+                                        setImageViewerVisible(true);
                                     }
                                 }}
                             >
@@ -1002,12 +1374,14 @@ const ChatScreen: React.FC = () => {
                     }}
                     
                     renderMessageVideo={(props) => {
+                        if (props.currentMessage?.deleted) return null;
                         return (
                             <TouchableOpacity 
                                 activeOpacity={0.8}
                                 onPress={() => {
                                     if (props.currentMessage?.video) {
-                                        Linking.openURL(props.currentMessage.video);
+                                        setSelectedMediaUri(props.currentMessage.video);
+                                        setVideoViewerVisible(true);
                                     }
                                 }}
                                 style={styles.chatImage}
@@ -1032,8 +1406,31 @@ const ChatScreen: React.FC = () => {
                         );
                     }}
                     
-                    // Estilo de las burbujas
                     renderBubble={(props) => {
+                        const isOwn = props.currentMessage?.user._id === user.uid;
+
+                        // Mensaje eliminado
+                        if (props.currentMessage?.deleted) {
+                            return (
+                                <View style={{
+                                    marginVertical: 4,
+                                    marginHorizontal: 8,
+                                    padding: 12,
+                                    backgroundColor: theme.inputBackground + '80',
+                                    borderRadius: 16,
+                                    maxWidth: '70%',
+                                }}>
+                                    <Text style={{
+                                        color: theme.placeholder,
+                                        fontSize: 14,
+                                        fontStyle: 'italic',
+                                    }}>
+                                        🚫 Mensaje eliminado
+                                    </Text>
+                                </View>
+                            );
+                        }
+
                         // Renderizar nota de voz
                         if (props.currentMessage?.audio) {
                             return (
@@ -1042,11 +1439,34 @@ const ChatScreen: React.FC = () => {
                                     marginHorizontal: 8,
                                 }}>
                                     <View style={{
-                                        backgroundColor: props.position === 'right' ? theme.primary : theme.inputBackground,
+                                        backgroundColor: isOwn ? theme.primary : theme.inputBackground,
                                         borderRadius: 16,
                                         overflow: 'hidden',
                                     }}>
-                                        <AudioMessage currentMessage={props.currentMessage} theme={theme} />
+                                        <AudioMessage 
+                                            currentMessage={props.currentMessage} 
+                                            theme={theme}
+                                            isOwn={isOwn}
+                                            onAudioPlayed={() => handleAudioPlayed(props.currentMessage!._id)}
+                                        />
+                                        <View style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            justifyContent: 'flex-end',
+                                            paddingHorizontal: 8,
+                                            paddingBottom: 4,
+                                        }}>
+                                            <Text style={{ 
+                                                color: isOwn ? '#FFF' : theme.placeholder, 
+                                                fontSize: 10,
+                                                marginRight: 4,
+                                            }}>
+                                                {props.currentMessage.createdAt instanceof Date 
+                                                    ? props.currentMessage.createdAt.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
+                                                    : ''}
+                                            </Text>
+                                            <MessageStatus message={props.currentMessage} isOwn={isOwn} />
+                                        </View>
                                     </View>
                                 </View>
                             );
@@ -1060,11 +1480,33 @@ const ChatScreen: React.FC = () => {
                                     marginHorizontal: 8,
                                 }}>
                                     <View style={{
-                                        backgroundColor: props.position === 'right' ? theme.primary : theme.inputBackground,
+                                        backgroundColor: isOwn ? theme.primary : theme.inputBackground,
                                         borderRadius: 16,
                                         overflow: 'hidden',
                                     }}>
-                                        <FileMessage currentMessage={props.currentMessage} theme={theme} />
+                                        <FileMessage 
+                                            currentMessage={props.currentMessage} 
+                                            theme={theme}
+                                            isOwn={isOwn}
+                                        />
+                                        <View style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            justifyContent: 'flex-end',
+                                            paddingHorizontal: 12,
+                                            paddingBottom: 8,
+                                        }}>
+                                            <Text style={{ 
+                                                color: isOwn ? '#FFF' : theme.placeholder, 
+                                                fontSize: 10,
+                                                marginRight: 4,
+                                            }}>
+                                                {props.currentMessage.createdAt instanceof Date 
+                                                    ? props.currentMessage.createdAt.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
+                                                    : ''}
+                                            </Text>
+                                            <MessageStatus message={props.currentMessage} isOwn={isOwn} />
+                                        </View>
                                     </View>
                                 </View>
                             );
@@ -1072,25 +1514,45 @@ const ChatScreen: React.FC = () => {
 
                         // Burbuja normal
                         return (
-                            <Bubble
-                                {...props}
-                                wrapperStyle={{
-                                    left: {
-                                        backgroundColor: theme.inputBackground,
-                                    },
-                                    right: {
-                                        backgroundColor: theme.primary,
-                                    },
-                                }}
-                                textStyle={{
-                                    left: {
-                                        color: theme.text,
-                                    },
-                                    right: {
-                                        color: theme.white,
-                                    },
-                                }}
-                            />
+                            <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+                                <Bubble
+                                    {...props}
+                                    wrapperStyle={{
+                                        left: {
+                                            backgroundColor: theme.inputBackground,
+                                        },
+                                        right: {
+                                            backgroundColor: theme.primary,
+                                        },
+                                    }}
+                                    textStyle={{
+                                        left: {
+                                            color: theme.text,
+                                        },
+                                        right: {
+                                            color: theme.white,
+                                        },
+                                    }}
+                                    renderTime={(timeProps) => (
+                                        <View style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            marginTop: 4,
+                                        }}>
+                                            <Text style={{
+                                                fontSize: 10,
+                                                color: isOwn ? '#FFF' : theme.placeholder,
+                                                marginRight: 4,
+                                            }}>
+                                                {timeProps.currentMessage?.createdAt instanceof Date
+                                                    ? timeProps.currentMessage.createdAt.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
+                                                    : ''}
+                                            </Text>
+                                            <MessageStatus message={timeProps.currentMessage as ExtendedMessage} isOwn={isOwn} />
+                                        </View>
+                                    )}
+                                />
+                            </View>
                         );
                     }}
                     
@@ -1106,84 +1568,173 @@ const ChatScreen: React.FC = () => {
                                 paddingBottom: Platform.OS === 'ios' && insets.bottom > 0 ? insets.bottom / 2 : 8,
                             }}
                             renderActions={() => (
-                                <Actions
-                                    {...toolbarProps}
-                                    containerStyle={{ 
-                                        width: 36, 
-                                        height: 36, 
-                                        alignItems: 'center', 
-                                        justifyContent: 'center', 
-                                        marginLeft: 4, 
-                                        marginRight: 4, 
-                                        marginBottom: 4 
-                                    }}
-                                    icon={() => (
-                                        <Ionicons 
-                                            name="add-circle" 
-                                            size={32} 
-                                            color={theme.primary} 
-                                        />
-                                    )}
-                                    onPressActionButton={showAttachmentMenu}
-                                />
+                                !isRecording ? (
+                                    <Actions
+                                        {...toolbarProps}
+                                        containerStyle={{ 
+                                            width: 36, 
+                                            height: 36, 
+                                            alignItems: 'center', 
+                                            justifyContent: 'center', 
+                                            marginLeft: 4, 
+                                            marginRight: 4, 
+                                            marginBottom: 4 
+                                        }}
+                                        icon={() => (
+                                            <Ionicons 
+                                                name="add-circle" 
+                                                size={32} 
+                                                color={theme.primary} 
+                                            />
+                                        )}
+                                        onPressActionButton={showAttachmentMenu}
+                                    />
+                                ) : null
                             )}
                             renderComposer={(composerProps) => (
-                                <Composer
-                                    {...composerProps}
-                                    textInputStyle={{
+                                isRecording ? (
+                                    <View style={{
+                                        flex: 1,
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
                                         backgroundColor: theme.inputBackground,
-                                        color: theme.text,
                                         borderRadius: 20,
-                                        paddingTop: Platform.OS === 'ios' ? 10 : 8,
-                                        paddingBottom: Platform.OS === 'ios' ? 10 : 8,
                                         paddingHorizontal: 12,
                                         marginLeft: 0,
                                         marginTop: 0,
                                         marginBottom: 4,
-                                        lineHeight: 20,
-                                        maxHeight: 100,
-                                    }}
-                                    textInputProps={{
-                                        multiline: true,
-                                        returnKeyType: 'default',
-                                        blurOnSubmit: false,
-                                    }}
-                                />
+                                        height: 40,
+                                    }}>
+                                        <View style={{
+                                            width: 8,
+                                            height: 8,
+                                            borderRadius: 4,
+                                            backgroundColor: '#FF5252',
+                                            marginRight: 8,
+                                        }} />
+                                        
+                                        <SoundWaveAnimation />
+                                        
+                                        <Text style={{
+                                            color: theme.text,
+                                            fontSize: 14,
+                                            marginLeft: 12,
+                                            fontWeight: '500',
+                                        }}>
+                                            {formatRecordingTime(recordingDuration)}
+                                        </Text>
+                                    </View>
+                                ) : (
+                                    <Composer
+                                        {...composerProps}
+                                        textInputStyle={{
+                                            backgroundColor: theme.inputBackground,
+                                            color: theme.text,
+                                            borderRadius: 20,
+                                            paddingTop: Platform.OS === 'ios' ? 10 : 8,
+                                            paddingBottom: Platform.OS === 'ios' ? 10 : 8,
+                                            paddingHorizontal: 12,
+                                            marginLeft: 0,
+                                            marginTop: 0,
+                                            marginBottom: 4,
+                                            lineHeight: 20,
+                                            maxHeight: 100,
+                                        }}
+                                        textInputProps={{
+                                            multiline: true,
+                                            returnKeyType: 'default',
+                                            blurOnSubmit: false,
+                                        }}
+                                    />
+                                )
                             )}
                             renderSend={(sendProps) => (
-                                <Send
-                                    {...sendProps}
-                                    disabled={!inputText.trim()}
-                                    containerStyle={{
-                                        width: 44, 
-                                        height: 44, 
+                                isRecording ? (
+                                    <View style={{
+                                        flexDirection: 'row',
                                         alignItems: 'center',
-                                        justifyContent: 'center', 
-                                        marginLeft: 4, 
-                                        marginRight: 4, 
+                                        gap: 8,
+                                        marginLeft: 4,
+                                        marginRight: 4,
                                         marginBottom: 4,
-                                    }}
-                                >
-                                    <View
-                                        style={{
-                                            backgroundColor: inputText.trim().length > 0 
-                                                ? theme.primary 
-                                                : theme.placeholder,
-                                            borderRadius: 22, 
+                                    }}>
+                                        <TouchableOpacity
+                                            onPress={cancelRecording}
+                                            style={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: 20,
+                                                backgroundColor: theme.placeholder + '30',
+                                                justifyContent: 'center',
+                                                alignItems: 'center',
+                                            }}
+                                        >
+                                            <Ionicons name="close" size={24} color={theme.text} />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            onPress={stopRecording}
+                                            style={{
+                                                width: 44,
+                                                height: 44,
+                                                borderRadius: 22,
+                                                backgroundColor: theme.primary,
+                                                justifyContent: 'center',
+                                                alignItems: 'center',
+                                            }}
+                                        >
+                                            <Ionicons name="send" size={20} color={theme.white} />
+                                        </TouchableOpacity>
+                                    </View>
+                                ) : (
+                                    <Send
+                                        {...sendProps}
+                                        disabled={!inputText.trim()}
+                                        containerStyle={{
                                             width: 44, 
-                                            height: 44,
-                                            justifyContent: 'center', 
+                                            height: 44, 
                                             alignItems: 'center',
+                                            justifyContent: 'center', 
+                                            marginLeft: 4, 
+                                            marginRight: 4, 
+                                            marginBottom: 4,
                                         }}
                                     >
-                                        <Feather name="arrow-up" size={24} color={theme.white} />
-                                    </View>
-                                </Send>
+                                        <View
+                                            style={{
+                                                backgroundColor: inputText.trim().length > 0 
+                                                    ? theme.primary 
+                                                    : theme.placeholder,
+                                                borderRadius: 22, 
+                                                width: 44, 
+                                                height: 44,
+                                                justifyContent: 'center', 
+                                                alignItems: 'center',
+                                            }}
+                                        >
+                                            <Feather name="arrow-up" size={24} color={theme.white} />
+                                        </View>
+                                    </Send>
+                                )
                             )}
                         />
                     )}
                 />
             </KeyboardAvoidingView>
+
+            {/* Image Viewer Modal */}
+            <ImageViewerModal
+                visible={imageViewerVisible}
+                imageUri={selectedMediaUri}
+                onClose={() => setImageViewerVisible(false)}
+            />
+
+            {/* Video Viewer Modal */}
+            <VideoViewerModal
+                visible={videoViewerVisible}
+                videoUri={selectedMediaUri}
+                onClose={() => setVideoViewerVisible(false)}
+            />
 
             {/* Toast Container */}
             <Toast />

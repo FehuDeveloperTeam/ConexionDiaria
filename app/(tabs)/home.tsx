@@ -1,12 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, Button, useColorScheme,
     ActivityIndicator, TextInput, TouchableOpacity,
-    Alert, Modal, ScrollView, FlatList
+    Alert, Modal, ScrollView, FlatList,
+    Animated,
+    Pressable
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { doc, getDoc, DocumentData, writeBatch, onSnapshot, updateDoc, collection, query, orderBy, Timestamp, setDoc } from 'firebase/firestore';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import {
+    doc, getDoc, DocumentData, writeBatch, onSnapshot,
+    updateDoc, collection, query, orderBy, Timestamp, setDoc,
+    increment
+} from 'firebase/firestore';
 import { auth, db } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
 import * as Clipboard from 'expo-clipboard';
@@ -15,6 +21,7 @@ import Toast from 'react-native-toast-message';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { formatDistanceStrict } from 'date-fns';
 import { es } from 'date-fns/locale/es';
+import { SafeAreaView } from 'react-native-safe-area-context'; // Import SafeAreaView
 
 // --- Constantes ---
 const MOODS = [
@@ -24,7 +31,6 @@ const MOODS = [
     { emoji: '🤔', name: 'Pensativo/a' }, { emoji: '😐', name: 'Neutral' },
 ];
 
-// Función para obtener la fecha en formato YYYY-MM-DD
 const getTodayDateKey = (): string => {
     const today = new Date();
     const year = today.getFullYear();
@@ -35,6 +41,18 @@ const getTodayDateKey = (): string => {
 
 // --- Estilos ---
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
+    safeArea: {
+        flex: 1,
+        backgroundColor: theme.background
+    },
+    scrollContainer: {
+        flexGrow: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+        backgroundColor: theme.background,
+        gap: 15
+    },
     container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: theme.background, gap: 15 },
     title: { fontSize: 24, fontWeight: 'bold', color: theme.text, textAlign: 'center' },
     subtitle: { fontSize: 18, color: theme.text, textAlign: 'center', marginBottom: 20 },
@@ -56,11 +74,11 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     sentText: { fontSize: 18, color: theme.placeholder },
     historyLink: { fontSize: 12, color: theme.link, marginTop: 10 },
     modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.5)' },
-    modalContainer: { 
-        width: '90%', 
-        height: '60%',
-        backgroundColor: theme.background, 
-        borderRadius: 20, 
+    modalContainer: {
+        width: '90%',
+        maxHeight: '70%', // Changed height to maxHeight
+        backgroundColor: theme.background,
+        borderRadius: 20,
         padding: 20
     },
     modalTitle: { fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 15, textAlign: 'center' },
@@ -68,51 +86,51 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     emojiSelector: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
     emojiButton: { padding: 8 },
     emojiInSelector: { fontSize: 36 },
-    tableHeader: { 
-        flexDirection: 'row', 
-        borderBottomWidth: 2, 
-        borderBottomColor: theme.primary, 
-        paddingBottom: 10, 
-        marginBottom: 10, 
-        width: '100%' 
+    tableHeader: {
+        flexDirection: 'row',
+        borderBottomWidth: 2,
+        borderBottomColor: theme.primary,
+        paddingBottom: 10,
+        marginBottom: 10,
+        width: '100%'
     },
-    tableRow: { 
-        flexDirection: 'row', 
-        borderBottomWidth: 1, 
-        borderBottomColor: theme.borderColor, 
-        paddingVertical: 12, 
+    tableRow: {
+        flexDirection: 'row',
+        borderBottomWidth: 1,
+        borderBottomColor: theme.borderColor,
+        paddingVertical: 12,
         width: '100%',
         alignItems: 'center'
     },
-    headerText: { 
-        fontWeight: 'bold', 
-        color: theme.text, 
+    headerText: {
+        fontWeight: 'bold',
+        color: theme.text,
         textAlign: 'center',
         fontSize: 14
     },
-    dateColumn: { 
-        flex: 2, 
-        alignItems: 'center', 
+    dateColumn: {
+        flex: 2,
+        alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: 5
     },
-    numberColumn: { 
-        flex: 1, 
-        alignItems: 'center', 
-        justifyContent: 'center' 
+    numberColumn: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center'
     },
-    columnText: { 
+    columnText: {
         color: theme.text,
         textAlign: 'center',
         fontSize: 13
     },
     historyContentContainer: {
-        flex: 1,
+        flexShrink: 1, // Allow shrinking
         width: '100%'
     },
     historyFlatList: {
         width: '100%',
-        height: 300
+        maxHeight: 300 // Use maxHeight instead of fixed height
     },
     emptyHistoryText: {
         color: theme.placeholder,
@@ -127,6 +145,30 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     closeButtonContainer: {
         marginTop: 15,
         width: '100%'
+    },
+    missYouButtonContainer: {
+        marginTop: 15,
+        marginBottom: 10,
+        alignItems: 'center',
+    },
+    missYouButton: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: theme.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: theme.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 5,
+        elevation: 8,
+    },
+    missYouButtonText: {
+        color: theme.primary,
+        fontSize: 14,
+        fontWeight: 'bold',
+        marginTop: 10,
     }
 });
 
@@ -137,9 +179,9 @@ const Home: React.FC = () => {
     const colorScheme = useColorScheme() || 'light';
     const theme = themes[colorScheme];
     const styles = getStyles(theme);
-    
+
     // Estados
-    const [user, setUser] = useState<User | null>(auth.currentUser); 
+    const [user, setUser] = useState<User | null>(auth.currentUser);
     const [userData, setUserData] = useState<DocumentData | null>(null);
     const [relationshipData, setRelationshipData] = useState<DocumentData | null>(null);
     const [partnerData, setPartnerData] = useState<DocumentData | null>(null);
@@ -153,34 +195,30 @@ const Home: React.FC = () => {
     const [selectedMood, setSelectedMood] = useState<{ emoji: string, name: string } | null>(null);
     const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
     const [relationshipDuration, setRelationshipDuration] = useState<string | null>(null);
+    const pulseAnim = useRef(new Animated.Value(1)).current;
 
-    // --- Función para verificar y reiniciar el Extrañómetro ---
     const checkAndResetMissYouCounter = useCallback(async (relationshipId: string, currentData: DocumentData) => {
         const today = getTodayDateKey();
         const lastResetDate = currentData?.lastResetDate;
 
-        // Si no hay fecha de reset o es diferente a hoy, necesitamos resetear
         if (!lastResetDate || lastResetDate !== today) {
             console.log('Reseteando Extrañómetro para el nuevo día:', today);
-            
+
             try {
                 const relationshipRef = doc(db, 'relationships', relationshipId);
                 const currentCounters = currentData?.missYouCounters || {};
-                
-                // Solo guardar en historial si hay contadores con valores
+
                 if (lastResetDate && (Object.values(currentCounters).some((val: any) => val > 0))) {
-                    // Guardar el historial del día anterior
                     const historyRef = doc(db, 'relationships', relationshipId, 'missYouHistory', lastResetDate);
                     await setDoc(historyRef, currentCounters);
                     console.log('Historial guardado para:', lastResetDate, currentCounters);
                 }
-                
-                // Resetear los contadores para hoy
+
                 await updateDoc(relationshipRef, {
                     missYouCounters: {},
                     lastResetDate: today
                 });
-                
+
                 console.log('Contadores reseteados para hoy:', today);
             } catch (error) {
                 console.error('Error al resetear Extrañómetro:', error);
@@ -188,10 +226,27 @@ const Home: React.FC = () => {
         }
     }, []);
 
-    // --- Efectos para cargar datos ---
+    useEffect(() => {
+        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+          setUser(currentUser);
+          if (!currentUser) {
+            setUserData(null);
+            setPartnerData(null);
+            setRelationshipData(null);
+            setMissYouHistory([]);
+            setLoading(false);
+            router.replace('/'); // Redirige a la landing si no hay usuario
+          }
+        });
+        return () => unsubscribeAuth();
+      }, [router]);
+
 
     useEffect(() => {
-        if (!user) return;
+        if (!user) {
+            setLoading(false); // Si no hay usuario, deja de cargar
+            return;
+        };
 
         setLoading(true);
         const userDocRef = doc(db, 'users', user.uid);
@@ -199,107 +254,128 @@ const Home: React.FC = () => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 setUserData(data);
+                // Si no tiene partnerId, terminamos de cargar aquí
                 if (!data.partnerId) {
+                    setPartnerData(null);
+                    setRelationshipData(null);
+                    setMissYouHistory([]);
                     setLoading(false);
                 }
             } else {
-                signOut(auth);
+                // El perfil del usuario no existe, puede ser un error o estado inconsistente
+                console.log("Perfil de usuario no encontrado, cerrando sesión.");
+                auth.signOut(); // Cierra sesión para limpiar el estado
                 setLoading(false);
             }
-        }, (error) => { console.error("Error user listener:", error); signOut(auth); setLoading(false); });
-        
-        return () => unsubscribeUser();
-    }, [user]);
+        }, (error) => {
+            console.error("Error user listener:", error);
+            auth.signOut(); // Cierra sesión en caso de error
+            setLoading(false);
+        });
 
-    // Efecto para cargar datos de Pareja y Relación con reset automático
+        return () => unsubscribeUser();
+    }, [user]); // Depende solo de 'user'
+
+
     useEffect(() => {
+        // Solo proceder si tenemos usuario, datos de usuario y partnerId
         if (!user || !userData || !userData.partnerId) {
-            setPartnerData(null); setRelationshipData(null); setMissYouHistory([]);
-            if (userData !== null && !userData.partnerId) setLoading(false);
-            return;
+            // Si userData existe pero no tiene partnerId, ya detuvimos la carga en el efecto anterior
+            if (userData && !userData.partnerId) return;
+            // Si userData aún es null, seguimos esperando o hubo un error manejado antes
+            if (!userData) return;
+            // Si falta el user, también esperamos
+            if (!user) return;
+            
+            // Si llegamos aquí sin partnerId pero con user y userData, limpiamos y paramos carga si no se hizo antes
+             setPartnerData(null);
+             setRelationshipData(null);
+             setMissYouHistory([]);
+             if (loading) setLoading(false);
+             return;
         }
 
+        // Si tenemos todo, procedemos a cargar los datos de la relación y pareja
+        setLoading(true); // Reinicia la carga si es necesario (ej. cambio de pareja)
         const relationshipId = [user.uid, userData.partnerId].sort().join('_');
+        let unsubscribeRelationship: (() => void) | null = null;
+        let unsubscribePartner: (() => void) | null = null;
+        let unsubscribeHistory: (() => void) | null = null;
 
         // Listener para la relación
-        const unsubscribeRelationship = onSnapshot(doc(db, 'relationships', relationshipId), async (relSnap) => {
+        const relationshipRef = doc(db, 'relationships', relationshipId);
+         unsubscribeRelationship = onSnapshot(relationshipRef, async (relSnap) => {
             const data = relSnap.data() || {};
             setRelationshipData(data);
-            
-            // Verificar y resetear si es necesario
             await checkAndResetMissYouCounter(relationshipId, data);
+        }, (error) => {
+            console.error("Error relationship listener:", error);
+            setRelationshipData(null); // Limpiar en caso de error
+            setLoading(false);
         });
 
         // Listener para el perfil de la pareja
-        const unsubscribePartner = onSnapshot(doc(db, 'users', userData.partnerId), (partnerSnap) => {
+        const partnerRef = doc(db, 'users', userData.partnerId);
+        unsubscribePartner = onSnapshot(partnerRef, (partnerSnap) => {
             setPartnerData(partnerSnap.data() || null);
+            // Consideramos cargado después de obtener datos de la pareja
+             // setLoading(false); // Moveremos esto al listener de historial para asegurar todo
+        }, (error) => {
+             console.error("Error partner listener:", error);
+             setPartnerData(null); // Limpiar en caso de error
+             setLoading(false);
         });
 
         // Listener para el historial
         const historyCollectionRef = collection(db, 'relationships', relationshipId, 'missYouHistory');
         const q = query(historyCollectionRef, orderBy('__name__', 'desc'));
-        const unsubscribeHistory = onSnapshot(q, (querySnapshot) => {
+        unsubscribeHistory = onSnapshot(q, (querySnapshot) => {
             setMissYouHistory(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setLoading(false); // La carga termina después de obtener el historial
+        }, (error) => {
+            console.error("Error history listener:", error);
+            setMissYouHistory([]); // Limpiar en caso de error
             setLoading(false);
-        }, (error) => { console.error("Error history listener:", error); setLoading(false); });
+        });
 
-        return () => { unsubscribeRelationship(); unsubscribePartner(); unsubscribeHistory(); };
-    }, [user, userData, checkAndResetMissYouCounter]);
+        // Función de limpieza
+        return () => {
+            if (unsubscribeRelationship) unsubscribeRelationship();
+            if (unsubscribePartner) unsubscribePartner();
+            if (unsubscribeHistory) unsubscribeHistory();
+        };
+    }, [user, userData, checkAndResetMissYouCounter]); // Depende de user, userData y la función de reset
 
-    // Efecto para verificar reset cada minuto (detecta cambio de día)
+
     useEffect(() => {
         if (!user || !userData || !userData.partnerId || !relationshipData) return;
-
         const relationshipId = [user.uid, userData.partnerId].sort().join('_');
-        
-        // Verificar cada minuto si cambió el día
         const intervalId = setInterval(() => {
             checkAndResetMissYouCounter(relationshipId, relationshipData);
-        }, 60000); // Cada 60 segundos
-
+        }, 60000);
         return () => clearInterval(intervalId);
     }, [user, userData, relationshipData, checkAndResetMissYouCounter]);
 
-    // Efecto 4: Calcular Duración de la Relación
+
     useEffect(() => {
         if (userData?.relationshipStartDate) {
             const startDate = (userData.relationshipStartDate as Timestamp).toDate();
-            const now = new Date();
-            let years = now.getFullYear() - startDate.getFullYear();
-            let months = now.getMonth() - startDate.getMonth();
-            let days = now.getDate() - startDate.getDate();
-            if (days < 0) { months -= 1; days += new Date(now.getFullYear(), now.getMonth(), 0).getDate(); }
-            if (months < 0) { years -= 1; months += 12; }
-            let durationString = "Juntos por ";
-            if (years > 0) durationString += `${years} ${years === 1 ? 'año' : 'años'}${months > 0 || days > 0 ? ', ' : ''}`;
-            if (months > 0) durationString += `${months} ${months === 1 ? 'mes' : 'meses'}${days > 0 ? ' y ' : ''}`;
-            if (days > 0) durationString += `${days} ${days === 1 ? 'día' : 'días'}`;
-            if (years === 0 && months === 0 && days === 0) durationString = "¡Empezaron hoy!";
+             const now = new Date();
+             let years = now.getFullYear() - startDate.getFullYear();
+             let months = now.getMonth() - startDate.getMonth();
+             let days = now.getDate() - startDate.getDate();
+             if (days < 0) { months -= 1; days += new Date(now.getFullYear(), now.getMonth(), 0).getDate(); }
+             if (months < 0) { years -= 1; months += 12; }
+             let durationString = "Juntos por ";
+             if (years > 0) durationString += `${years} ${years === 1 ? 'año' : 'años'}${months > 0 || days > 0 ? ', ' : ''}`;
+             if (months > 0) durationString += `${months} ${months === 1 ? 'mes' : 'meses'}${days > 0 ? ' y ' : ''}`;
+             if (days > 0) durationString += `${days} ${days === 1 ? 'día' : 'días'}`;
+             if (years === 0 && months === 0 && days === 0) durationString = "¡Empezaron hoy!";
             setRelationshipDuration(durationString);
         } else {
             setRelationshipDuration(null);
         }
     }, [userData?.relationshipStartDate]);
-
-    // --- Funciones de Manejo de Eventos ---
-
-    const handleLogout = useCallback(async () => {
-        try {
-            const user = auth.currentUser;
-        if (user) {
-            await setDoc(doc(db, 'users', user.uid), {
-                isOnline: false,
-                lastSeen: new Date(),
-            }, { merge: true });
-        }
-            await signOut(auth);
-            // Redirigir al landing después del logout
-            router.replace('/');
-        } catch (error) {
-            console.error('Error al cerrar sesión:', error);
-            Toast.show({ type: 'error', text1: 'Error al cerrar sesión' });
-        }
-    }, [router]);
 
     const handleCopyCode = useCallback(async () => {
         if (user?.uid) {
@@ -352,7 +428,7 @@ const Home: React.FC = () => {
 
     const showDatePicker = useCallback(() => { setDatePickerVisibility(true); }, []);
     const hideDatePicker = useCallback(() => { setDatePickerVisibility(false); }, []);
-    
+
     const handleConfirmDate = useCallback(async (date: Date) => {
         hideDatePicker();
         if (!user || !userData?.partnerId) return;
@@ -368,283 +444,299 @@ const Home: React.FC = () => {
         } catch (error) { Toast.show({ type: 'error', text1: 'Error al guardar la fecha' }); }
     }, [user, userData, hideDatePicker]);
 
-    // --- Renderizado ---
+    const pulseHeart = () => {
+        Animated.sequence([
+            Animated.timing(pulseAnim, { toValue: 1.3, duration: 200, useNativeDriver: true }),
+            Animated.timing(pulseAnim, { toValue: 1.0, duration: 200, useNativeDriver: true })
+        ]).start();
+    };
+
+    const handleSendMissYou = useCallback(async () => {
+        if (!userData || !userData.partnerId || !user) return;
+        pulseHeart();
+        const currentUserUid = user.uid;
+        const chatId = [currentUserUid, userData.partnerId].sort().join('_');
+        const today = getTodayDateKey();
+        const relationshipDocRef = doc(db, 'relationships', chatId);
+        const historyDocRef = doc(db, 'relationships', chatId, 'missYouHistory', today);
+        try {
+            const batch = writeBatch(db);
+            batch.set(relationshipDocRef, {
+                missYouCounters: { [currentUserUid]: increment(1) },
+                lastResetDate: today
+            }, { merge: true });
+            batch.set(historyDocRef, { [currentUserUid]: increment(1) }, { merge: true });
+            await batch.commit();
+        } catch (error) {
+            console.error("Error al enviar 'miss you':", error);
+            Toast.show({ type: 'error', text1: 'Error al enviar' });
+        }
+    }, [userData, user, pulseAnim]);
 
     if (loading) {
         return <View style={styles.container}><ActivityIndicator size="large" color={theme.primary} /></View>;
     }
 
-    // Renderizado si NO está conectado con pareja
     if (userData && !userData.partnerId) {
         return (
-            <View style={styles.container}>
-                <Text style={styles.title}>¡Hola, {userData.displayName}!</Text>
-                <Text style={styles.subtitle}>Para empezar, conecta con tu pareja.</Text>
-                <Text style={styles.infoText}>Tu código de conexión:</Text>
-                <View style={styles.codeBox}>
-                    <Text style={styles.codeText}>{user?.uid}</Text>
-                    <TouchableOpacity onPress={handleCopyCode}>
-                        <Feather name="copy" size={24} color={theme.primary} />
-                    </TouchableOpacity>
+            <SafeAreaView style={styles.safeArea}>
+                <View style={styles.container}>
+                    <Text style={styles.title}>¡Hola, {userData.displayName}!</Text>
+                    <Text style={styles.subtitle}>Para empezar, conecta con tu pareja.</Text>
+                    <Text style={styles.infoText}>Tu código de conexión:</Text>
+                    <View style={styles.codeBox}>
+                        <Text style={styles.codeText}>{user?.uid}</Text>
+                        <TouchableOpacity onPress={handleCopyCode}>
+                            <Feather name="copy" size={24} color={theme.primary} />
+                        </TouchableOpacity>
+                    </View>
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Introduce el código de tu pareja"
+                        placeholderTextColor={theme.placeholder}
+                        value={partnerCode}
+                        onChangeText={setPartnerCode}
+                        autoCapitalize="none"
+                    />
+                    <Button title="Conectar" onPress={handleConnectPartner} color={theme.primary} />
                 </View>
-                <TextInput
-                    style={styles.input}
-                    placeholder="Introduce el código de tu pareja"
-                    placeholderTextColor={theme.placeholder}
-                    value={partnerCode}
-                    onChangeText={setPartnerCode}
-                    autoCapitalize="none"
-                />
-                <Button title="Conectar" onPress={handleConnectPartner} color={theme.primary} />
-                <Button title="Cerrar Sesión" onPress={handleLogout} color="grey" />
-            </View>
+            </SafeAreaView>
         );
     }
-    
-    // Renderizado si SÍ está conectado con pareja
+
     if (user && userData && userData.partnerId) {
         const myId = user.uid;
         const partnerId = userData.partnerId;
         const sentCount = relationshipData?.missYouCounters?.[myId] || 0;
         const receivedCount = relationshipData?.missYouCounters?.[partnerId] || 0;
-        
+
         return (
-            <View style={styles.container}>
-                {/* Modal Selector de Ánimo */}
-                <Modal 
-                    animationType="fade" 
-                    transparent={true} 
-                    visible={isMoodSelectorVisible} 
-                    onRequestClose={() => setIsMoodSelectorVisible(false)}
-                >
-                    <TouchableOpacity 
-                        style={styles.modalOverlay} 
-                        activeOpacity={1} 
-                        onPressOut={() => setIsMoodSelectorVisible(false)}
+            <SafeAreaView style={styles.safeArea}>
+                <ScrollView contentContainerStyle={styles.scrollContainer}>
+
+                    <Modal
+                        animationType="fade"
+                        transparent={true}
+                        visible={isMoodSelectorVisible}
+                        onRequestClose={() => setIsMoodSelectorVisible(false)}
                     >
-                        <TouchableOpacity style={styles.modalContainer} activeOpacity={1}>
-                            <Text style={styles.modalTitle}>¿Cómo te sientes hoy?</Text>
-                            <ScrollView style={styles.emojiScrollView}>
-                                <View style={styles.emojiSelector}>
-                                    {MOODS.map((mood) => (
-                                        <TouchableOpacity 
-                                            key={mood.emoji} 
-                                            style={styles.emojiButton} 
-                                            onPress={() => handleSelectMood(mood)}
-                                        >
-                                            <Text style={styles.emojiInSelector}>{mood.emoji}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-                            </ScrollView>
+                        <TouchableOpacity
+                            style={styles.modalOverlay}
+                            activeOpacity={1}
+                            onPressOut={() => setIsMoodSelectorVisible(false)}
+                        >
+                            <TouchableOpacity style={[styles.modalContainer, {maxHeight: '40%'}]} activeOpacity={1}>
+                                <Text style={styles.modalTitle}>¿Cómo te sientes hoy?</Text>
+                                <ScrollView style={styles.emojiScrollView}>
+                                    <View style={styles.emojiSelector}>
+                                        {MOODS.map((mood) => (
+                                            <TouchableOpacity
+                                                key={mood.emoji}
+                                                style={styles.emojiButton}
+                                                onPress={() => handleSelectMood(mood)}
+                                            >
+                                                <Text style={styles.emojiInSelector}>{mood.emoji}</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </ScrollView>
+                            </TouchableOpacity>
                         </TouchableOpacity>
-                    </TouchableOpacity>
-                </Modal>
+                    </Modal>
 
-                {/* Modal Prompt de Estado */}
-                <Modal 
-                    animationType="fade" 
-                    transparent={true} 
-                    visible={isStatusPromptVisible} 
-                    onRequestClose={() => setIsStatusPromptVisible(false)}
-                >
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContainer}>
-                            <Text style={styles.modalTitle}>
-                                ¿Te sientes {selectedMood?.name.toLowerCase()}?
-                            </Text>
-                            <Text style={styles.subtitle}>Añade un breve mensaje</Text>
-                            <TextInput 
-                                style={styles.statusInput} 
-                                value={statusInput} 
-                                onChangeText={setStatusInput} 
-                                placeholder="Opcional..." 
-                                placeholderTextColor={theme.placeholder} 
-                                maxLength={25} 
-                            />
-                            <View style={styles.modalButtons}>
-                                <Button 
-                                    title="Cancelar" 
-                                    onPress={() => setIsStatusPromptVisible(false)} 
-                                    color="grey" 
-                                />
-                                <Button 
-                                    title="Guardar" 
-                                    onPress={handleSaveStatus} 
-                                    color={theme.primary} 
-                                />
-                            </View>
-                        </View>
-                    </View>
-                </Modal>
-
-                {/* Modal Historial Extrañómetro */}
-                <Modal 
-                    animationType="slide" 
-                    transparent={true} 
-                    visible={isHistoryVisible} 
-                    onRequestClose={() => setIsHistoryVisible(false)}
-                >
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContainer}>
-                            <Text style={styles.modalTitle}>Historial Extrañómetro</Text>
-                            
-                            <View style={styles.historyContentContainer}>
-                                {/* Header de la tabla */}
-                                <View style={styles.tableHeader}>
-                                    <View style={styles.dateColumn}>
-                                        <Text style={styles.headerText}>Fecha</Text>
-                                    </View>
-                                    <View style={styles.numberColumn}>
-                                        <Text style={styles.headerText}>Recibidos</Text>
-                                    </View>
-                                    <View style={styles.numberColumn}>
-                                        <Text style={styles.headerText}>Enviados</Text>
-                                    </View>
-                                </View>
-
-                                {/* FlatList con altura fija para iOS */}
-                                <FlatList
-                                    style={styles.historyFlatList}
-                                    data={missYouHistory}
-                                    keyExtractor={item => item.id}
-                                    showsVerticalScrollIndicator={true}
-                                    nestedScrollEnabled={true}
-                                    renderItem={({ item }) => (
-                                        <View style={styles.tableRow}>
-                                            <View style={styles.dateColumn}>
-                                                <Text style={styles.columnText} numberOfLines={1}>
-                                                    {item.id}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.numberColumn}>
-                                                <Text style={styles.columnText}>
-                                                    {item[partnerId] || 0}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.numberColumn}>
-                                                <Text style={styles.columnText}>
-                                                    {item[myId] || 0}
-                                                </Text>
-                                            </View>
-                                        </View>
-                                    )}
-                                    ListEmptyComponent={
-                                        <Text style={styles.emptyHistoryText}>
-                                            Aún no hay historial.
-                                        </Text>
-                                    }
-                                />
-                            </View>
-
-                            <View style={styles.closeButtonContainer}>
-                                <Button 
-                                    title="Cerrar" 
-                                    onPress={() => setIsHistoryVisible(false)} 
-                                    color={theme.primary} 
-                                />
-                            </View>
-                        </View>
-                    </View>
-                </Modal>
-
-                {/* DatePicker */}
-                <DateTimePickerModal
-                    isVisible={isDatePickerVisible}
-                    mode="date"
-                    onConfirm={handleConfirmDate}
-                    onCancel={hideDatePicker}
-                    maximumDate={new Date()}
-                    locale="es_ES"
-                />
-
-                {/* Contenido Principal */}
-                <Text style={styles.title}>Conexión Diaria</Text>
-
-                {relationshipDuration ? (
-                    <TouchableOpacity 
-                        style={styles.relationshipCounterContainer} 
-                        onPress={showDatePicker} 
-                        onLongPress={() => Alert.alert(
-                            "Restablecer Fecha", 
-                            "¿Quieren cambiar su fecha de inicio?", 
-                            [
-                                { text: 'Cancelar' }, 
-                                { text: 'OK', onPress: showDatePicker }
-                            ]
-                        )}
+                    <Modal
+                        animationType="fade"
+                        transparent={true}
+                        visible={isStatusPromptVisible}
+                        onRequestClose={() => setIsStatusPromptVisible(false)}
                     >
-                        <Text style={styles.counterText}>{relationshipDuration}</Text>
-                    </TouchableOpacity>
-                ) : (
-                    <Button 
-                        title="Establecer Fecha de Inicio" 
-                        onPress={showDatePicker} 
-                        color={theme.primary} 
+                        <View style={styles.modalOverlay}>
+                            <View style={[styles.modalContainer, {height: 'auto', maxHeight: '50%'}]}>
+                                <Text style={styles.modalTitle}>
+                                    ¿Te sientes {selectedMood?.name.toLowerCase()}?
+                                </Text>
+                                <Text style={styles.subtitle}>Añade un breve mensaje</Text>
+                                <TextInput
+                                    style={styles.statusInput}
+                                    value={statusInput}
+                                    onChangeText={setStatusInput}
+                                    placeholder="Opcional..."
+                                    placeholderTextColor={theme.placeholder}
+                                    maxLength={25}
+                                />
+                                <View style={styles.modalButtons}>
+                                    <Button
+                                        title="Cancelar"
+                                        onPress={() => setIsStatusPromptVisible(false)}
+                                        color="grey"
+                                    />
+                                    <Button
+                                        title="Guardar"
+                                        onPress={handleSaveStatus}
+                                        color={theme.primary}
+                                    />
+                                </View>
+                            </View>
+                        </View>
+                    </Modal>
+
+                    <Modal
+                        animationType="slide"
+                        transparent={true}
+                        visible={isHistoryVisible}
+                        onRequestClose={() => setIsHistoryVisible(false)}
+                    >
+                        <View style={styles.modalOverlay}>
+                            <View style={styles.modalContainer}>
+                                <Text style={styles.modalTitle}>Historial Extrañómetro</Text>
+                                <View style={styles.historyContentContainer}>
+                                    <View style={styles.tableHeader}>
+                                        <View style={styles.dateColumn}><Text style={styles.headerText}>Fecha</Text></View>
+                                        <View style={styles.numberColumn}><Text style={styles.headerText}>Recibidos</Text></View>
+                                        <View style={styles.numberColumn}><Text style={styles.headerText}>Enviados</Text></View>
+                                    </View>
+                                    <FlatList
+                                        style={styles.historyFlatList}
+                                        data={missYouHistory}
+                                        keyExtractor={item => item.id}
+                                        showsVerticalScrollIndicator={true}
+                                        nestedScrollEnabled={true}
+                                        renderItem={({ item }) => (
+                                            <View style={styles.tableRow}>
+                                                <View style={styles.dateColumn}><Text style={styles.columnText} numberOfLines={1}>{item.id}</Text></View>
+                                                <View style={styles.numberColumn}><Text style={styles.columnText}>{item[partnerId] || 0}</Text></View>
+                                                <View style={styles.numberColumn}><Text style={styles.columnText}>{item[myId] || 0}</Text></View>
+                                            </View>
+                                        )}
+                                        ListEmptyComponent={<Text style={styles.emptyHistoryText}>Aún no hay historial.</Text>}
+                                    />
+                                </View>
+                                <View style={styles.closeButtonContainer}>
+                                    <Button
+                                        title="Cerrar"
+                                        onPress={() => setIsHistoryVisible(false)}
+                                        color={theme.primary}
+                                    />
+                                </View>
+                            </View>
+                        </View>
+                    </Modal>
+
+                    <DateTimePickerModal
+                        isVisible={isDatePickerVisible}
+                        mode="date"
+                        onConfirm={handleConfirmDate}
+                        onCancel={hideDatePicker}
+                        maximumDate={new Date()}
+                        locale="es_ES"
                     />
-                )}
 
-                <View style={styles.moodsRow}>
-                    <TouchableOpacity style={styles.moodContainer} onPress={openMoodSelector}>
-                        <Text style={styles.moodName}>
-                            {userData.currentMood?.name || 'Tu Ánimo'}
-                        </Text>
-                        <View style={styles.moodCircle}>
-                            <Text style={styles.moodEmoji}>
-                                {userData.currentMood?.emoji || '😐'}
+                    <Text style={styles.title}>Conexión Diaria</Text>
+
+                    {relationshipDuration ? (
+                        <TouchableOpacity
+                            style={styles.relationshipCounterContainer}
+                            onPress={showDatePicker}
+                            onLongPress={() => Alert.alert(
+                                "Restablecer Fecha",
+                                "¿Quieren cambiar su fecha de inicio?",
+                                [
+                                    { text: 'Cancelar' },
+                                    { text: 'OK', onPress: showDatePicker }
+                                ]
+                            )}
+                        >
+                            <Text style={styles.counterText}>{relationshipDuration}</Text>
+                        </TouchableOpacity>
+                    ) : (
+                        <Button
+                            title="Establecer Fecha de Inicio"
+                            onPress={showDatePicker}
+                            color={theme.primary}
+                        />
+                    )}
+
+                    <View style={styles.moodsRow}>
+                        <TouchableOpacity style={styles.moodContainer} onPress={openMoodSelector}>
+                            <Text style={styles.moodName}>
+                                {userData.currentMood?.name || 'Tu Ánimo'}
+                            </Text>
+                            <View style={styles.moodCircle}>
+                                <Text style={styles.moodEmoji}>
+                                    {userData.currentMood?.emoji || '😐'}
+                                </Text>
+                            </View>
+                            <Text style={styles.moodStatus}>
+                                {userData.currentMood?.status ? `"${userData.currentMood.status}"` : ''}
+                            </Text>
+                            <Text style={styles.moodDisplayName}>{userData.displayName}</Text>
+                        </TouchableOpacity>
+
+                        <View style={styles.moodContainer}>
+                            <Text style={styles.moodName}>
+                                {partnerData?.currentMood?.name || 'Su Ánimo'}
+                            </Text>
+                            <View style={styles.moodCircle}>
+                                <Text style={styles.moodEmoji}>
+                                    {partnerData?.currentMood?.emoji || '😐'}
+                                </Text>
+                            </View>
+                            <Text style={styles.moodStatus}>
+                                {partnerData?.currentMood?.status ? `"${partnerData.currentMood.status}"` : ''}
+                            </Text>
+                            <Text style={styles.moodDisplayName}>
+                                {partnerData?.displayName || '...'}
                             </Text>
                         </View>
-                        <Text style={styles.moodStatus}>
-                            {userData.currentMood?.status ? `"${userData.currentMood.status}"` : ''}
-                        </Text>
-                        <Text style={styles.moodDisplayName}>{userData.displayName}</Text>
-                    </TouchableOpacity>
-                    
-                    <View style={styles.moodContainer}>
-                        <Text style={styles.moodName}>
-                            {partnerData?.currentMood?.name || 'Su Ánimo'}
-                        </Text>
-                        <View style={styles.moodCircle}>
-                            <Text style={styles.moodEmoji}>
-                                {partnerData?.currentMood?.emoji || '😐'}
-                            </Text>
-                        </View>
-                        <Text style={styles.moodStatus}>
-                            {partnerData?.currentMood?.status ? `"${partnerData.currentMood.status}"` : ''}
-                        </Text>
-                        <Text style={styles.moodDisplayName}>
-                            {partnerData?.displayName || '...'}
-                        </Text>
                     </View>
-                </View>
 
-                <View style={styles.missYouContainer}>
-                    <Text style={styles.subtitle}>Extrañómetro</Text>
-                    <View style={styles.countersRow}>
-                        <View style={styles.counterItem}>
-                            <Ionicons name="heart" size={32} color={theme.primary} />
-                            <Text style={styles.receivedText}>{receivedCount}</Text>
+                    <View style={styles.missYouContainer}>
+                        <Text style={styles.subtitle}>Extrañómetro</Text>
+                        <View style={styles.countersRow}>
+                            <View style={styles.counterItem}>
+                                <Ionicons name="heart" size={32} color={theme.primary} />
+                                <Text style={styles.receivedText}>{receivedCount}</Text>
+                            </View>
+                            <View style={styles.counterItem}>
+                                <Ionicons name="heart-outline" size={18} color={theme.placeholder} />
+                                <Text style={styles.sentText}>{sentCount}</Text>
+                            </View>
                         </View>
-                        <View style={styles.counterItem}>
-                            <Ionicons name="heart-outline" size={18} color={theme.placeholder} />
-                            <Text style={styles.sentText}>{sentCount}</Text>
-                        </View>
+                        <TouchableOpacity onPress={() => setIsHistoryVisible(true)}>
+                            <Text style={styles.historyLink}>Ver historial</Text>
+                        </TouchableOpacity>
                     </View>
-                    <TouchableOpacity onPress={() => setIsHistoryVisible(true)}>
-                        <Text style={styles.historyLink}>Ver historial</Text>
-                    </TouchableOpacity>
-                </View>
 
-                <Button title="Cerrar Sesión" onPress={handleLogout} color="grey" />
-            </View>
+                    <View style={styles.missYouButtonContainer}>
+                        <Pressable onPress={handleSendMissYou}>
+                            <Animated.View style={[
+                                styles.missYouButton,
+                                { transform: [{ scale: pulseAnim }] }
+                            ]}>
+                                <Ionicons name="heart" size={40} color={theme.white} />
+                            </Animated.View>
+                        </Pressable>
+                        <Text style={styles.missYouButtonText}>¡Te extraño!</Text>
+                    </View>
+
+                </ScrollView>
+            </SafeAreaView>
         );
     }
-    
-    // Fallback final
+
+    // Fallback: Si no estamos cargando y no hay datos válidos (raro, pero seguro)
     return (
-        <View style={styles.container}>
-            <ActivityIndicator size="large" color={theme.primary} />
-        </View>
+        <SafeAreaView style={styles.safeArea}>
+             <View style={styles.container}>
+                {user ? (
+                    // Si hay usuario pero no datos, muestra error o recargando
+                     <ActivityIndicator size="large" color={theme.primary} />
+                 ) : (
+                    // Si no hay usuario, indica que necesita iniciar sesión (aunque el listener ya redirigió)
+                    <Text style={{color: theme.placeholder}}>Inicia sesión para continuar.</Text>
+                 )}
+             </View>
+        </SafeAreaView>
     );
 };
 
