@@ -565,24 +565,16 @@ const ChatScreen: React.FC = () => {
             createdAt: message.createdAt,
             user: { _id: currentUserUid, name: userData.displayName },
             text: message.text || '',
-            image: message.image || null,
-            video: message.video || null,
-            audio: message.audio || null,
-            file: message.file || null,
-            fileName: message.fileName || null,
-            fileSize: message.fileSize || null,
         };
 
-        // Limpiar campos nulos
-        Object.keys(messageData).forEach(key => {
-            if (messageData[key] === null || messageData[key] === undefined || messageData[key] === '') {
-                delete messageData[key];
-            }
-        });
-
-        // Asegurar que al menos text existe
-        if (!messageData.text && !messageData.image && !messageData.video && !messageData.audio && !messageData.file) {
-            messageData.text = '';
+        // Agregar campos multimedia si existen
+        if (message.image) messageData.image = message.image;
+        if (message.video) messageData.video = message.video;
+        if (message.audio) messageData.audio = message.audio;
+        if (message.file) {
+            messageData.file = message.file;
+            messageData.fileName = message.fileName;
+            messageData.fileSize = message.fileSize;
         }
 
         try {
@@ -820,14 +812,14 @@ const ChatScreen: React.FC = () => {
 
             const downloadURL = await uploadFile(asset.uri, 'file', asset.name);
             
-            const newMessage: IMessage = {
+            const newMessage: ExtendedMessage = {
                 _id: Crypto.randomUUID(),
                 createdAt: new Date(),
                 user: { _id: user!.uid, name: userData!.displayName },
+                text: '',
                 file: downloadURL,
                 fileName: asset.name,
                 fileSize: asset.size,
-                text: `📎 ${asset.name}`,
             };
 
             onSend([newMessage]);
