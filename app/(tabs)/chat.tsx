@@ -60,32 +60,66 @@ const uriToBlob = (uri: string): Promise<Blob> => {
     });
 };
 
-// Componente de palomas de estado
+// Componente de palomas de estado - Mejorado estilo WhatsApp
 const MessageStatus: React.FC<{ message: ExtendedMessage; isOwn: boolean }> = ({ message, isOwn }) => {
     if (!isOwn || message.deleted) return null;
 
     const getStatusIcon = () => {
         if (message.read) {
             return (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: -4 }}>
-                    <Ionicons name="checkmark" size={14} color="#FF69B4" />
-                    <Ionicons name="checkmark" size={14} color="#FF69B4" />
+                <View style={{ 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    marginLeft: 2,
+                    position: 'relative',
+                    width: 16,
+                    height: 14,
+                }}>
+                    <Ionicons 
+                        name="checkmark" 
+                        size={14} 
+                        color="#FF69B4" 
+                        style={{ position: 'absolute', left: 0 }}
+                    />
+                    <Ionicons 
+                        name="checkmark" 
+                        size={14} 
+                        color="#FF69B4" 
+                        style={{ position: 'absolute', left: 4 }}
+                    />
                 </View>
             );
         }
         if (message.delivered) {
             return (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: -4 }}>
-                    <Ionicons name="checkmark" size={14} color="#FFF" />
-                    <Ionicons name="checkmark" size={14} color="#FFF" />
+                <View style={{ 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    marginLeft: 2,
+                    position: 'relative',
+                    width: 16,
+                    height: 14,
+                }}>
+                    <Ionicons 
+                        name="checkmark" 
+                        size={14} 
+                        color="#FFF" 
+                        style={{ position: 'absolute', left: 0 }}
+                    />
+                    <Ionicons 
+                        name="checkmark" 
+                        size={14} 
+                        color="#FFF" 
+                        style={{ position: 'absolute', left: 4 }}
+                    />
                 </View>
             );
         }
-        return <Ionicons name="checkmark" size={14} color="#FFF" />;
+        return <Ionicons name="checkmark" size={14} color="#FFF" style={{ marginLeft: 2 }} />;
     };
 
     return (
-        <View style={{ marginLeft: 4, marginTop: 2 }}>
+        <View style={{ marginLeft: 4 }}>
             {getStatusIcon()}
         </View>
     );
@@ -371,6 +405,9 @@ const AudioMessage: React.FC<{
     const [error, setError] = useState(false);
     const [hasPlayed, setHasPlayed] = useState(currentMessage.audioPlayed || false);
 
+    // Referencia global para el audio actual
+    const currentPlayingSound = React.useRef<Audio.Sound | null>(null);
+
     useEffect(() => {
         loadAudio();
         return () => {
@@ -434,6 +471,12 @@ const AudioMessage: React.FC<{
                 await sound.pauseAsync();
                 setIsPlaying(false);
             } else {
+                // Detener cualquier audio que se esté reproduciendo actualmente
+                if (currentPlayingSound.current && currentPlayingSound.current !== sound) {
+                    await currentPlayingSound.current.stopAsync();
+                }
+                
+                currentPlayingSound.current = sound;
                 await sound.playAsync();
                 setIsPlaying(true);
                 
@@ -460,6 +503,9 @@ const AudioMessage: React.FC<{
             if (status.didJustFinish) {
                 setIsPlaying(false);
                 setPosition(0);
+                if (currentPlayingSound.current === sound) {
+                    currentPlayingSound.current = null;
+                }
             }
         } else if (status.error) {
             console.error('Error en reproducción:', status.error);
@@ -828,7 +874,7 @@ const ChatScreen: React.FC = () => {
                         if (AppState.currentState === 'active') {
                             fetchedMessages.forEach(async (msg) => {
                                 if (msg.user._id !== user.uid && !msg.read && !msg.deleted) {
-                                    const messageRef = doc(db, 'relationships', chatId, 'messages', msg._id);
+                                    const messageRef = doc(db, 'relationships', chatId, 'messages', String(msg._id));
                                     await updateDoc(messageRef, { read: true });
                                 }
                             });
@@ -837,7 +883,7 @@ const ChatScreen: React.FC = () => {
                         // Marcar como entregados los mensajes propios
                         fetchedMessages.forEach(async (msg) => {
                             if (msg.user._id === user.uid && !msg.delivered && !msg.deleted) {
-                                const messageRef = doc(db, 'relationships', chatId, 'messages', msg._id);
+                                const messageRef = doc(db, 'relationships', chatId, 'messages', String(msg._id));
                                 await updateDoc(messageRef, { delivered: true });
                             }
                         });
@@ -906,12 +952,12 @@ const ChatScreen: React.FC = () => {
     }, [userData, user]);
 
     // Función para manejar audio reproducido
-    const handleAudioPlayed = async (messageId: string) => {
+    const handleAudioPlayed = async (messageId: string | number) => {
         if (!user || !userData?.partnerId) return;
         
         try {
             const chatId = [user.uid, userData.partnerId].sort().join('_');
-            const messageRef = doc(db, 'relationships', chatId, 'messages', messageId);
+            const messageRef = doc(db, 'relationships', chatId, 'messages', String(messageId));
             await updateDoc(messageRef, { audioPlayed: true });
         } catch (error) {
             console.error('Error marking audio as played:', error);
@@ -919,7 +965,7 @@ const ChatScreen: React.FC = () => {
     };
 
     // Función para eliminar mensaje
-    const handleDeleteMessage = async (messageId: string, sentAt: Date) => {
+    const handleDeleteMessage = async (messageId: string | number, sentAt: Date) => {
         if (!user || !userData?.partnerId) return;
 
         const now = new Date();
@@ -942,7 +988,7 @@ const ChatScreen: React.FC = () => {
                     onPress: async () => {
                         try {
                             const chatId = [user.uid, userData.partnerId].sort().join('_');
-                            const messageRef = doc(db, 'relationships', chatId, 'messages', messageId);
+                            const messageRef = doc(db, 'relationships', chatId, 'messages', String(messageId));
                             await updateDoc(messageRef, {
                                 deleted: true,
                                 text: 'Mensaje eliminado',
@@ -1512,7 +1558,7 @@ const ChatScreen: React.FC = () => {
                             );
                         }
 
-                        // Burbuja normal
+                        // Burbuja normal - Mejorada con mejor posición de tiempo y palomas
                         return (
                             <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
                                 <Bubble
@@ -1520,9 +1566,14 @@ const ChatScreen: React.FC = () => {
                                     wrapperStyle={{
                                         left: {
                                             backgroundColor: theme.inputBackground,
+                                            minWidth: 80,
+                                            maxWidth: '75%',
                                         },
                                         right: {
                                             backgroundColor: theme.primary,
+                                            marginRight: 8,
+                                            minWidth: 80,
+                                            maxWidth: '75%',
                                         },
                                     }}
                                     textStyle={{
@@ -1533,15 +1584,26 @@ const ChatScreen: React.FC = () => {
                                             color: theme.white,
                                         },
                                     }}
+                                    containerStyle={{
+                                        right: {
+                                            marginRight: 0,
+                                        },
+                                        left: {
+                                            marginLeft: 0,
+                                        }
+                                    }}
                                     renderTime={(timeProps) => (
                                         <View style={{
                                             flexDirection: 'row',
                                             alignItems: 'center',
+                                            justifyContent: 'flex-end',
                                             marginTop: 4,
+                                            paddingRight: 4,
+                                            paddingLeft: isOwn ? 0 : 4,
                                         }}>
                                             <Text style={{
                                                 fontSize: 10,
-                                                color: isOwn ? '#FFF' : theme.placeholder,
+                                                color: isOwn ? 'rgba(255,255,255,0.7)' : theme.placeholder,
                                                 marginRight: 4,
                                             }}>
                                                 {timeProps.currentMessage?.createdAt instanceof Date

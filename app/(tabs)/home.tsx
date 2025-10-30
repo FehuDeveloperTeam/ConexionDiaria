@@ -2,9 +2,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, Button, useColorScheme,
     ActivityIndicator, TextInput, TouchableOpacity,
-    Alert, Modal, ScrollView, FlatList,
+    Alert, // Keep Alert import
+    Modal, ScrollView, FlatList,
     Animated,
-    Pressable
+    Pressable,
+    Platform // <- Add Platform import
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -21,7 +23,8 @@ import Toast from 'react-native-toast-message';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { formatDistanceStrict } from 'date-fns';
 import { es } from 'date-fns/locale/es';
-import { SafeAreaView } from 'react-native-safe-area-context'; // Import SafeAreaView
+import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Notifications from 'expo-notifications'; // <- Add Notifications import
 
 // --- Constantes ---
 const MOODS = [
@@ -76,7 +79,7 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.5)' },
     modalContainer: {
         width: '90%',
-        maxHeight: '70%', // Changed height to maxHeight
+        maxHeight: '70%',
         backgroundColor: theme.background,
         borderRadius: 20,
         padding: 20
@@ -125,12 +128,12 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
         fontSize: 13
     },
     historyContentContainer: {
-        flexShrink: 1, // Allow shrinking
+        flexShrink: 1,
         width: '100%'
     },
     historyFlatList: {
         width: '100%',
-        maxHeight: 300 // Use maxHeight instead of fixed height
+        maxHeight: 300
     },
     emptyHistoryText: {
         color: theme.placeholder,
@@ -197,6 +200,28 @@ const Home: React.FC = () => {
     const [relationshipDuration, setRelationshipDuration] = useState<string | null>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
 
+    // --- NUEVA Función para solicitar permisos ---
+    const requestNotificationPermissions = async () => {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert(
+                'Permiso Denegado',
+                'Para recibir recordatorios de eventos, necesitas habilitar las notificaciones en los ajustes de tu teléfono.',
+                [{ text: 'Entendido' }]
+            );
+            return false;
+        }
+        if (Platform.OS === 'android') {
+             await Notifications.setNotificationChannelAsync('default', {
+                name: 'default',
+                importance: Notifications.AndroidImportance.MAX,
+                vibrationPattern: [0, 250, 250, 250],
+                lightColor: '#FF231F7C',
+            });
+        }
+        return true;
+    };
+
     const checkAndResetMissYouCounter = useCallback(async (relationshipId: string, currentData: DocumentData) => {
         const today = getTodayDateKey();
         const lastResetDate = currentData?.lastResetDate;
@@ -235,7 +260,7 @@ const Home: React.FC = () => {
             setRelationshipData(null);
             setMissYouHistory([]);
             setLoading(false);
-            router.replace('/'); // Redirige a la landing si no hay usuario
+            router.replace('/');
           }
         });
         return () => unsubscribeAuth();
@@ -244,7 +269,7 @@ const Home: React.FC = () => {
 
     useEffect(() => {
         if (!user) {
-            setLoading(false); // Si no hay usuario, deja de cargar
+            setLoading(false);
             return;
         };
 
@@ -254,7 +279,6 @@ const Home: React.FC = () => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 setUserData(data);
-                // Si no tiene partnerId, terminamos de cargar aquí
                 if (!data.partnerId) {
                     setPartnerData(null);
                     setRelationshipData(null);
@@ -262,32 +286,26 @@ const Home: React.FC = () => {
                     setLoading(false);
                 }
             } else {
-                // El perfil del usuario no existe, puede ser un error o estado inconsistente
                 console.log("Perfil de usuario no encontrado, cerrando sesión.");
-                auth.signOut(); // Cierra sesión para limpiar el estado
+                auth.signOut();
                 setLoading(false);
             }
         }, (error) => {
             console.error("Error user listener:", error);
-            auth.signOut(); // Cierra sesión en caso de error
+            auth.signOut();
             setLoading(false);
         });
 
         return () => unsubscribeUser();
-    }, [user]); // Depende solo de 'user'
+    }, [user]);
 
 
     useEffect(() => {
-        // Solo proceder si tenemos usuario, datos de usuario y partnerId
         if (!user || !userData || !userData.partnerId) {
-            // Si userData existe pero no tiene partnerId, ya detuvimos la carga en el efecto anterior
             if (userData && !userData.partnerId) return;
-            // Si userData aún es null, seguimos esperando o hubo un error manejado antes
             if (!userData) return;
-            // Si falta el user, también esperamos
             if (!user) return;
-            
-            // Si llegamos aquí sin partnerId pero con user y userData, limpiamos y paramos carga si no se hizo antes
+
              setPartnerData(null);
              setRelationshipData(null);
              setMissYouHistory([]);
@@ -295,14 +313,12 @@ const Home: React.FC = () => {
              return;
         }
 
-        // Si tenemos todo, procedemos a cargar los datos de la relación y pareja
-        setLoading(true); // Reinicia la carga si es necesario (ej. cambio de pareja)
+        setLoading(true);
         const relationshipId = [user.uid, userData.partnerId].sort().join('_');
         let unsubscribeRelationship: (() => void) | null = null;
         let unsubscribePartner: (() => void) | null = null;
         let unsubscribeHistory: (() => void) | null = null;
 
-        // Listener para la relación
         const relationshipRef = doc(db, 'relationships', relationshipId);
          unsubscribeRelationship = onSnapshot(relationshipRef, async (relSnap) => {
             const data = relSnap.data() || {};
@@ -310,41 +326,36 @@ const Home: React.FC = () => {
             await checkAndResetMissYouCounter(relationshipId, data);
         }, (error) => {
             console.error("Error relationship listener:", error);
-            setRelationshipData(null); // Limpiar en caso de error
+            setRelationshipData(null);
             setLoading(false);
         });
 
-        // Listener para el perfil de la pareja
         const partnerRef = doc(db, 'users', userData.partnerId);
         unsubscribePartner = onSnapshot(partnerRef, (partnerSnap) => {
             setPartnerData(partnerSnap.data() || null);
-            // Consideramos cargado después de obtener datos de la pareja
-             // setLoading(false); // Moveremos esto al listener de historial para asegurar todo
         }, (error) => {
              console.error("Error partner listener:", error);
-             setPartnerData(null); // Limpiar en caso de error
+             setPartnerData(null);
              setLoading(false);
         });
 
-        // Listener para el historial
         const historyCollectionRef = collection(db, 'relationships', relationshipId, 'missYouHistory');
         const q = query(historyCollectionRef, orderBy('__name__', 'desc'));
         unsubscribeHistory = onSnapshot(q, (querySnapshot) => {
             setMissYouHistory(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            setLoading(false); // La carga termina después de obtener el historial
+            setLoading(false);
         }, (error) => {
             console.error("Error history listener:", error);
-            setMissYouHistory([]); // Limpiar en caso de error
+            setMissYouHistory([]);
             setLoading(false);
         });
 
-        // Función de limpieza
         return () => {
             if (unsubscribeRelationship) unsubscribeRelationship();
             if (unsubscribePartner) unsubscribePartner();
             if (unsubscribeHistory) unsubscribeHistory();
         };
-    }, [user, userData, checkAndResetMissYouCounter]); // Depende de user, userData y la función de reset
+    }, [user, userData, checkAndResetMissYouCounter]);
 
 
     useEffect(() => {
@@ -384,6 +395,7 @@ const Home: React.FC = () => {
         }
     }, [user]);
 
+    // --- handleConnectPartner ACTUALIZADO ---
     const handleConnectPartner = useCallback(async () => {
         const code = partnerCode.trim();
         if (!code || !user) return;
@@ -393,15 +405,22 @@ const Home: React.FC = () => {
             const partnerDocSnap = await getDoc(partnerDocRef);
             if (!partnerDocSnap.exists()) return Toast.show({ type: 'error', text1: 'Código Inválido' });
             if (partnerDocSnap.data().partnerId) return Toast.show({ type: 'info', text1: 'Lo sentimos', text2: 'Esa persona ya está conectada.' });
+
             const batch = writeBatch(db);
             const currentUserRef = doc(db, 'users', user.uid);
             batch.update(currentUserRef, { partnerId: code });
             batch.update(partnerDocRef, { partnerId: user.uid });
-            await batch.commit();
+
+            await batch.commit(); // Conexión exitosa
+
             setPartnerCode('');
             Toast.show({ type: 'success', text1: '¡Conexión Exitosa!' });
+
+            // Solicitar permisos DESPUÉS de conectar
+            await requestNotificationPermissions();
+
         } catch (error) { Toast.show({ type: 'error', text1: 'Error al conectar' }); console.error(error); }
-    }, [partnerCode, user]);
+    }, [partnerCode, user]); // No necesita requestNotificationPermissions como dependencia si está definida dentro
 
     const openMoodSelector = useCallback(() => { setIsMoodSelectorVisible(true); }, []);
 
@@ -729,15 +748,26 @@ const Home: React.FC = () => {
         <SafeAreaView style={styles.safeArea}>
              <View style={styles.container}>
                 {user ? (
-                    // Si hay usuario pero no datos, muestra error o recargando
                      <ActivityIndicator size="large" color={theme.primary} />
                  ) : (
-                    // Si no hay usuario, indica que necesita iniciar sesión (aunque el listener ya redirigió)
                     <Text style={{color: theme.placeholder}}>Inicia sesión para continuar.</Text>
                  )}
              </View>
         </SafeAreaView>
     );
 };
+
+// --- Configuración del Handler (Idealmente en app/_layout.tsx) ---
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    priority: Notifications.AndroidNotificationPriority.MAX,
+  }),
+});
+
 
 export default Home;

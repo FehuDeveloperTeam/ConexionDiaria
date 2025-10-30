@@ -8,7 +8,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../src/config/firebaseConfig'; // Asegúrate que la ruta sea correcta
 import { themes } from '../src/config/theme'; // Asegúrate que la ruta sea correcta
-
+import { PlanProvider } from '../src/contexts/planContext';
+import Purchases from 'react-native-purchases';
 // Hook personalizado para gestionar el estado de autenticación
 function useAuth() {
     const [user, setUser] = useState<User | null>(null);
@@ -24,6 +25,8 @@ function useAuth() {
 
     return { user, loading };
 }
+
+
 
 const RootLayout: React.FC = () => {
     const { user, loading } = useAuth();
@@ -55,6 +58,12 @@ const RootLayout: React.FC = () => {
 
     }, [user, loading, segments, router]);
 
+    useEffect(() => {
+        Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG); // O INFO en prod
+        // ¡Recuerda poner tu clave pública de Apple o Google aquí si no usas la extensión de Expo!
+        Purchases.configure({ apiKey: "TU_API_KEY_PUBLICA_DE_REVENUECAT" });
+    }, []);
+
     // Pantalla de carga mientras se verifica la sesión
     if (loading) {
         return (
@@ -66,6 +75,7 @@ const RootLayout: React.FC = () => {
 
     // Renderizamos el Stack principal
     return (
+        <PlanProvider>
         <SafeAreaProvider>
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background } }}>
                 {/* La pantalla raíz (Landing) */}
@@ -90,6 +100,7 @@ const RootLayout: React.FC = () => {
             <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
             <Toast />
         </SafeAreaProvider>
+    </PlanProvider>
     );
 }
 

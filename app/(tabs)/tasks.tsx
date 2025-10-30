@@ -17,6 +17,7 @@ import {
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
+import { usePlan } from '../../src/contexts/planContext';
 
 // --- Estilos (Añadimos estilos para el modal y detalles de la tarea) ---
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
