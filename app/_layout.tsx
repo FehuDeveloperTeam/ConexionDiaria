@@ -1,71 +1,49 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, View, useColorScheme } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import Toast from 'react-native-toast-message';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth } from '../src/config/firebaseConfig'; // Asegúrate que la ruta sea correcta
-import { themes } from '../src/config/theme'; // Asegúrate que la ruta sea correcta
-import { PlanProvider } from '../src/contexts/planContext';
+// 1. Ya no necesitamos 'auth' ni 'onAuthStateChanged' aquí
+import { themes } from '../src/config/theme';
+// 2. Importamos AMBOS providers y el hook 'usePlan'
+import { PlanProvider, usePlan } from '../src/contexts/planContext';
+import { ThemeProvider } from '../src/contexts/themeContext'; // Importamos el nuevo ThemeProvider
 import Purchases from 'react-native-purchases';
-// Hook personalizado para gestionar el estado de autenticación
-function useAuth() {
-    const [user, setUser] = useState<User | null>(null);
-    const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-            setUser(currentUser);
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    return { user, loading };
-}
-
-
-
-const RootLayout: React.FC = () => {
-    const { user, loading } = useAuth();
+// 3. Este componente se encarga de la carga y la redirección
+// Se ejecutará *después* de que PlanProvider esté disponible
+function AuthRedirect() {
+    // 4. Obtenemos el estado de usuario y carga desde nuestro hook
+    const { user, isLoading } = usePlan();
     const router = useRouter();
     const segments = useSegments();
-    const colorScheme = useColorScheme() || 'light';
     
-    // Usamos 'dark' o 'light' para seleccionar el tema, no el ThemeProvider de React Navigation por ahora
-    const theme = themes[colorScheme]; 
+    // Obtenemos el tema para la pantalla de carga
+    const colorScheme = useColorScheme() || 'light';
+    const theme = themes[colorScheme];
 
     useEffect(() => {
-        if (loading) return; // Esperar a que termine la comprobación de auth
+        if (isLoading) return; // Esperar a que el PlanProvider termine de cargar
 
-        // --- ¡LÓGICA CORREGIDA! ---
         const inAppGroup = segments[0] === '(tabs)';
 
         if (user && !inAppGroup) {
-            // Usuario está logueado, pero NO está en el grupo (tabs).
-            // (Ej. está en 'index', 'login' o 'register').
-            // Lo forzamos a entrar a la app.
+            // Usuario logueado, pero fuera de la app (ej. en 'index' o 'login')
+            // Lo forzamos a entrar
             router.replace('/(tabs)/home');
         } else if (!user && inAppGroup) {
-            // Usuario NO está logueado, pero está intentando acceder a una ruta protegida en (tabs).
-            // Lo expulsamos al landing page (la raíz).
+            // Usuario no logueado, pero intentando acceder a una ruta protegida
+            // Lo expulsamos al landing (raíz)
             router.replace('/');
         }
-        // Si user && inAppGroup -> No hacer nada (está donde debe)
-        // Si !user && !inAppGroup -> No hacer nada (está en login, register o index, que es donde debe)
+        // (Los otros casos son correctos y no se hace nada)
 
-    }, [user, loading, segments, router]);
+    }, [user, isLoading, segments, router]); // Depende del estado del PlanProvider
 
-    useEffect(() => {
-        Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG); // O INFO en prod
-        // ¡Recuerda poner tu clave pública de Apple o Google aquí si no usas la extensión de Expo!
-        Purchases.configure({ apiKey: "TU_API_KEY_PUBLICA_DE_REVENUECAT" });
-    }, []);
-
-    // Pantalla de carga mientras se verifica la sesión
-    if (loading) {
+    // 5. Mostramos la pantalla de carga MIENTRAS el PlanProvider esté 'isLoading'
+    if (isLoading) {
         return (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background }}>
                 <ActivityIndicator size="large" color={theme.primary} />
@@ -73,34 +51,56 @@ const RootLayout: React.FC = () => {
         );
     }
 
-    // Renderizamos el Stack principal
+    // 6. Una vez cargado, no renderiza nada y deja que el <Stack> se muestre
+    return null;
+}
+
+const RootLayout: React.FC = () => {
+    // 7. El hook 'useAuth' se ha eliminado.
+    // El 'colorScheme' y 'theme' se usarán para las pantallas del Stack (login/register)
+    const colorScheme = useColorScheme() || 'light';
+    const theme = themes[colorScheme]; 
+
+    // Configuración de RevenueCat (esto está perfecto)
+    useEffect(() => {
+        Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
+        Purchases.configure({ apiKey: "test_yfFeKwhFksqSJrdAoTzTKOmxkKX" });
+    }, []);
+
+    // 8. El 'if (loading)' se ha movido a 'AuthRedirect'
+
+    // 9. Renderizamos los providers y el Stack
     return (
         <PlanProvider>
-        <SafeAreaProvider>
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background } }}>
-                {/* La pantalla raíz (Landing) */}
-                <Stack.Screen name="index" />
-                {/* Las pantallas de Login/Register */}
-                <Stack.Screen name="login" options={{ 
-                    title: 'Iniciar Sesión', 
-                    headerShown: true,
-                    headerStyle: { backgroundColor: theme.background },
-                    headerTintColor: theme.text,
-                }} />
-                <Stack.Screen name="register" options={{ 
-                    title: 'Crear Cuenta', 
-                    headerShown: true,
-                    headerStyle: { backgroundColor: theme.background },
-                    headerTintColor: theme.text,
-                }} />
-                {/* El grupo de pestañas (la app protegida) */}
-                <Stack.Screen name="(tabs)" />
-                {/* <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} /> */}
-            </Stack>
-            <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-            <Toast />
-        </SafeAreaProvider>
-    </PlanProvider>
+            <ThemeProvider> {/* <-- Añadimos el ThemeProvider aquí */}
+                <SafeAreaProvider>
+                    
+                    {/* Este Stack SÍEMPRE se renderiza */}
+                    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background } }}>
+                        <Stack.Screen name="index" />
+                        <Stack.Screen name="login" options={{ 
+                            title: 'Iniciar Sesión', 
+                            headerShown: true,
+                            headerStyle: { backgroundColor: theme.background },
+                            headerTintColor: theme.text,
+                        }} />
+                        <Stack.Screen name="register" options={{ 
+                            title: 'Crear Cuenta', 
+                            headerShown: true,
+                            headerStyle: { backgroundColor: theme.background },
+                            headerTintColor: theme.text,
+                        }} />
+                        <Stack.Screen name="(tabs)" />
+                    </Stack>
+                    
+                    {/* Este componente decide si mostrar la carga o redirigir */}
+                    <AuthRedirect />
+
+                    <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+                    <Toast />
+                </SafeAreaProvider>
+            </ThemeProvider>
+        </PlanProvider>
     );
 }
 

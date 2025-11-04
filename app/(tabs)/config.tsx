@@ -7,16 +7,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { auth, db, storage } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
-// Importamos 'User' desde 'firebase/auth' para el tipo, pero 'onAuthStateChanged' ya no es necesario aquí
-import { User as FirebaseUser, signOut } from 'firebase/auth';
-import { doc, DocumentData, onSnapshot, updateDoc, writeBatch } from 'firebase/firestore';
+import { User as FirebaseUser, signOut } from 'firebase/auth'; // 'onAuthStateChanged' ya no es necesario aquí
+import { doc, DocumentData, updateDoc, writeBatch } from 'firebase/firestore'; // 'onSnapshot' ya no es necesario aquí
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Crypto from 'expo-crypto';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
-// Importamos el hook de usePlan y Purchases
 import { usePlan } from '../../src/contexts/planContext'; // Asegúrate que la ruta sea correcta
 import Purchases from 'react-native-purchases';
 
@@ -135,7 +133,7 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
         paddingTop: 20,
     },
 
-    // --- Estilos para la sección del Plan (Añadidos) ---
+    // --- Estilos para la sección del Plan ---
     planSection: {
         width: '100%',
         marginTop: 20,
@@ -188,6 +186,7 @@ const ConfigScreen: React.FC = () => {
     const { plan, user, userData, isLoading } = usePlan();
 
     // 2. Mantenemos solo los estados locales para esta pantalla
+    // (Los 'useState' para user, userData y loading fueron eliminados)
     const [displayName, setDisplayName] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
@@ -200,7 +199,7 @@ const ConfigScreen: React.FC = () => {
         }
     }, [userData]); // Depende de 'userData' del hook
 
-    // 4. Los 'useEffect' de onAuthStateChanged y onSnapshot(userDocRef) se ELIMINAN
+    // 4. Los 'useEffect' de onAuthStateChanged y onSnapshot(userDocRef) se ELIMINARON
     // porque 'usePlan()' ya maneja esa lógica.
 
     // --- Función para actualizar a Premium ---
@@ -219,6 +218,7 @@ const ConfigScreen: React.FC = () => {
                 }
             }
         } catch (e: any) { // 5. CORRECCIÓN de sintaxis: (e: any) {
+            // @ts-ignore
             if (!e.userCancelled) {
                 console.error(e);
                 Toast.show({ type: 'error', text1: 'Error al procesar el pago' });
@@ -353,7 +353,7 @@ const ConfigScreen: React.FC = () => {
     }, []);
 
     // --- Renderizado ---
-    // Usamos 'isLoading' del hook
+    // Usamos 'isLoading' del hook y también verificamos 'userData'
     if (isLoading || !userData) { 
         return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={theme.primary} /></View>;
     }

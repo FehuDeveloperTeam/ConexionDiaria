@@ -9,14 +9,14 @@ import {
     Platform // <- Add Platform import
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { onAuthStateChanged, User } from 'firebase/auth';
+// import { onAuthStateChanged, User } from 'firebase/auth'; // <--- Ya no es necesario
 import {
     doc, getDoc, DocumentData, writeBatch, onSnapshot,
     updateDoc, collection, query, orderBy, Timestamp, setDoc,
     increment
 } from 'firebase/firestore';
 import { auth, db } from '../../src/config/firebaseConfig';
-import { themes } from '../../src/config/theme';
+import { themes } from '../../src/config/theme'; // Importamos la definición base de 'themes'
 import * as Clipboard from 'expo-clipboard';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
@@ -24,7 +24,11 @@ import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { formatDistanceStrict } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Notifications from 'expo-notifications'; // <- Add Notifications import
+import * as Notifications from 'expo-notifications'; 
+
+// --- NUEVO: Importar los hooks de Contexto ---
+import { usePlan } from '../../src/contexts/planContext'; 
+import { useTheme } from '../../src/contexts/themeContext';
 
 // --- Constantes ---
 const MOODS = [
@@ -42,49 +46,49 @@ const getTodayDateKey = (): string => {
     return `${year}-${month}-${day}`;
 };
 
-// --- Estilos ---
-const getStyles = (theme: typeof themes.light) => StyleSheet.create({
+// --- Estilos Dinámicos ---
+const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, borderStyle: any) => StyleSheet.create({
     safeArea: {
         flex: 1,
-        backgroundColor: theme.background
+        backgroundColor: theme.background // Dinámico
     },
     scrollContainer: {
         flexGrow: 1,
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
-        backgroundColor: theme.background,
+        backgroundColor: theme.background, // Dinámico
         gap: 15
     },
     container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: theme.background, gap: 15 },
-    title: { fontSize: 24, fontWeight: 'bold', color: theme.text, textAlign: 'center' },
-    subtitle: { fontSize: 18, color: theme.text, textAlign: 'center', marginBottom: 20 },
+    title: { fontSize: 24, fontWeight: 'bold', color: theme.text, textAlign: 'center', fontFamily: fontFamily },
+    subtitle: { fontSize: 18, color: theme.text, textAlign: 'center', marginBottom: 20, fontFamily: fontFamily },
     codeBox: { backgroundColor: theme.inputBackground, paddingVertical: 15, paddingHorizontal: 20, borderRadius: 8, borderWidth: 1, borderColor: theme.borderColor, width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     codeText: { fontSize: 16, color: theme.primary, fontWeight: 'bold', textAlign: 'center' },
     input: { height: 50, width: '100%', borderColor: theme.borderColor, borderWidth: 1, borderRadius: 8, paddingHorizontal: 15, fontSize: 16, color: theme.text, backgroundColor: theme.inputBackground, textAlign: 'center' },
-    infoText: { fontSize: 16, color: theme.text },
+    infoText: { fontSize: 16, color: theme.text, fontFamily: fontFamily },
     moodsRow: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginVertical: 20 },
     moodContainer: { alignItems: 'center', gap: 5, width: 120 },
     moodCircle: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.inputBackground, borderWidth: 1, borderColor: theme.borderColor, marginBottom: 5 },
     moodEmoji: { fontSize: 40 },
-    moodName: { fontSize: 14, fontWeight: 'bold', color: theme.primary },
-    moodDisplayName: { fontSize: 16, fontWeight: '600', color: theme.text },
-    moodStatus: { fontSize: 12, fontStyle: 'italic', color: theme.placeholder, textAlign: 'center', height: 40 },
+    moodName: { fontSize: 14, fontWeight: 'bold', color: theme.primary, fontFamily: fontFamily },
+    moodDisplayName: { fontSize: 16, fontWeight: '600', color: theme.text, fontFamily: fontFamily },
+    moodStatus: { fontSize: 12, fontStyle: 'italic', color: theme.placeholder, textAlign: 'center', height: 40, fontFamily: fontFamily },
     missYouContainer: { alignItems: 'center', marginVertical: 20, gap: 5 },
     countersRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 20 },
     counterItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-    receivedText: { fontSize: 32, fontWeight: 'bold', color: theme.primary },
-    sentText: { fontSize: 18, color: theme.placeholder },
-    historyLink: { fontSize: 12, color: theme.link, marginTop: 10 },
+    receivedText: { fontSize: 32, fontWeight: 'bold', color: theme.primary, fontFamily: fontFamily },
+    sentText: { fontSize: 18, color: theme.placeholder, fontFamily: fontFamily },
+    historyLink: { fontSize: 12, color: theme.link, marginTop: 10, fontFamily: fontFamily },
     modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.5)' },
     modalContainer: {
         width: '90%',
         maxHeight: '70%',
-        backgroundColor: theme.background,
+        backgroundColor: theme.background, // Dinámico
         borderRadius: 20,
         padding: 20
     },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 15, textAlign: 'center' },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 15, textAlign: 'center', fontFamily: fontFamily },
     emojiScrollView: { maxHeight: 150 },
     emojiSelector: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
     emojiButton: { padding: 8 },
@@ -107,9 +111,10 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     },
     headerText: {
         fontWeight: 'bold',
-        color: theme.text,
+        color: theme.text, // Dinámico
         textAlign: 'center',
-        fontSize: 14
+        fontSize: 14,
+        fontFamily: fontFamily // Dinámico
     },
     dateColumn: {
         flex: 2,
@@ -123,9 +128,10 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
         justifyContent: 'center'
     },
     columnText: {
-        color: theme.text,
+        color: theme.text, // Dinámico
         textAlign: 'center',
-        fontSize: 13
+        fontSize: 13,
+        fontFamily: fontFamily // Dinámico
     },
     historyContentContainer: {
         flexShrink: 1,
@@ -139,12 +145,20 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
         color: theme.placeholder,
         marginTop: 20,
         textAlign: 'center',
-        fontSize: 14
+        fontSize: 14,
+        fontFamily: fontFamily // Dinámico
     },
-    statusInput: { height: 40, width: '100%', borderColor: theme.borderColor, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, color: theme.text, backgroundColor: theme.inputBackground, marginBottom: 20 },
+    statusInput: { height: 40, width: '100%', borderColor: theme.borderColor, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, color: theme.text, backgroundColor: theme.inputBackground, marginBottom: 20, fontFamily: fontFamily },
     modalButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '100%' },
-    relationshipCounterContainer: { alignItems: 'center', marginVertical: 15, padding: 15, backgroundColor: theme.inputBackground, borderRadius: 10, borderWidth: 1, borderColor: theme.borderColor, width: '90%' },
-    counterText: { fontSize: 18, color: theme.text, textAlign: 'center', lineHeight: 24 },
+    relationshipCounterContainer: { 
+        alignItems: 'center', 
+        marginVertical: 15, 
+        padding: 15, 
+        backgroundColor: theme.inputBackground, 
+        width: '90%',
+        ...borderStyle // Aplicamos el estilo de borde dinámico
+    },
+    counterText: { fontSize: 18, color: theme.text, textAlign: 'center', lineHeight: 24, fontFamily: fontFamily },
     closeButtonContainer: {
         marginTop: 15,
         width: '100%'
@@ -177,19 +191,17 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
 
 // --- Componente Principal ---
 const Home: React.FC = () => {
-    // Hooks
     const router = useRouter();
-    const colorScheme = useColorScheme() || 'light';
-    const theme = themes[colorScheme];
-    const styles = getStyles(theme);
+    
+    // --- Usando Hooks de Contexto ---
+    const { user, userData, partnerData, relationshipData, plan, isLoading } = usePlan();
+    const { theme, fontFamily, borderStyle } = useTheme();
 
-    // Estados
-    const [user, setUser] = useState<User | null>(auth.currentUser);
-    const [userData, setUserData] = useState<DocumentData | null>(null);
-    const [relationshipData, setRelationshipData] = useState<DocumentData | null>(null);
-    const [partnerData, setPartnerData] = useState<DocumentData | null>(null);
+    // Generamos los estilos dinámicamente
+    const styles = getStyles(theme, fontFamily, borderStyle);
+
+    // --- Estados Locales (Solo para UI e historial) ---
     const [missYouHistory, setMissYouHistory] = useState<DocumentData[]>([]);
-    const [loading, setLoading] = useState(true);
     const [partnerCode, setPartnerCode] = useState('');
     const [isMoodSelectorVisible, setIsMoodSelectorVisible] = useState(false);
     const [isHistoryVisible, setIsHistoryVisible] = useState(false);
@@ -200,7 +212,7 @@ const Home: React.FC = () => {
     const [relationshipDuration, setRelationshipDuration] = useState<string | null>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
 
-    // --- NUEVA Función para solicitar permisos ---
+    // Función para solicitar permisos
     const requestNotificationPermissions = async () => {
         const { status } = await Notifications.requestPermissionsAsync();
         if (status !== 'granted') {
@@ -222,6 +234,7 @@ const Home: React.FC = () => {
         return true;
     };
 
+    // Función para resetear contadores
     const checkAndResetMissYouCounter = useCallback(async (relationshipId: string, currentData: DocumentData) => {
         const today = getTodayDateKey();
         const lastResetDate = currentData?.lastResetDate;
@@ -251,113 +264,29 @@ const Home: React.FC = () => {
         }
     }, []);
 
-    useEffect(() => {
-        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-          setUser(currentUser);
-          if (!currentUser) {
-            setUserData(null);
-            setPartnerData(null);
-            setRelationshipData(null);
-            setMissYouHistory([]);
-            setLoading(false);
-            router.replace('/');
-          }
-        });
-        return () => unsubscribeAuth();
-      }, [router]);
+    // --- Efectos ---
+    // (useEffect de Auth y User eliminados, manejados por PlanContext)
+    // (useEffect de Partner y Relationship eliminados, manejados por PlanContext)
 
-
-    useEffect(() => {
-        if (!user) {
-            setLoading(false);
-            return;
-        };
-
-        setLoading(true);
-        const userDocRef = doc(db, 'users', user.uid);
-        const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                setUserData(data);
-                if (!data.partnerId) {
-                    setPartnerData(null);
-                    setRelationshipData(null);
-                    setMissYouHistory([]);
-                    setLoading(false);
-                }
-            } else {
-                console.log("Perfil de usuario no encontrado, cerrando sesión.");
-                auth.signOut();
-                setLoading(false);
-            }
-        }, (error) => {
-            console.error("Error user listener:", error);
-            auth.signOut();
-            setLoading(false);
-        });
-
-        return () => unsubscribeUser();
-    }, [user]);
-
-
+    // useEffect para cargar el Historial (no está en el context)
     useEffect(() => {
         if (!user || !userData || !userData.partnerId) {
-            if (userData && !userData.partnerId) return;
-            if (!userData) return;
-            if (!user) return;
-
-             setPartnerData(null);
-             setRelationshipData(null);
-             setMissYouHistory([]);
-             if (loading) setLoading(false);
-             return;
+            setMissYouHistory([]);
+            return;
         }
-
-        setLoading(true);
         const relationshipId = [user.uid, userData.partnerId].sort().join('_');
-        let unsubscribeRelationship: (() => void) | null = null;
-        let unsubscribePartner: (() => void) | null = null;
-        let unsubscribeHistory: (() => void) | null = null;
-
-        const relationshipRef = doc(db, 'relationships', relationshipId);
-         unsubscribeRelationship = onSnapshot(relationshipRef, async (relSnap) => {
-            const data = relSnap.data() || {};
-            setRelationshipData(data);
-            await checkAndResetMissYouCounter(relationshipId, data);
-        }, (error) => {
-            console.error("Error relationship listener:", error);
-            setRelationshipData(null);
-            setLoading(false);
-        });
-
-        const partnerRef = doc(db, 'users', userData.partnerId);
-        unsubscribePartner = onSnapshot(partnerRef, (partnerSnap) => {
-            setPartnerData(partnerSnap.data() || null);
-        }, (error) => {
-             console.error("Error partner listener:", error);
-             setPartnerData(null);
-             setLoading(false);
-        });
-
         const historyCollectionRef = collection(db, 'relationships', relationshipId, 'missYouHistory');
         const q = query(historyCollectionRef, orderBy('__name__', 'desc'));
-        unsubscribeHistory = onSnapshot(q, (querySnapshot) => {
+        const unsubscribeHistory = onSnapshot(q, (querySnapshot) => {
             setMissYouHistory(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            setLoading(false);
         }, (error) => {
             console.error("Error history listener:", error);
             setMissYouHistory([]);
-            setLoading(false);
         });
+        return () => unsubscribeHistory();
+    }, [user, userData]); // Depende de 'user' y 'userData' del hook 'usePlan'
 
-        return () => {
-            if (unsubscribeRelationship) unsubscribeRelationship();
-            if (unsubscribePartner) unsubscribePartner();
-            if (unsubscribeHistory) unsubscribeHistory();
-        };
-    }, [user, userData, checkAndResetMissYouCounter]);
-
-
+    // useEffect para el intervalo de reset
     useEffect(() => {
         if (!user || !userData || !userData.partnerId || !relationshipData) return;
         const relationshipId = [user.uid, userData.partnerId].sort().join('_');
@@ -365,9 +294,9 @@ const Home: React.FC = () => {
             checkAndResetMissYouCounter(relationshipId, relationshipData);
         }, 60000);
         return () => clearInterval(intervalId);
-    }, [user, userData, relationshipData, checkAndResetMissYouCounter]);
+    }, [user, userData, relationshipData, checkAndResetMissYouCounter]); // Depende de datos del hook
 
-
+    // useEffect para la duración de la relación
     useEffect(() => {
         if (userData?.relationshipStartDate) {
             const startDate = (userData.relationshipStartDate as Timestamp).toDate();
@@ -386,8 +315,9 @@ const Home: React.FC = () => {
         } else {
             setRelationshipDuration(null);
         }
-    }, [userData?.relationshipStartDate]);
+    }, [userData?.relationshipStartDate]); // Depende de 'userData' del hook
 
+    // --- Funciones de Manejo de Eventos ---
     const handleCopyCode = useCallback(async () => {
         if (user?.uid) {
             await Clipboard.setStringAsync(user.uid);
@@ -395,7 +325,6 @@ const Home: React.FC = () => {
         }
     }, [user]);
 
-    // --- handleConnectPartner ACTUALIZADO ---
     const handleConnectPartner = useCallback(async () => {
         const code = partnerCode.trim();
         if (!code || !user) return;
@@ -411,16 +340,15 @@ const Home: React.FC = () => {
             batch.update(currentUserRef, { partnerId: code });
             batch.update(partnerDocRef, { partnerId: user.uid });
 
-            await batch.commit(); // Conexión exitosa
+            await batch.commit();
 
             setPartnerCode('');
             Toast.show({ type: 'success', text1: '¡Conexión Exitosa!' });
 
-            // Solicitar permisos DESPUÉS de conectar
             await requestNotificationPermissions();
 
         } catch (error) { Toast.show({ type: 'error', text1: 'Error al conectar' }); console.error(error); }
-    }, [partnerCode, user]); // No necesita requestNotificationPermissions como dependencia si está definida dentro
+    }, [partnerCode, user]);
 
     const openMoodSelector = useCallback(() => { setIsMoodSelectorVisible(true); }, []);
 
@@ -492,8 +420,10 @@ const Home: React.FC = () => {
         }
     }, [userData, user, pulseAnim]);
 
-    if (loading) {
-        return <View style={styles.container}><ActivityIndicator size="large" color={theme.primary} /></View>;
+    // --- Renderizado ---
+
+    if (isLoading) {
+        return <View style={[styles.container, { backgroundColor: theme.background }]}><ActivityIndicator size="large" color={theme.primary} /></View>;
     }
 
     if (userData && !userData.partnerId) {
@@ -544,8 +474,8 @@ const Home: React.FC = () => {
                             activeOpacity={1}
                             onPressOut={() => setIsMoodSelectorVisible(false)}
                         >
-                            <TouchableOpacity style={[styles.modalContainer, {maxHeight: '40%'}]} activeOpacity={1}>
-                                <Text style={styles.modalTitle}>¿Cómo te sientes hoy?</Text>
+                            <TouchableOpacity style={[styles.modalContainer, {maxHeight: '40%', backgroundColor: theme.background}]} activeOpacity={1}>
+                                <Text style={[styles.modalTitle, {color: theme.text, fontFamily: fontFamily}]}>¿Cómo te sientes hoy?</Text>
                                 <ScrollView style={styles.emojiScrollView}>
                                     <View style={styles.emojiSelector}>
                                         {MOODS.map((mood) => (
@@ -570,13 +500,13 @@ const Home: React.FC = () => {
                         onRequestClose={() => setIsStatusPromptVisible(false)}
                     >
                         <View style={styles.modalOverlay}>
-                            <View style={[styles.modalContainer, {height: 'auto', maxHeight: '50%'}]}>
-                                <Text style={styles.modalTitle}>
+                            <View style={[styles.modalContainer, {height: 'auto', maxHeight: '50%', backgroundColor: theme.background}]}>
+                                <Text style={[styles.modalTitle, {color: theme.text, fontFamily: fontFamily}]}>
                                     ¿Te sientes {selectedMood?.name.toLowerCase()}?
                                 </Text>
-                                <Text style={styles.subtitle}>Añade un breve mensaje</Text>
+                                <Text style={[styles.subtitle, {color: theme.text, fontFamily: fontFamily}]}>Añade un breve mensaje</Text>
                                 <TextInput
-                                    style={styles.statusInput}
+                                    style={[styles.statusInput, {color: theme.text, backgroundColor: theme.inputBackground, borderColor: theme.borderColor, fontFamily: fontFamily}]}
                                     value={statusInput}
                                     onChangeText={setStatusInput}
                                     placeholder="Opcional..."
@@ -606,13 +536,13 @@ const Home: React.FC = () => {
                         onRequestClose={() => setIsHistoryVisible(false)}
                     >
                         <View style={styles.modalOverlay}>
-                            <View style={styles.modalContainer}>
-                                <Text style={styles.modalTitle}>Historial Extrañómetro</Text>
+                            <View style={[styles.modalContainer, {backgroundColor: theme.background}]}>
+                                <Text style={[styles.modalTitle, {color: theme.text, fontFamily: fontFamily}]}>Historial Extrañómetro</Text>
                                 <View style={styles.historyContentContainer}>
                                     <View style={styles.tableHeader}>
-                                        <View style={styles.dateColumn}><Text style={styles.headerText}>Fecha</Text></View>
-                                        <View style={styles.numberColumn}><Text style={styles.headerText}>Recibidos</Text></View>
-                                        <View style={styles.numberColumn}><Text style={styles.headerText}>Enviados</Text></View>
+                                        <View style={styles.dateColumn}><Text style={[styles.headerText, {color: theme.text, fontFamily: fontFamily}]}>Fecha</Text></View>
+                                        <View style={styles.numberColumn}><Text style={[styles.headerText, {color: theme.text, fontFamily: fontFamily}]}>Recibidos</Text></View>
+                                        <View style={styles.numberColumn}><Text style={[styles.headerText, {color: theme.text, fontFamily: fontFamily}]}>Enviados</Text></View>
                                     </View>
                                     <FlatList
                                         style={styles.historyFlatList}
@@ -621,13 +551,13 @@ const Home: React.FC = () => {
                                         showsVerticalScrollIndicator={true}
                                         nestedScrollEnabled={true}
                                         renderItem={({ item }) => (
-                                            <View style={styles.tableRow}>
-                                                <View style={styles.dateColumn}><Text style={styles.columnText} numberOfLines={1}>{item.id}</Text></View>
-                                                <View style={styles.numberColumn}><Text style={styles.columnText}>{item[partnerId] || 0}</Text></View>
-                                                <View style={styles.numberColumn}><Text style={styles.columnText}>{item[myId] || 0}</Text></View>
+                                            <View style={[styles.tableRow, {borderBottomColor: theme.borderColor}]}>
+                                                <View style={styles.dateColumn}><Text style={[styles.columnText, {color: theme.text, fontFamily: fontFamily}]} numberOfLines={1}>{item.id}</Text></View>
+                                                <View style={styles.numberColumn}><Text style={[styles.columnText, {color: theme.text, fontFamily: fontFamily}]}>{item[partnerId] || 0}</Text></View>
+                                                <View style={styles.numberColumn}><Text style={[styles.columnText, {color: theme.text, fontFamily: fontFamily}]}>{item[myId] || 0}</Text></View>
                                             </View>
                                         )}
-                                        ListEmptyComponent={<Text style={styles.emptyHistoryText}>Aún no hay historial.</Text>}
+                                        ListEmptyComponent={<Text style={[styles.emptyHistoryText, {fontFamily: fontFamily}]}>Aún no hay historial.</Text>}
                                     />
                                 </View>
                                 <View style={styles.closeButtonContainer}>
@@ -743,7 +673,6 @@ const Home: React.FC = () => {
         );
     }
 
-    // Fallback: Si no estamos cargando y no hay datos válidos (raro, pero seguro)
     return (
         <SafeAreaView style={styles.safeArea}>
              <View style={styles.container}>
@@ -757,15 +686,14 @@ const Home: React.FC = () => {
     );
 };
 
-// --- Configuración del Handler (Idealmente en app/_layout.tsx) ---
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    priority: Notifications.AndroidNotificationPriority.MAX,
+    shouldShowBanner: true, // <-- PROPIEDAD AÑADIDA
+    shouldShowList: true,   // <-- PROPIEDAD AÑADIDA
+    priority: Notifications.AndroidNotificationPriority.MAX, // <-- Reactivado
   }),
 });
 
