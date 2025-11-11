@@ -13,7 +13,8 @@ import { useRouter } from 'expo-router';
 import {
     doc, getDoc, DocumentData, writeBatch, onSnapshot,
     updateDoc, collection, query, orderBy, Timestamp, setDoc,
-    increment
+    increment,
+    limit // --- AÑADIDO: Importamos 'limit' para el paywall ---
 } from 'firebase/firestore';
 import { auth, db } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme'; // Importamos la definición base de 'themes'
@@ -26,17 +27,35 @@ import { es } from 'date-fns/locale/es';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications'; 
 
-// --- NUEVO: Importar los hooks de Contexto ---
+// --- Hooks de Contexto ---
 import { usePlan } from '../../src/contexts/planContext'; 
 import { useTheme } from '../../src/contexts/themeContext';
 
-// --- Constantes ---
-const MOODS = [
+// --- Constantes de Emojis (Free vs Premium) ---
+const MOODS_BASE = [
     { emoji: '😊', name: 'Feliz' }, { emoji: '🥰', name: 'Amado/a' },
     { emoji: '😴', name: 'Cansado/a' }, { emoji: '😎', name: 'Genial' },
     { emoji: '😜', name: 'Juguetón/a' }, { emoji: '😢', name: 'Triste' },
     { emoji: '🤔', name: 'Pensativo/a' }, { emoji: '😐', name: 'Neutral' },
 ];
+
+const MOODS_PREMIUM_ADDON = [
+    // Afectivos y Estándar
+    { emoji: '🥳', name: 'Festivo/a' }, { emoji: '🤩', name: 'Asombrado/a' },
+    { emoji: '😌', name: 'Relajado/a' }, { emoji: '✨', name: 'Especial' },
+    { emoji: '😇', name: 'Angelical' }, { emoji: '🤗', name: 'Abrazo' },
+    { emoji: '💖', name: 'Radiante' }, { emoji: '🥺', name: 'Tierno/a' },
+    { emoji: '🙏', name: 'Agradecido/a' }, { emoji: '🧘', name: 'Zen' },
+    { emoji: '💪', name: 'Motivado/a' }, { emoji: '🤓', name: 'Estudioso/a' },
+    // Picantes (Adultos)
+    { emoji: '😏', name: 'Coqueto/a' }, { emoji: '😈', name: 'Travieso/a' },
+    { emoji: '🔥', name: 'Ardiente' }, { emoji: '🥵', name: 'Acalorado/a' },
+    { emoji: '🤤', name: 'Antojado/a' }, { emoji: '🫦', name: 'Mordelón/a' },
+    { emoji: '🌶️', name: 'Picante' }, { emoji: '😉', name: 'Cómplice' },
+    { emoji: '🍒', name: 'Atrevido/a' }, { emoji: '💥', name: 'Explosivo/a' },
+];
+
+const MOODS_PREMIUM_FULL = [...MOODS_BASE, ...MOODS_PREMIUM_ADDON];
 
 const getTodayDateKey = (): string => {
     const today = new Date();
@@ -50,14 +69,14 @@ const getTodayDateKey = (): string => {
 const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, borderStyle: any) => StyleSheet.create({
     safeArea: {
         flex: 1,
-        backgroundColor: theme.background // Dinámico
+        backgroundColor: theme.background
     },
     scrollContainer: {
         flexGrow: 1,
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
-        backgroundColor: theme.background, // Dinámico
+        backgroundColor: theme.background,
         gap: 15
     },
     container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: theme.background, gap: 15 },
@@ -84,7 +103,7 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
     modalContainer: {
         width: '90%',
         maxHeight: '70%',
-        backgroundColor: theme.background, // Dinámico
+        backgroundColor: theme.background,
         borderRadius: 20,
         padding: 20
     },
@@ -111,10 +130,10 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
     },
     headerText: {
         fontWeight: 'bold',
-        color: theme.text, // Dinámico
+        color: theme.text,
         textAlign: 'center',
         fontSize: 14,
-        fontFamily: fontFamily // Dinámico
+        fontFamily: fontFamily
     },
     dateColumn: {
         flex: 2,
@@ -128,10 +147,10 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
         justifyContent: 'center'
     },
     columnText: {
-        color: theme.text, // Dinámico
+        color: theme.text,
         textAlign: 'center',
         fontSize: 13,
-        fontFamily: fontFamily // Dinámico
+        fontFamily: fontFamily
     },
     historyContentContainer: {
         flexShrink: 1,
@@ -146,7 +165,7 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
         marginTop: 20,
         textAlign: 'center',
         fontSize: 14,
-        fontFamily: fontFamily // Dinámico
+        fontFamily: fontFamily
     },
     statusInput: { height: 40, width: '100%', borderColor: theme.borderColor, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, color: theme.text, backgroundColor: theme.inputBackground, marginBottom: 20, fontFamily: fontFamily },
     modalButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '100%' },
@@ -156,7 +175,7 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
         padding: 15, 
         backgroundColor: theme.inputBackground, 
         width: '90%',
-        ...borderStyle // Aplicamos el estilo de borde dinámico
+        ...borderStyle 
     },
     counterText: { fontSize: 18, color: theme.text, textAlign: 'center', lineHeight: 24, fontFamily: fontFamily },
     closeButtonContainer: {
@@ -265,10 +284,8 @@ const Home: React.FC = () => {
     }, []);
 
     // --- Efectos ---
-    // (useEffect de Auth y User eliminados, manejados por PlanContext)
-    // (useEffect de Partner y Relationship eliminados, manejados por PlanContext)
 
-    // useEffect para cargar el Historial (no está en el context)
+    // useEffect para cargar el Historial (ACTUALIZADO CON LÍMITE FREEMIUM)
     useEffect(() => {
         if (!user || !userData || !userData.partnerId) {
             setMissYouHistory([]);
@@ -276,7 +293,18 @@ const Home: React.FC = () => {
         }
         const relationshipId = [user.uid, userData.partnerId].sort().join('_');
         const historyCollectionRef = collection(db, 'relationships', relationshipId, 'missYouHistory');
-        const q = query(historyCollectionRef, orderBy('__name__', 'desc'));
+        
+        // --- LÓGICA DE LÍMITE FREEMIUM ---
+        let q;
+        if (plan === 'premium') {
+            // Premium: Carga todo el historial
+            q = query(historyCollectionRef, orderBy('__name__', 'desc'));
+        } else {
+            // Free: Carga solo los últimos 3 días
+            q = query(historyCollectionRef, orderBy('__name__', 'desc'), limit(3));
+        }
+        // --- FIN LÓGICA DE LÍMITE ---
+
         const unsubscribeHistory = onSnapshot(q, (querySnapshot) => {
             setMissYouHistory(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }, (error) => {
@@ -284,7 +312,7 @@ const Home: React.FC = () => {
             setMissYouHistory([]);
         });
         return () => unsubscribeHistory();
-    }, [user, userData]); // Depende de 'user' y 'userData' del hook 'usePlan'
+    }, [user, userData, plan]); // <-- Añadido 'plan' a las dependencias
 
     // useEffect para el intervalo de reset
     useEffect(() => {
@@ -294,7 +322,7 @@ const Home: React.FC = () => {
             checkAndResetMissYouCounter(relationshipId, relationshipData);
         }, 60000);
         return () => clearInterval(intervalId);
-    }, [user, userData, relationshipData, checkAndResetMissYouCounter]); // Depende de datos del hook
+    }, [user, userData, relationshipData, checkAndResetMissYouCounter]);
 
     // useEffect para la duración de la relación
     useEffect(() => {
@@ -315,7 +343,7 @@ const Home: React.FC = () => {
         } else {
             setRelationshipDuration(null);
         }
-    }, [userData?.relationshipStartDate]); // Depende de 'userData' del hook
+    }, [userData?.relationshipStartDate]);
 
     // --- Funciones de Manejo de Eventos ---
     const handleCopyCode = useCallback(async () => {
@@ -458,6 +486,10 @@ const Home: React.FC = () => {
         const partnerId = userData.partnerId;
         const sentCount = relationshipData?.missYouCounters?.[myId] || 0;
         const receivedCount = relationshipData?.missYouCounters?.[partnerId] || 0;
+        
+        // --- LÓGICA DE EMOJIS (FREEMIUM) ---
+        const moodListToShow = plan === 'premium' ? MOODS_PREMIUM_FULL : MOODS_BASE;
+        const historyDataToShow = missYouHistory; // El 'useEffect' ya ha aplicado el límite
 
         return (
             <SafeAreaView style={styles.safeArea}>
@@ -478,7 +510,8 @@ const Home: React.FC = () => {
                                 <Text style={[styles.modalTitle, {color: theme.text, fontFamily: fontFamily}]}>¿Cómo te sientes hoy?</Text>
                                 <ScrollView style={styles.emojiScrollView}>
                                     <View style={styles.emojiSelector}>
-                                        {MOODS.map((mood) => (
+                                        {/* --- MOSTRANDO LISTA DINÁMICA DE EMOJIS --- */}
+                                        {moodListToShow.map((mood) => (
                                             <TouchableOpacity
                                                 key={mood.emoji}
                                                 style={styles.emojiButton}
@@ -546,7 +579,7 @@ const Home: React.FC = () => {
                                     </View>
                                     <FlatList
                                         style={styles.historyFlatList}
-                                        data={missYouHistory}
+                                        data={historyDataToShow} // --- MOSTRANDO DATOS LIMITADOS/COMPLETOS ---
                                         keyExtractor={item => item.id}
                                         showsVerticalScrollIndicator={true}
                                         nestedScrollEnabled={true}
@@ -558,6 +591,14 @@ const Home: React.FC = () => {
                                             </View>
                                         )}
                                         ListEmptyComponent={<Text style={[styles.emptyHistoryText, {fontFamily: fontFamily}]}>Aún no hay historial.</Text>}
+                                        ListFooterComponent={plan === 'free' ? ( // --- PAYWALL EN EL HISTORIAL ---
+                                            <TouchableOpacity onPress={() => router.push('/(tabs)/config')} style={{padding: 15, alignItems: 'center'}}>
+                                                <Ionicons name="lock-closed" size={16} color={theme.primary} />
+                                                <Text style={{color: theme.primary, fontFamily: fontFamily, textAlign: 'center', marginTop: 5}}>
+                                                    Actualiza a Premium para ver el historial completo.
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ) : null}
                                     />
                                 </View>
                                 <View style={styles.closeButtonContainer}>
@@ -691,9 +732,9 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
-    shouldShowBanner: true, // <-- PROPIEDAD AÑADIDA
-    shouldShowList: true,   // <-- PROPIEDAD AÑADIDA
-    priority: Notifications.AndroidNotificationPriority.MAX, // <-- Reactivado
+    shouldShowBanner: true, 
+    shouldShowList: true,   
+    priority: Notifications.AndroidNotificationPriority.MAX,
   }),
 });
 

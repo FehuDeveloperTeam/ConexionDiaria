@@ -59,6 +59,15 @@ const TabLayout: React.FC = () => {
             />
 
             <Tabs.Screen
+                name="wishlist"
+                options={{
+                    title: 'Deseos',
+                    tabBarIcon: ({ color }) => <Ionicons name="star-outline" size={24} color={color} />,
+                    headerShown: false,
+                }}
+            />
+
+            <Tabs.Screen
                 name="album"
                 options={{
                     title: 'Álbum',

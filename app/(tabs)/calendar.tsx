@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     View, Text, StyleSheet, useColorScheme, ActivityIndicator,
-    Modal, TextInput, Button, FlatList, Alert, TouchableOpacity,
-    ScrollView, Switch
+    Modal, TextInput, FlatList, Alert, TouchableOpacity,
+    ScrollView, Switch, Dimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -17,11 +17,14 @@ import { Calendar, LocaleConfig } from 'react-native-calendars';
 import Toast from 'react-native-toast-message';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { Ionicons } from '@expo/vector-icons';
+import { usePlan } from '../../src/contexts/planContext';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // Configuración de idioma español
 LocaleConfig.locales['es'] = {
   monthNames: ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'],
-  monthNamesShort: ['Ene.','Feb.','Mar.','Abr.','May.','Jun.','Jul.','Ago.','Sep.','Oct.','Nov.','Dic.'],
+  monthNamesShort: ['Ene.','Feb.','Mar.','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'],
   dayNames: ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'],
   dayNamesShort: ['D','L','M','X','J','V','S'],
 };
@@ -62,6 +65,194 @@ const chileanHolidays: { [key: string]: string } = {
     '2025-11-01': 'Día de Todos los Santos',
     '2025-12-08': 'Inmaculada Concepción',
     '2025-12-25': 'Navidad',
+};
+
+interface CalendarEvent {
+    id: string;
+    title: string;
+    dateTime: Timestamp;
+    description?: string;
+    reminder: boolean;
+    authorId: string;
+    authorName: string;
+    createdAt: Timestamp;
+}
+
+const toDateString = (d: Date) => {
+    const year = d.getFullYear();
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+// Modal de Upgrade Premium
+const UpgradePremiumModal: React.FC<{
+    visible: boolean;
+    onClose: () => void;
+}> = ({ visible, onClose }) => {
+    const colorScheme = useColorScheme();
+    const theme = colorScheme === 'dark' ? themes.dark : themes.light;
+
+    return (
+        <Modal
+            visible={visible}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={onClose}
+        >
+            <View style={{
+                flex: 1,
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: 20,
+            }}>
+                <View style={{
+                    backgroundColor: theme.background,
+                    borderRadius: 20,
+                    padding: 24,
+                    width: '90%',
+                    maxWidth: 400,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 8,
+                    elevation: 8,
+                }}>
+                    {/* Icono */}
+                    <View style={{
+                        alignItems: 'center',
+                        marginBottom: 20,
+                    }}>
+                        <View style={{
+                            width: 80,
+                            height: 80,
+                            borderRadius: 40,
+                            backgroundColor: '#FFE5F0',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                        }}>
+                            <Ionicons name="notifications" size={40} color="#FF69B4" />
+                        </View>
+                    </View>
+
+                    {/* Título */}
+                    <Text style={{
+                        fontSize: 24,
+                        fontWeight: 'bold',
+                        color: theme.text,
+                        textAlign: 'center',
+                        marginBottom: 12,
+                    }}>
+                        Recordatorios Premium
+                    </Text>
+
+                    {/* Descripción */}
+                    <Text style={{
+                        fontSize: 16,
+                        color: theme.placeholder,
+                        textAlign: 'center',
+                        marginBottom: 20,
+                        lineHeight: 24,
+                    }}>
+                        Los recordatorios y alarmas son una función exclusiva de Premium
+                    </Text>
+
+                    {/* Beneficios Premium */}
+                    <View style={{
+                        backgroundColor: colorScheme === 'dark' ? '#2A2A2A' : '#F8F8F8',
+                        borderRadius: 12,
+                        padding: 16,
+                        marginBottom: 24,
+                    }}>
+                        <Text style={{
+                            fontSize: 14,
+                            fontWeight: '600',
+                            color: theme.text,
+                            marginBottom: 12,
+                        }}>
+                            Con Premium obtendrás:
+                        </Text>
+                        
+                        <View style={{ gap: 8 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Ionicons name="checkmark-circle" size={20} color="#FF69B4" />
+                                <Text style={{ marginLeft: 8, fontSize: 14, color: theme.text }}>
+                                    Notificaciones personalizadas
+                                </Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Ionicons name="checkmark-circle" size={20} color="#FF69B4" />
+                                <Text style={{ marginLeft: 8, fontSize: 14, color: theme.text }}>
+                                    Recordatorios múltiples
+                                </Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Ionicons name="checkmark-circle" size={20} color="#FF69B4" />
+                                <Text style={{ marginLeft: 8, fontSize: 14, color: theme.text }}>
+                                    Alarmas de aniversarios
+                                </Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Ionicons name="checkmark-circle" size={20} color="#FF69B4" />
+                                <Text style={{ marginLeft: 8, fontSize: 14, color: theme.text }}>
+                                    Nunca olvides una fecha especial
+                                </Text>
+                            </View>
+                        </View>
+                    </View>
+
+                    {/* Botones */}
+                    <TouchableOpacity
+                        style={{
+                            backgroundColor: '#FF69B4',
+                            borderRadius: 12,
+                            paddingVertical: 14,
+                            marginBottom: 12,
+                            shadowColor: '#FF69B4',
+                            shadowOffset: { width: 0, height: 4 },
+                            shadowOpacity: 0.3,
+                            shadowRadius: 8,
+                            elevation: 4,
+                        }}
+                        onPress={() => {
+                            // TODO: Navegar a pantalla de compra Premium
+                            Toast.show({
+                                type: 'info',
+                                text1: 'Próximamente',
+                                text2: 'La pantalla de upgrade estará disponible pronto',
+                            });
+                            onClose();
+                        }}
+                    >
+                        <Text style={{
+                            color: '#FFF',
+                            fontSize: 16,
+                            fontWeight: '600',
+                            textAlign: 'center',
+                        }}>
+                            Actualizar a Premium
+                        </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={{
+                            paddingVertical: 12,
+                        }}
+                        onPress={onClose}
+                    >
+                        <Text style={{
+                            color: theme.placeholder,
+                            fontSize: 14,
+                            textAlign: 'center',
+                        }}>
+                            Ahora no
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
 };
 
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
@@ -171,34 +362,53 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     },
     reminderRow: {
         flexDirection: 'row',
-        alignItems: 'center',
         justifyContent: 'space-between',
-        marginTop: 10,
+        alignItems: 'center',
     },
-    modalButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: 10 },
-    modalButtonsThree: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: 10, gap: 10 },
+    reminderDisabled: {
+        opacity: 0.5,
+    },
+    premiumBadge: {
+        backgroundColor: '#FFD700',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 6,
+        marginLeft: 8,
+    },
+    premiumBadgeText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: '#000',
+    },
+    modalButtons: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 20 },
+    modalButtonsThree: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
+    button: { flex: 1, marginHorizontal: 5 },
+    floatingButton: {
+        position: 'absolute',
+        bottom: 20,
+        right: 20,
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: theme.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 8,
+    },
 });
 
-interface CalendarEvent {
-    id: string;
-    title: string;
-    dateTime: Timestamp;
-    description?: string;
-    reminder?: boolean;
-    authorId: string;
-    authorName: string;
-    createdAt: Timestamp;
-}
-
-const toDateString = (date: Date): string => {
-    return date.toISOString().split('T')[0];
-};
-
 const CalendarScreen: React.FC = () => {
-    const colorScheme = useColorScheme() || 'light';
-    const theme = themes[colorScheme];
+    const colorScheme = useColorScheme();
+    const theme = colorScheme === 'dark' ? themes.dark : themes.light;
     const styles = getStyles(theme);
     const router = useRouter();
+
+    // Context de Plan
+    const { user: contextUser, userData: contextUserData, plan, isLoading: planLoading } = usePlan();
 
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [userData, setUserData] = useState<DocumentData | null>(null);
@@ -219,27 +429,39 @@ const CalendarScreen: React.FC = () => {
     const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
-    // Estados para DateTimePicker
+    // Estados para DateTimePicker - SOLUCIÓN AL PROBLEMA
     const [isDateTimePickerVisible, setDateTimePickerVisibility] = useState(false);
     const [dateTimePickerMode, setDateTimePickerMode] = useState<'date' | 'time'>('date');
+    const [pendingDateTimeSelection, setPendingDateTimeSelection] = useState(false); // Nuevo estado
 
-    // Estado para selector de mes/año
-    const [isMonthPickerVisible, setIsMonthPickerVisible] = useState(false);
-    const [currentMonth, setCurrentMonth] = useState(new Date());
+    // Estado para modal de upgrade
+    const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+    // Usar datos del contexto si están disponibles, sino usar estados locales
+    useEffect(() => {
+        if (contextUser) {
+            setUser(contextUser);
+        }
+        if (contextUserData) {
+            setUserData(contextUserData);
+        }
+    }, [contextUser, contextUserData]);
 
     useEffect(() => {
-        setLoading(true);
-        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-            setUser(currentUser);
-            if (!currentUser) {
-                setUserData(null); 
-                setAllEvents([]); 
-                setLoading(false);
-                router.replace('/login');
-            }
-        });
-        return () => unsubscribeAuth();
-    }, [router]);
+        if (!contextUser) {
+            setLoading(true);
+            const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+                setUser(currentUser);
+                if (!currentUser) {
+                    setUserData(null); 
+                    setAllEvents([]); 
+                    setLoading(false);
+                    router.replace('/login');
+                }
+            });
+            return () => unsubscribeAuth();
+        }
+    }, [contextUser, router]);
 
     useEffect(() => {
         if (!user) return;
@@ -349,110 +571,102 @@ const CalendarScreen: React.FC = () => {
             markers[startDateString] = {
                 ...markers[startDateString],
                 marked: true,
-                dotColor: '#E91E63',
+                dotColor: '#FFD700',
             };
         }
         
-        // Marcar próximo aniversario
-        if (nextAnniversary) {
-            const annivString = toDateString(nextAnniversary.date);
-            if (!markers[annivString]) {
-                markers[annivString] = {};
-            }
-            markers[annivString] = {
-                ...markers[annivString],
-                marked: true,
-                dotColor: '#E91E63',
-            };
-        }
-        
-        // Marcar fecha seleccionada
+        // Marcar la fecha seleccionada
         if (!markers[selectedDate]) {
             markers[selectedDate] = {};
         }
         markers[selectedDate] = {
             ...markers[selectedDate],
             selected: true,
-            selectedColor: theme.primary + '30',
+            selectedColor: theme.primary,
         };
-        
-        return markers;
-    }, [allEvents, selectedDate, theme.primary, userData, nextAnniversary]);
 
-    const eventsForSelectedDay = useMemo(() => {
+        return markers;
+    }, [allEvents, selectedDate, userData, theme]);
+
+    const eventsForSelectedDate = useMemo(() => {
         return allEvents.filter(event => {
             const eventDateString = toDateString(event.dateTime.toDate());
             return eventDateString === selectedDate;
-        }).sort((a, b) => a.dateTime.toDate().getTime() - b.dateTime.toDate().getTime());
+        });
     }, [allEvents, selectedDate]);
 
-    const futureEvents = useMemo(() => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const selectedDateObj = new Date(selectedDate);
-        selectedDateObj.setHours(0, 0, 0, 0);
-        
-        return allEvents.filter(event => {
-            const eventDate = event.dateTime.toDate();
-            eventDate.setHours(0, 0, 0, 0);
-            return eventDate > selectedDateObj;
-        }).slice(0, 10);
-    }, [allEvents, selectedDate]);
-
-    // Abrir modal para añadir evento
     const openEventModal = () => {
-        // Crear fecha basada en selectedDate
-        const [year, month, day] = selectedDate.split('-').map(Number);
-        const selectedDateTime = new Date(year, month - 1, day);
-        const now = new Date();
-        selectedDateTime.setHours(now.getHours(), Math.round(now.getMinutes() / 5) * 5, 0, 0);
-
-        setEventDateTime(selectedDateTime);
         setEventTitle('');
         setEventDescription('');
+        setEventDateTime(new Date());
         setEventReminder(false);
         setEditingEventId(null);
         setIsEventModalVisible(true);
     };
 
-    // Abrir modal para editar evento
     const openEditModal = (event: CalendarEvent) => {
         setEventTitle(event.title);
         setEventDescription(event.description || '');
         setEventDateTime(event.dateTime.toDate());
-        setEventReminder(event.reminder || false);
+        setEventReminder(event.reminder);
         setEditingEventId(event.id);
         setIsDetailModalVisible(false);
         setIsEventModalVisible(true);
     };
 
     const closeEventModal = () => {
+        setEventTitle('');
+        setEventDescription('');
+        setEventDateTime(new Date());
+        setEventReminder(false);
         setIsEventModalVisible(false);
         setEditingEventId(null);
     };
 
-    // Mostrar detalles del evento
     const showEventDetails = (event: CalendarEvent) => {
         setSelectedEvent(event);
         setIsDetailModalVisible(true);
     };
 
-    const showDatePicker = () => {
-        setDateTimePickerMode('date');
-        setDateTimePickerVisibility(true);
-    };
+    // SOLUCIÓN MEJORADA: Usar requestAnimationFrame para asegurar que el modal se cerró
+    const showDatePicker = useCallback(() => {
+        setIsEventModalVisible(false);
+        setPendingDateTimeSelection(true);
+        // Usar requestAnimationFrame para asegurar que el render se completó
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                setDateTimePickerMode('date');
+                setDateTimePickerVisibility(true);
+            }, 200);
+        });
+    }, []);
 
-    const showTimePicker = () => {
-        setDateTimePickerMode('time');
-        setDateTimePickerVisibility(true);
-    };
+    const showTimePicker = useCallback(() => {
+        setIsEventModalVisible(false);
+        setPendingDateTimeSelection(true);
+        // Usar requestAnimationFrame para asegurar que el render se completó
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                setDateTimePickerMode('time');
+                setDateTimePickerVisibility(true);
+            }, 200);
+        });
+    }, []);
 
-    const hideDateTimePicker = () => {
+    const hideDateTimePicker = useCallback(() => {
         setDateTimePickerVisibility(false);
-    };
+        // Reabrir el modal después de cancelar
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                if (pendingDateTimeSelection) {
+                    setIsEventModalVisible(true);
+                    setPendingDateTimeSelection(false);
+                }
+            }, 200);
+        });
+    }, [pendingDateTimeSelection]);
 
-    const handleConfirmDateTime = (date: Date) => {
-        hideDateTimePicker();
+    const handleConfirmDateTime = useCallback((date: Date) => {
         const currentEventDateTime = new Date(eventDateTime);
 
         if (dateTimePickerMode === 'date') {
@@ -462,26 +676,57 @@ const CalendarScreen: React.FC = () => {
             const roundedMinutes = Math.round(minutes / 5) * 5;
             currentEventDateTime.setHours(date.getHours(), roundedMinutes, 0, 0);
         }
+        
         setEventDateTime(currentEventDateTime);
-    };
+        setDateTimePickerVisibility(false);
+        
+        // Reabrir el modal después de que el estado se actualice
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                if (pendingDateTimeSelection) {
+                    setIsEventModalVisible(true);
+                    setPendingDateTimeSelection(false);
+                }
+            }, 200);
+        });
+    }, [eventDateTime, dateTimePickerMode, pendingDateTimeSelection]);
 
     const handleDayPress = (day: { dateString: string }) => {
         setSelectedDate(day.dateString);
     };
 
-    // Añadir o editar evento
+    // Manejar cambio de recordatorio con validación de plan
+    const handleReminderToggle = (value: boolean) => {
+        if (value && plan === 'free') {
+            // Usuario free intenta activar recordatorio
+            setShowUpgradeModal(true);
+            return;
+        }
+        setEventReminder(value);
+    };
+
     const handleAddEvent = useCallback(async () => {
         const title = eventTitle.trim();
         if (title === '' || !userData || !userData.partnerId || !user || !eventDateTime) {
             Toast.show({ type: 'error', text1: 'Por favor completa el título.' });
             return;
         }
+        
+        // Validar recordatorio para usuarios free
+        if (eventReminder && plan === 'free') {
+            Toast.show({ 
+                type: 'error', 
+                text1: 'Función Premium', 
+                text2: 'Los recordatorios requieren Premium' 
+            });
+            return;
+        }
+
         const chatId = [user.uid, userData.partnerId].sort().join('_');
         const eventsCollectionRef = collection(db, 'relationships', chatId, 'events');
 
         try {
             if (editingEventId) {
-                // Editar evento existente
                 const eventDocRef = doc(db, 'relationships', chatId, 'events', editingEventId);
                 await updateDoc(eventDocRef, {
                     title: title,
@@ -491,14 +736,13 @@ const CalendarScreen: React.FC = () => {
                 });
                 Toast.show({ type: 'success', text1: 'Evento actualizado' });
             } else {
-                // Crear nuevo evento
                 await addDoc(eventsCollectionRef, {
                     title: title,
                     dateTime: Timestamp.fromDate(eventDateTime),
                     description: eventDescription.trim() || null,
                     reminder: eventReminder,
                     authorId: user.uid,
-                    authorName: userData.displayName,
+                    authorName: userData.displayName || 'Usuario',
                     createdAt: serverTimestamp(),
                 });
                 Toast.show({ type: 'success', text1: 'Evento añadido' });
@@ -508,9 +752,8 @@ const CalendarScreen: React.FC = () => {
             console.error("Error al guardar evento:", error);
             Toast.show({ type: 'error', text1: 'Error al guardar el evento' });
         }
-    }, [eventTitle, eventDescription, eventDateTime, eventReminder, userData, user, editingEventId]);
+    }, [eventTitle, eventDescription, eventDateTime, eventReminder, userData, user, editingEventId, plan]);
 
-    // Eliminar evento
     const handleDeleteEvent = (eventId: string, authorId: string) => {
         if (user?.uid !== authorId) {
             Toast.show({ type: 'error', text1: 'Solo el autor puede borrarlo' });
@@ -528,11 +771,11 @@ const CalendarScreen: React.FC = () => {
                         const eventDocRef = doc(db, 'relationships', chatId, 'events', eventId);
                         try { 
                             await deleteDoc(eventDocRef);
-                            setIsDetailModalVisible(false);
                             Toast.show({ type: 'success', text1: 'Evento eliminado' });
-                        }
-                        catch (error) { 
-                            Toast.show({ type: 'error', text1: 'Error al eliminar' }); 
+                            setIsDetailModalVisible(false);
+                        } catch (error) { 
+                            console.error("Error eliminando:", error); 
+                            Toast.show({ type: 'error', text1: 'Error al eliminar' });
                         }
                     }
                 }
@@ -540,205 +783,184 @@ const CalendarScreen: React.FC = () => {
         );
     };
 
-            {/* Selector de Mes/Año */}
-            <Modal
-                animationType="slide"
-                transparent={true}
-                visible={isMonthPickerVisible}
-                onRequestClose={() => setIsMonthPickerVisible(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContainer}>
-                        <Text style={styles.modalTitle}>Seleccionar Mes y Año</Text>
-                        <ScrollView style={{ maxHeight: 400 }}>
-                            {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i).map(year => (
-                                <View key={year}>
-                                    <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.text, marginTop: 15, marginBottom: 10 }}>
-                                        {year}
-                                    </Text>
-                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                                        {['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'].map((month, index) => (
-                                            <TouchableOpacity
-                                                key={`${year}-${index}`}
-                                                style={{
-                                                    backgroundColor: theme.inputBackground,
-                                                    padding: 12,
-                                                    borderRadius: 8,
-                                                    borderWidth: 1,
-                                                    borderColor: theme.borderColor,
-                                                    width: '30%',
-                                                }}
-                                                onPress={() => {
-                                                    const newDate = new Date(year, index, 1);
-                                                    setCurrentMonth(newDate);
-                                                    setSelectedDate(toDateString(newDate));
-                                                    setIsMonthPickerVisible(false);
-                                                }}
-                                            >
-                                                <Text style={{ color: theme.text, textAlign: 'center' }}>{month}</Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </View>
-                                </View>
-                            ))}
-                        </ScrollView>
-                        <View style={{ marginTop: 15 }}>
-                            <Button title="Cerrar" onPress={() => setIsMonthPickerVisible(false)} color={theme.primary} />
-                        </View>
-                    </View>
-                </View>
-            </Modal>
-
-    if (loading) {
-        return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={theme.primary} /></View>;
-    }
-
-    if (userData && !userData.partnerId) {
-         return (
-             <SafeAreaView style={styles.safeArea}>
-                <View style={styles.container}>
-                     <Text style={styles.title}>Calendario</Text>
-                     <Text style={styles.placeholderText}>Conéctate con tu pareja para crear un calendario compartido.</Text>
-                </View>
-             </SafeAreaView>
+    if (loading || planLoading) {
+        return (
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={theme.primary} />
+                <Text style={[styles.placeholderText, { marginTop: 10 }]}>Cargando eventos...</Text>
+            </View>
         );
     }
 
-     if (!user || !userData) {
-         return <View style={styles.loadingContainer}><Text style={{color: theme.placeholder}}>Cargando...</Text></View>;
-     }
+    if (!userData?.partnerId) {
+        return (
+            <SafeAreaView style={styles.safeArea}>
+                <View style={styles.container}>
+                    <Text style={styles.title}>Calendario</Text>
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                        <Ionicons name="calendar-outline" size={64} color={theme.placeholder} />
+                        <Text style={styles.placeholderText}>
+                            Conecta con tu pareja para compartir eventos
+                        </Text>
+                    </View>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     return (
         <SafeAreaView style={styles.safeArea}>
             <ScrollView style={styles.container}>
-                <Text style={styles.title}>Calendario Compartido</Text>
+                <Text style={styles.title}>Calendario</Text>
 
                 {/* Próximo Aniversario */}
                 {nextAnniversary && (
                     <View style={styles.anniversaryCard}>
+                        <Ionicons name="heart" size={32} color={theme.primary} style={{ marginBottom: 8 }} />
                         <Text style={styles.anniversaryTitle}>
-                            💕 {nextAnniversary.years}º Aniversario
+                            Próximo Aniversario: {nextAnniversary.years} {nextAnniversary.years === 1 ? 'año' : 'años'}
                         </Text>
                         <Text style={styles.anniversaryDate}>
-                            {nextAnniversary.date.toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                            {nextAnniversary.date.toLocaleDateString('es-CL', { 
+                                day: 'numeric', 
+                                month: 'long', 
+                                year: 'numeric' 
+                            })}
                         </Text>
                         <Text style={styles.anniversaryCountdown}>
-                            (Faltan {nextAnniversary.daysUntil} días)
+                            Faltan {nextAnniversary.daysUntil} {nextAnniversary.daysUntil === 1 ? 'día' : 'días'}
                         </Text>
                     </View>
                 )}
 
+                {/* Calendario */}
                 <Calendar
-                    style={{
-                        borderWidth: 1,
-                        borderColor: theme.borderColor,
-                        borderRadius: 8,
-                    }}
+                    current={selectedDate}
+                    onDayPress={handleDayPress}
+                    markedDates={markedDates}
+                    markingType={'custom'}
                     theme={{
+                        backgroundColor: theme.background,
                         calendarBackground: theme.background,
-                        textSectionTitleColor: theme.text,
+                        textSectionTitleColor: theme.placeholder,
                         selectedDayBackgroundColor: theme.primary,
                         selectedDayTextColor: theme.white,
                         todayTextColor: theme.primary,
                         dayTextColor: theme.text,
-                        textDisabledColor: theme.placeholder,
-                        dotColor: theme.primary,
-                        selectedDotColor: theme.white,
-                        arrowColor: theme.primary,
+                        textDisabledColor: theme.placeholder + '50',
                         monthTextColor: theme.text,
                         textMonthFontWeight: 'bold',
+                        textDayFontSize: 16,
+                        textMonthFontSize: 18,
                     }}
-                    current={toDateString(currentMonth)}
-                    onDayPress={handleDayPress}
-                    markedDates={markedDates}
-                    onMonthChange={(month) => {
-                        setCurrentMonth(new Date(month.dateString));
-                    }}
-                    enableSwipeMonths={true}
-                    firstDay={1}
-                    renderHeader={(date) => {
-                        if (!date) return null;
-                        const month = typeof date === 'object' && 'toDate' in date ? date.toDate() : new Date(date as any);
-                        return (
-                            <TouchableOpacity onPress={() => setIsMonthPickerVisible(true)}>
-                                <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.text }}>
-                                    {month.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })}
-                                </Text>
-                            </TouchableOpacity>
-                        );
+                    style={{
+                        borderRadius: 10,
+                        marginBottom: 20,
                     }}
                 />
 
-                {/* Botón Añadir Evento */}
-                <View style={{ marginVertical: 15, width: '100%' }}>
-                    <Button
-                        title="Añadir Evento"
-                        onPress={openEventModal}
-                        color={theme.primary}
-                    />
-                </View>
-
-                {/* Eventos del Día Seleccionado */}
-                <Text style={styles.listHeader}>
-                    Eventos del {new Date(selectedDate + 'T00:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'long' })}:
-                </Text>
-                
-                {eventsForSelectedDay.length === 0 ? (
-                    <Text style={styles.placeholderText}>No hay eventos para este día.</Text>
-                ) : (
-                    eventsForSelectedDay.map(item => {
-                        const eventTime = item.dateTime.toDate().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
-                        return (
-                            <TouchableOpacity
-                                key={item.id}
+                {/* Eventos del día seleccionado */}
+                {eventsForSelectedDate.length > 0 ? (
+                    <>
+                        <Text style={styles.listHeader}>
+                            Eventos para {new Date(selectedDate).toLocaleDateString('es-CL', { 
+                                day: 'numeric', 
+                                month: 'long', 
+                                year: 'numeric' 
+                            })}
+                        </Text>
+                        {eventsForSelectedDate.map((event) => (
+                            <TouchableOpacity 
+                                key={event.id} 
                                 style={styles.eventItem}
-                                onPress={() => showEventDetails(item)}
+                                onPress={() => showEventDetails(event)}
                             >
-                                <Text style={styles.eventTitle}>{item.title}</Text>
-                                <Text style={styles.eventTimeText}>Hora: {eventTime}</Text>
-                                {item.description && <Text style={styles.eventDescription}>{item.description}</Text>}
-                                <Text style={styles.eventAuthor}>Añadido por: {item.authorName}</Text>
+                                <Text style={styles.eventTitle}>{event.title}</Text>
+                                <Text style={styles.eventTimeText}>
+                                    🕐 {event.dateTime.toDate().toLocaleTimeString('es-CL', { 
+                                        hour: '2-digit', 
+                                        minute: '2-digit' 
+                                    })}
+                                </Text>
+                                {event.description && (
+                                    <Text style={styles.eventDescription}>{event.description}</Text>
+                                )}
+                                {event.reminder && plan === 'premium' && (
+                                    <Text style={{ fontSize: 12, color: theme.primary, marginTop: 5 }}>
+                                        🔔 Recordatorio activado
+                                    </Text>
+                                )}
+                                <Text style={styles.eventAuthor}>Por: {event.authorName}</Text>
                             </TouchableOpacity>
-                        );
-                    })
+                        ))}
+                    </>
+                ) : (
+                    <Text style={styles.placeholderText}>
+                        No hay eventos para esta fecha
+                    </Text>
                 )}
 
-                {/* Próximos Eventos */}
-                {futureEvents.length > 0 && (
+                {/* Feriado del día */}
+                {chileanHolidays[selectedDate] && (
+                    <View style={[styles.eventItem, { backgroundColor: '#E74C3C' + '20' }]}>
+                        <Text style={[styles.eventTitle, { color: '#E74C3C' }]}>
+                            🇨🇱 {chileanHolidays[selectedDate]}
+                        </Text>
+                    </View>
+                )}
+
+                {/* Todos los eventos próximos */}
+                {allEvents.length > 0 && (
                     <>
-                        <Text style={styles.sectionHeader}>Próximos Eventos:</Text>
-                        {futureEvents.map(item => {
-                            const eventDate = item.dateTime.toDate();
-                            return (
-                                <TouchableOpacity
-                                    key={item.id}
+                        <Text style={styles.sectionHeader}>Próximos Eventos</Text>
+                        {allEvents
+                            .filter(e => e.dateTime.toDate() >= new Date())
+                            .slice(0, 5)
+                            .map((event) => (
+                                <TouchableOpacity 
+                                    key={event.id} 
                                     style={styles.eventItem}
-                                    onPress={() => showEventDetails(item)}
+                                    onPress={() => showEventDetails(event)}
                                 >
-                                    <Text style={styles.eventTitle}>{item.title}</Text>
+                                    <Text style={styles.eventTitle}>{event.title}</Text>
                                     <View style={styles.eventDateBadge}>
                                         <Text style={styles.eventDateText}>
-                                            {eventDate.toLocaleDateString('es-CL', { 
+                                            {event.dateTime.toDate().toLocaleDateString('es-CL', { 
                                                 day: 'numeric', 
-                                                month: 'long', 
-                                                year: 'numeric' 
-                                            })} - {eventDate.toLocaleTimeString('es-CL', { 
+                                                month: 'short',
+                                                year: 'numeric'
+                                            })} - {event.dateTime.toDate().toLocaleTimeString('es-CL', { 
                                                 hour: '2-digit', 
                                                 minute: '2-digit' 
                                             })}
                                         </Text>
                                     </View>
-                                    <Text style={styles.eventAuthor}>Añadido por: {item.authorName}</Text>
+                                    {event.description && (
+                                        <Text style={styles.eventDescription}>{event.description}</Text>
+                                    )}
+                                    {event.reminder && plan === 'premium' && (
+                                        <Text style={{ fontSize: 12, color: theme.primary, marginTop: 5 }}>
+                                            🔔 Recordatorio activado
+                                        </Text>
+                                    )}
                                 </TouchableOpacity>
-                            );
-                        })}
+                            ))}
                     </>
                 )}
 
-                <View style={{ height: 50 }} />
+                {/* Espaciado inferior para el botón flotante */}
+                <View style={{ height: 100 }} />
             </ScrollView>
 
-            {/* Modal de Nuevo/Editar Evento */}
+            {/* Botón flotante para añadir evento */}
+            <TouchableOpacity 
+                style={styles.floatingButton}
+                onPress={openEventModal}
+            >
+                <Ionicons name="add" size={32} color={theme.white} />
+            </TouchableOpacity>
+
+            {/* Modal de Evento (Crear/Editar) */}
             <Modal
                 animationType="slide"
                 transparent={true}
@@ -747,21 +969,17 @@ const CalendarScreen: React.FC = () => {
             >
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContainer}>
-                        <ScrollView 
-                            style={styles.modalScrollView} 
-                            keyboardShouldPersistTaps="handled"
-                            nestedScrollEnabled={true}
-                        >
+                        <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
                             <Text style={styles.modalTitle}>
-                                {editingEventId ? 'Editar Evento' : 'Nuevo Evento'}
+                                {editingEventId ? "Editar Evento" : "Nuevo Evento"}
                             </Text>
 
                             {/* Título */}
                             <View style={styles.modalSection}>
-                                <Text style={styles.modalLabel}>Título</Text>
+                                <Text style={styles.modalLabel}>Título*</Text>
                                 <TextInput
                                     style={styles.modalInput}
-                                    placeholder="Ej. Aniversario, Cumpleaños..."
+                                    placeholder="Ej: Cita con el doctor"
                                     placeholderTextColor={theme.placeholder}
                                     value={eventTitle}
                                     onChangeText={setEventTitle}
@@ -810,34 +1028,70 @@ const CalendarScreen: React.FC = () => {
                                 />
                             </View>
 
-                            {/* Recordatorio */}
-                            <View style={[styles.modalSection, styles.reminderRow]}>
-                                <Text style={styles.modalLabel}>¿Activar Recordatorio?</Text>
+                            {/* Recordatorio con badge Premium */}
+                            <View style={[styles.modalSection, styles.reminderRow, plan === 'free' && styles.reminderDisabled]}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Text style={styles.modalLabel}>¿Activar Recordatorio?</Text>
+                                    {plan === 'free' && (
+                                        <View style={styles.premiumBadge}>
+                                            <Text style={styles.premiumBadgeText}>PREMIUM</Text>
+                                        </View>
+                                    )}
+                                </View>
                                 <Switch
                                     trackColor={{ false: theme.placeholder + '50', true: theme.primary + '50' }}
                                     thumbColor={eventReminder ? theme.primary : theme.placeholder}
                                     ios_backgroundColor={theme.placeholder + '30'}
-                                    onValueChange={setEventReminder}
+                                    onValueChange={handleReminderToggle}
                                     value={eventReminder}
+                                    disabled={plan === 'free'}
                                 />
                             </View>
 
-                            {eventReminder && (
+                            {plan === 'free' && (
                                 <View style={styles.modalSection}>
-                                     <Text style={[styles.modalLabel, { fontStyle: 'italic', textAlign: 'center' }]}>
-                                         (Próximamente: Configuración de recordatorio aquí)
-                                     </Text>
+                                    <Text style={[styles.modalLabel, { 
+                                        fontStyle: 'italic', 
+                                        textAlign: 'center',
+                                        fontSize: 13,
+                                        color: theme.placeholder
+                                    }]}>
+                                        💎 Actualiza a Premium para activar recordatorios
+                                    </Text>
                                 </View>
                             )}
 
                             {/* Botones */}
                             <View style={styles.modalButtons}>
-                                <Button title="Cancelar" onPress={closeEventModal} color="grey" />
-                                <Button 
-                                    title={editingEventId ? "Actualizar" : "Guardar"} 
-                                    onPress={handleAddEvent} 
-                                    color={theme.primary} 
-                                />
+                                <TouchableOpacity
+                                    style={{
+                                        flex: 1,
+                                        backgroundColor: 'grey',
+                                        padding: 14,
+                                        borderRadius: 8,
+                                        marginRight: 8,
+                                    }}
+                                    onPress={closeEventModal}
+                                >
+                                    <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>
+                                        Cancelar
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={{
+                                        flex: 1,
+                                        backgroundColor: theme.primary,
+                                        padding: 14,
+                                        borderRadius: 8,
+                                        marginLeft: 8,
+                                    }}
+                                    onPress={handleAddEvent}
+                                >
+                                    <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>
+                                        {editingEventId ? "Actualizar" : "Guardar"}
+                                    </Text>
+                                </TouchableOpacity>
                             </View>
                         </ScrollView>
                     </View>
@@ -883,7 +1137,7 @@ const CalendarScreen: React.FC = () => {
                                     <Text style={styles.dateTimePickerText}>{selectedEvent.authorName}</Text>
                                 </View>
 
-                                {selectedEvent.reminder && (
+                                {selectedEvent.reminder && plan === 'premium' && (
                                     <View style={styles.modalSection}>
                                         <Text style={styles.modalLabel}>🔔 Recordatorio activado</Text>
                                     </View>
@@ -939,11 +1193,19 @@ const CalendarScreen: React.FC = () => {
                                     </View>
                                 ) : (
                                     <View style={styles.modalButtons}>
-                                        <Button 
-                                            title="Cerrar" 
-                                            onPress={() => setIsDetailModalVisible(false)} 
-                                            color={theme.primary} 
-                                        />
+                                        <TouchableOpacity
+                                            style={{
+                                                flex: 1,
+                                                backgroundColor: theme.primary,
+                                                padding: 14,
+                                                borderRadius: 8,
+                                            }}
+                                            onPress={() => setIsDetailModalVisible(false)}
+                                        >
+                                            <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>
+                                                Cerrar
+                                            </Text>
+                                        </TouchableOpacity>
                                     </View>
                                 )}
                             </ScrollView>
@@ -952,7 +1214,7 @@ const CalendarScreen: React.FC = () => {
                 </View>
             </Modal>
 
-            {/* DateTimePicker */}
+            {/* DateTimePicker - FUERA de otros modales */}
             <DateTimePickerModal
                 isVisible={isDateTimePickerVisible}
                 mode={dateTimePickerMode}
@@ -965,8 +1227,13 @@ const CalendarScreen: React.FC = () => {
                 minuteInterval={5}
             />
 
-            {/* Selector de Mes/Año */}
-            
+            {/* Modal de Upgrade Premium */}
+            <UpgradePremiumModal
+                visible={showUpgradeModal}
+                onClose={() => setShowUpgradeModal(false)}
+            />
+
+            <Toast />
         </SafeAreaView>
     );
 };
