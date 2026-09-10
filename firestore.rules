@@ -1,0 +1,150 @@
+//
+// REGLAS DE SEGURIDAD PARA CONEXIÓN DIARIA
+//
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- FUNCIONES DE AYUDA ---
+
+    // ¿Está el usuario autenticado?
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // ¿Es el usuario el dueño de este documento?
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // ¿Pertenece el usuario a esta relación?
+    // (El ID de la relación es 'uid1_uid2')
+    function isInRelationship(relationshipId) {
+      return isAuthenticated() && request.auth.uid in relationshipId.split('_');
+    }
+
+    // ¿Es el usuario el autor del *nuevo* dato que se está creando?
+    function isAuthorOfNewData() {
+      return isAuthenticated() && request.resource.data.authorId == request.auth.uid;
+    }
+
+    // ¿Es el usuario el autor del dato que *ya existe*? (para editar/borrar)
+    function isAuthorOfExistingData() {
+      return isAuthenticated() && resource.data.authorId == request.auth.uid;
+    }
+
+    // Verificar si el usuario es pareja del perfil
+    function isPartner(userId) {
+      return isAuthenticated() &&
+             resource.data.partnerId != null &&
+             request.auth.uid == resource.data.partnerId;
+    }
+
+    // --- REGLA TEMPORAL PARA DESARROLLO ---
+    // ⚠️ ELIMINAR ANTES DE PRODUCCIÓN
+    match /{document=**} {
+      allow read, write: if request.time < timestamp.date(2025, 12, 7);
+    }
+
+    // --- REGLAS PARA LA COLECCIÓN 'users' ---
+    match /users/{userId} {
+
+      // Solo tú y tu pareja pueden leer tu perfil
+      allow read: if isUser(userId) || isPartner(userId);
+
+      // Solo tú puedes crear tu propio perfil
+      allow create: if isUser(userId);
+
+      // Solo tú puedes actualizar tu propio perfil
+      // (Incluye: mood, name, photoURL, partnerId, invitationCode, etc.)
+      // La validación del código de invitación se hace en el cliente
+      allow update: if isUser(userId);
+
+      // Nadie puede borrar perfiles
+      allow delete: if false;
+    }
+
+    // --- REGLAS PARA LA COLECCIÓN 'relationships' ---
+    // (Contiene todos los datos compartidos)
+    match /relationships/{relationshipId} {
+
+      // SOLO los 2 usuarios de la relación pueden leer o escribir el documento principal
+      allow read, write: if isInRelationship(relationshipId);
+
+      // --- SUB-COLECCIÓN: Chat ('messages') ---
+      match /messages/{messageId} {
+        // [Chat] Solo los 2 usuarios pueden leer y crear mensajes
+        allow read, create: if isInRelationship(relationshipId);
+
+        // [Chat] Solo el autor puede eliminar su propio mensaje
+        allow delete: if isInRelationship(relationshipId) && isAuthorOfExistingData();
+
+        // [Chat] No se pueden editar mensajes (para mantener integridad)
+        allow update: if false;
+      }
+
+      // --- SUB-COLECCIÓN: Álbum ('photos') ---
+      match /photos/{photoId} {
+        // [Álbum] Solo los 2 usuarios pueden leer fotos
+        allow read: if isInRelationship(relationshipId);
+
+        // [Álbum] Solo puedes crear fotos si eres el autor
+        allow create: if isInRelationship(relationshipId) && isAuthorOfNewData();
+
+        // [Álbum] Solo el autor puede eliminar su propia foto
+        allow delete: if isInRelationship(relationshipId) && isAuthorOfExistingData();
+
+        allow update: if false; // No se pueden editar
+      }
+
+      // --- SUB-COLECCIÓN: Notas ('notes') ---
+      match /notes/{noteId} {
+        // [Notas] Solo los 2 usuarios pueden leer notas
+        allow read: if isInRelationship(relationshipId);
+
+        // [Notas] Solo puedes crear notas si eres el autor
+        allow create: if isInRelationship(relationshipId) && isAuthorOfNewData();
+
+        // [Notas] Solo el autor puede editar o borrar su propia nota
+        allow update, delete: if isInRelationship(relationshipId) && isAuthorOfExistingData();
+      }
+
+      // --- SUB-COLECCIÓN: Calendario ('events') ---
+      match /events/{eventId} {
+        // [Calendario] Solo los 2 usuarios pueden leer eventos
+        allow read: if isInRelationship(relationshipId);
+
+        // [Calendario] Solo puedes crear eventos si eres el autor
+        allow create: if isInRelationship(relationshipId) && isAuthorOfNewData();
+
+        // [Calendario] Solo el autor puede editar o borrar su propio evento
+        allow update, delete: if isInRelationship(relationshipId) && isAuthorOfExistingData();
+      }
+
+      // --- SUB-COLECCIÓN: Tareas ('tasks') ---
+      match /tasks/{taskId} {
+        // [Tareas] Cualquiera en la relación puede leer, crear y actualizar (marcar como completada)
+        allow read, create, update: if isInRelationship(relationshipId);
+
+        // [Tareas] Solo el autor puede borrarla
+        allow delete: if isInRelationship(relationshipId) && isAuthorOfExistingData();
+      }
+
+      // --- SUB-COLECCIÓN: Lista de Deseos ('wishlist') ---
+      match /wishlist/{wishId} {
+        // [Deseos] Cualquiera en la relación puede leer, crear y actualizar (marcar como "comprado")
+        allow read, create, update: if isInRelationship(relationshipId);
+
+        // [Deseos] Solo el autor puede borrar su propio deseo
+        allow delete: if isInRelationship(relationshipId) && isAuthorOfExistingData();
+      }
+
+      // --- SUB-COLECCIÓN: Historial "Te Extraño" ---
+      match /missYouHistory/{dateId} {
+        // [Home] Cualquiera en la relación puede leer y escribir (actualizar su contador)
+        allow read, write: if isInRelationship(relationshipId);
+      }
+    }
+  }
+}

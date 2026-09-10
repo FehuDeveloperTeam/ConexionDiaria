@@ -61,10 +61,10 @@ const RootLayout: React.FC = () => {
     const colorScheme = useColorScheme() || 'light';
     const theme = themes[colorScheme]; 
 
-    // Configuración de RevenueCat (esto está perfecto)
+    // Configuración de RevenueCat (ver .env.example para la variable requerida)
     useEffect(() => {
         Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
-        Purchases.configure({ apiKey: "test_yfFeKwhFksqSJrdAoTzTKOmxkKX" });
+        Purchases.configure({ apiKey: process.env.EXPO_PUBLIC_REVENUECAT_API_KEY! });
     }, []);
 
     // 8. El 'if (loading)' se ha movido a 'AuthRedirect'

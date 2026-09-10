@@ -5,15 +5,21 @@ import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth"
 import { Platform } from 'react-native';
 import { getDatabase } from 'firebase/database';
 
-// Configuración de Firebase
+// Configuración de Firebase (ver .env.example para las variables requeridas)
 const firebaseConfig = {
-  apiKey: "AIzaSyA7SukKPiuIgGIAPbZ1CfPedb4KX3A2A3E",
-  authDomain: "conexiondiariaapp.firebaseapp.com",
-  projectId: "conexiondiariaapp",
-  storageBucket: "conexiondiariaapp.firebasestorage.app",
-  messagingSenderId: "647692937607",
-  appId: "1:647692937607:web:1096ab03ff34caabb20b22"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
+
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  throw new Error(
+    'Faltan variables EXPO_PUBLIC_FIREBASE_* — copia .env.example a .env y completa los valores.'
+  );
+}
 
 // Inicializa Firebase
 const app = initializeApp(firebaseConfig);
