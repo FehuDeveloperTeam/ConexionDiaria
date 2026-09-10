@@ -11,7 +11,6 @@ import { themes } from '../../src/config/theme'; // Verifica tu ruta
 import { collection, addDoc, onSnapshot, query, orderBy, doc, DocumentData, serverTimestamp, deleteDoc, updateDoc } from 'firebase/firestore';
 import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth'; // Aseguramos onAuthStateChanged
 import Toast from 'react-native-toast-message';
-import { Ionicons } from '@expo/vector-icons';
 
 // --- Estilos ---
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
@@ -132,7 +131,7 @@ const NotesScreen: React.FC = () => {
             await addDoc(notesCollectionRef, { text: noteText, authorId: user.uid, authorName: userData.displayName, createdAt: serverTimestamp() });
             setNewNote('');
             Toast.show({ type: 'success', text1: 'Nota añadida' });
-        } catch (error) { Toast.show({ type: 'error', text1: 'Error al guardar la nota' }); }
+        } catch { Toast.show({ type: 'error', text1: 'Error al guardar la nota' }); }
     }, [newNote, userData, user]);
 
     // Eliminar una nota (confirmación incluida)
@@ -145,7 +144,7 @@ const NotesScreen: React.FC = () => {
                     const chatId = [user.uid, userData.partnerId].sort().join('_');
                     const noteDocRef = doc(db, 'relationships', chatId, 'notes', noteId);
                     try { await deleteDoc(noteDocRef); Toast.show({ type: 'success', text1: 'Nota eliminada' }); }
-                    catch (error) { Toast.show({ type: 'error', text1: 'Error al eliminar' }); }
+                    catch { Toast.show({ type: 'error', text1: 'Error al eliminar' }); }
                 }
             }]
         );
@@ -167,7 +166,7 @@ const NotesScreen: React.FC = () => {
             await updateDoc(noteDocRef, { text: editedText.trim() });
             setIsEditModalVisible(false); setEditingNote(null);
             Toast.show({ type: 'success', text1: 'Nota actualizada' });
-        } catch (error) { Toast.show({ type: 'error', text1: 'Error al actualizar' }); }
+        } catch { Toast.show({ type: 'error', text1: 'Error al actualizar' }); }
     };
 
     // Función para manejar la pulsación larga en una nota

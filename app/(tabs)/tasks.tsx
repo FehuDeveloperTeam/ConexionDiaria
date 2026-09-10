@@ -17,7 +17,6 @@ import {
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
-import { usePlan } from '../../src/contexts/planContext';
 
 // --- Estilos (Añadimos estilos para el modal y detalles de la tarea) ---
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
@@ -243,7 +242,7 @@ const TasksScreen: React.FC = () => {
             await updateDoc(taskDocRef, { text: editedText.trim() });
             setIsEditModalVisible(false); setEditingTask(null);
             Toast.show({ type: 'success', text1: 'Tarea actualizada' });
-        } catch (error) { Toast.show({ type: 'error', text1: 'Error al actualizar' }); }
+        } catch { Toast.show({ type: 'error', text1: 'Error al actualizar' }); }
     };
 
     // Eliminar la tarea
@@ -266,7 +265,7 @@ const TasksScreen: React.FC = () => {
                         await deleteDoc(taskDocRef); 
                         Toast.show({ type: 'success', text1: 'Tarea eliminada' }); 
                     }
-                    catch (error) { Toast.show({ type: 'error', text1: 'Error al eliminar' }); }
+                    catch { Toast.show({ type: 'error', text1: 'Error al eliminar' }); }
                 }
             }]
         );

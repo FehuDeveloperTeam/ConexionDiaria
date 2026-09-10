@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-    View, Text, StyleSheet, Button, useColorScheme,
+    View, Text, StyleSheet, Button,
     ActivityIndicator, TextInput, TouchableOpacity,
     Alert, // Keep Alert import
     Modal, ScrollView, FlatList,
@@ -16,14 +16,12 @@ import {
     increment,
     limit // --- AÑADIDO: Importamos 'limit' para el paywall ---
 } from 'firebase/firestore';
-import { auth, db } from '../../src/config/firebaseConfig';
+import { db } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme'; // Importamos la definición base de 'themes'
 import * as Clipboard from 'expo-clipboard';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
-import { formatDistanceStrict } from 'date-fns';
-import { es } from 'date-fns/locale/es';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications'; 
 
@@ -416,7 +414,7 @@ const Home: React.FC = () => {
             batch.update(partnerDocRef, { relationshipStartDate: startDateTimestamp });
             await batch.commit();
             Toast.show({ type: 'success', text1: '¡Fecha de inicio guardada!' });
-        } catch (error) { Toast.show({ type: 'error', text1: 'Error al guardar la fecha' }); }
+        } catch { Toast.show({ type: 'error', text1: 'Error al guardar la fecha' }); }
     }, [user, userData, hideDatePicker]);
 
     const pulseHeart = () => {

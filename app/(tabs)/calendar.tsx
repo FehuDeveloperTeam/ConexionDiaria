@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     View, Text, StyleSheet, useColorScheme, ActivityIndicator,
-    Modal, TextInput, FlatList, Alert, TouchableOpacity,
-    ScrollView, Switch, Dimensions
+    Modal, TextInput, Alert, TouchableOpacity,
+    ScrollView, Switch
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -18,8 +18,6 @@ import Toast from 'react-native-toast-message';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { Ionicons } from '@expo/vector-icons';
 import { usePlan } from '../../src/contexts/planContext';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // Configuración de idioma español
 LocaleConfig.locales['es'] = {

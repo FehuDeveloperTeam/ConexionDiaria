@@ -4,11 +4,10 @@ import {
     Alert, Image, TouchableOpacity, TextInput, Button, ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { auth, db, storage } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
-import { User as FirebaseUser, signOut } from 'firebase/auth'; // 'onAuthStateChanged' ya no es necesario aquí
-import { doc, DocumentData, updateDoc, writeBatch } from 'firebase/firestore'; // 'onSnapshot' ya no es necesario aquí
+import { signOut } from 'firebase/auth'; // 'onAuthStateChanged' ya no es necesario aquí
+import { doc, updateDoc, writeBatch } from 'firebase/firestore'; // 'onSnapshot' ya no es necesario aquí
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -179,7 +178,6 @@ const ConfigScreen: React.FC = () => {
     const colorScheme = useColorScheme() || 'light';
     const theme = themes[colorScheme];
     const styles = getStyles(theme);
-    const router = useRouter();
 
     // --- ESTADOS CORREGIDOS ---
     // 1. Obtenemos 'user', 'userData', 'plan' y 'isLoading' del contexto

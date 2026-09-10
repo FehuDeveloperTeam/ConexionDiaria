@@ -1,6 +1,6 @@
 import { Link, useRouter } from 'expo-router';
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Button, TextInput as RNTextInput, Alert, useColorScheme, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Button, TextInput as RNTextInput, useColorScheme, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { auth } from '../src/config/firebaseConfig'; // Ruta corregida
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { themes } from '../src/config/theme'; // Ruta corregida

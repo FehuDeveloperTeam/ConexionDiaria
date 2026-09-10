@@ -1,21 +1,20 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-    View, useColorScheme, Platform, KeyboardAvoidingView, StyleSheet, 
-    ActivityIndicator, Text, TouchableOpacity, Image, LayoutAnimation, UIManager, AppState,
+    View, useColorScheme, Platform, KeyboardAvoidingView, StyleSheet,
+    ActivityIndicator, Text, TouchableOpacity, Image, UIManager, AppState,
     Alert, Linking, Keyboard, Modal, Dimensions, Animated, ScrollView
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { GiftedChat, IMessage, InputToolbar, Composer, Send, Actions, Bubble } from 'react-native-gifted-chat';
 import { useRouter } from 'expo-router';
-import { useHeaderHeight } from '@react-navigation/elements';
 import { auth, db, storage } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
 import {
     collection, addDoc, onSnapshot, query, orderBy, doc,
-    DocumentData, updateDoc, Timestamp, deleteDoc, setDoc
+    updateDoc, Timestamp
 } from 'firebase/firestore';
 import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
-import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { useActionSheet, ActionSheetProvider } from '@expo/react-native-action-sheet';
 import * as ImagePicker from 'expo-image-picker';
@@ -308,9 +307,6 @@ const ImageViewerModal: React.FC<{
     onClose: () => void;
     onDownload?: () => void;
 }> = ({ visible, imageUri, onClose, onDownload }) => {
-    const scale = useRef(new Animated.Value(1)).current;
-    const translateX = useRef(new Animated.Value(0)).current;
-    const translateY = useRef(new Animated.Value(0)).current;
     const [isDownloading, setIsDownloading] = useState(false);
 
     const handleDownload = async () => {
@@ -354,19 +350,6 @@ const ImageViewerModal: React.FC<{
             });
             setIsDownloading(false);
         }
-    };
-
-    const handlePinchGesture = Animated.event(
-        [{ nativeEvent: { scale: scale } }],
-        { useNativeDriver: true }
-    );
-
-    const resetZoom = () => {
-        Animated.parallel([
-            Animated.spring(scale, { toValue: 1, useNativeDriver: true }),
-            Animated.spring(translateX, { toValue: 0, useNativeDriver: true }),
-            Animated.spring(translateY, { toValue: 0, useNativeDriver: true }),
-        ]).start();
     };
 
     return (
@@ -989,12 +972,10 @@ const ChatScreen = () => {
     const colorScheme = useColorScheme();
     const theme = colorScheme === 'dark' ? themes.dark : themes.light;
     const router = useRouter();
-    const insets = useSafeAreaInsets();
-    const headerHeight = useHeaderHeight();
     const { showActionSheetWithOptions } = useActionSheet();
 
     // Context de Plan
-    const { user, userData, partnerData, relationshipData, plan, isLoading: planLoading } = usePlan();
+    const { userData, relationshipData, plan, isLoading: planLoading } = usePlan();
 
     // Estados principales
     const [messages, setMessages] = useState<ExtendedMessage[]>([]);
@@ -1040,7 +1021,7 @@ const ChatScreen = () => {
     const [profilePhotoSize, setProfilePhotoSize] = useState<'medium' | 'full'>('medium');
     
     // Estado para manejar el teclado
-    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const [, setKeyboardHeight] = useState(0);
 
     // Calcular almacenamiento usado
     const usedStorage = relationshipData?.usedStorage || 0;
@@ -1085,7 +1066,7 @@ const ChatScreen = () => {
                         { shouldPlay: false }
                     );
                     notificationSoundRef.current = notifSound;
-                } catch (error) {
+                } catch {
                     console.log('Archivo notification.mp3 no encontrado - continuando sin sonido');
                 }
 
@@ -1095,7 +1076,7 @@ const ChatScreen = () => {
                         { shouldPlay: false }
                     );
                     completionSoundRef.current = completeSound;
-                } catch (error) {
+                } catch {
                     console.log('Archivo complete.mp3 no encontrado - continuando sin sonido');
                 }
 
@@ -1242,28 +1223,6 @@ const ChatScreen = () => {
 
         return () => clearInterval(interval);
     }, [partnerInfo]);
-
-    // Función para reproducir sonido de notificación
-    const playNotificationSound = async () => {
-        try {
-            if (notificationSoundRef.current) {
-                await notificationSoundRef.current.replayAsync();
-            }
-        } catch (error) {
-            console.error('Error reproduciendo sonido de notificación:', error);
-        }
-    };
-
-    // Función para reproducir sonido de completado
-    const playCompletionSound = async () => {
-        try {
-            if (completionSoundRef.current) {
-                await completionSoundRef.current.replayAsync();
-            }
-        } catch (error) {
-            console.error('Error reproduciendo sonido de completado:', error);
-        }
-    };
 
     // Función para detener el audio actual
     const stopCurrentAudio = async () => {
