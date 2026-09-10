@@ -26,3 +26,5 @@ export const themes = {
   light: lightColors,
   dark: darkColors,
 };
+
+export type ThemeColors = typeof lightColors;

@@ -69,8 +69,9 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 
     const borderStyle = useMemo(() => {
         const baseTheme = themes[colorScheme];
-        if (plan === 'premium' && settings.borderStyle && PREMIUM_BORDERS[settings.borderStyle]) {
-            return PREMIUM_BORDERS[settings.borderStyle];
+        const borderKey = settings.borderStyle as Exclude<keyof typeof PREMIUM_BORDERS, 'default'> | undefined;
+        if (plan === 'premium' && borderKey && PREMIUM_BORDERS[borderKey]) {
+            return PREMIUM_BORDERS[borderKey];
         }
         // Color de borde personalizado (si no hay estilo 'heart')
         if (plan === 'premium' && settings.borderColor) {
