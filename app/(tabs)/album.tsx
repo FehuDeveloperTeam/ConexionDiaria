@@ -8,7 +8,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db, storage } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
-import { DocumentData, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
+import { DocumentData, onSnapshot, collection, query, orderBy, limit, addDoc, serverTimestamp } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
@@ -101,7 +101,7 @@ const AlbumScreen: React.FC = () => {
         setLoading(true);
         const chatId = [user.uid, partnerId].sort().join('_');
         const photosCollectionRef = collection(db, 'relationships', chatId, 'photos');
-        const q = query(photosCollectionRef, orderBy('createdAt', 'desc'));
+        const q = query(photosCollectionRef, orderBy('createdAt', 'desc'), limit(150));
 
         const unsubscribePhotos = onSnapshot(q, (snapshot) => {
             setPhotos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));

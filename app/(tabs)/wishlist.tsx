@@ -7,9 +7,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { themes } from '../../src/config/theme';
 import { db } from '../../src/config/firebaseConfig';
-import { 
-    collection, addDoc, onSnapshot, Timestamp, query, doc, 
-    serverTimestamp, updateDoc, orderBy, deleteDoc 
+import {
+    collection, addDoc, onSnapshot, Timestamp, query, doc,
+    serverTimestamp, updateDoc, orderBy, deleteDoc, limit
 } from 'firebase/firestore';
 import { usePlan } from '../../src/contexts/planContext';
 import { useTheme } from '../../src/contexts/themeContext';
@@ -381,7 +381,7 @@ const WishlistScreen: React.FC = () => {
 
         const chatId = [user.uid, partnerId].sort().join('_');
         const wishlistRef = collection(db, 'relationships', chatId, 'wishlist');
-        const q = query(wishlistRef, orderBy('createdAt', 'desc'));
+        const q = query(wishlistRef, orderBy('createdAt', 'desc'), limit(200));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setAllItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WishItem)));

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
     View, useColorScheme, Platform, KeyboardAvoidingView, StyleSheet,
     ActivityIndicator, Text, TouchableOpacity, Image, UIManager, AppState,
@@ -11,7 +11,8 @@ import { auth, db, storage } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
 import {
     collection, addDoc, onSnapshot, query, orderBy, doc,
-    updateDoc, Timestamp
+    updateDoc, Timestamp, limit, getDocs, startAfter,
+    QueryDocumentSnapshot, DocumentData
 } from 'firebase/firestore';
 import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
 import { Feather, Ionicons } from '@expo/vector-icons';
@@ -30,6 +31,11 @@ import { usePlan } from '../../src/contexts/planContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// Tamaño de página para el chat: la ventana "en vivo" (onSnapshot) carga las
+// últimas MESSAGES_PAGE_SIZE, y "cargar mensajes anteriores" trae de a
+// MESSAGES_PAGE_SIZE más con una lectura puntual (getDocs), no en tiempo real.
+const MESSAGES_PAGE_SIZE = 40;
+
 // Extender el tipo IMessage para incluir campos personalizados
 interface ExtendedMessage extends IMessage {
     audio?: string;
@@ -42,6 +48,33 @@ interface ExtendedMessage extends IMessage {
     deleted?: boolean;
     sentAt?: Date;
 }
+
+// Convierte un documento de Firestore de la subcolección 'messages' al
+// formato que usa GiftedChat. Se usa tanto en el listener en vivo como en
+// 'cargar mensajes anteriores', para no duplicar el mapeo.
+const mapMessageDoc = (doc: QueryDocumentSnapshot<DocumentData>): ExtendedMessage => {
+    const data = doc.data();
+    return {
+        _id: doc.id,
+        text: data.text || '',
+        createdAt: data.createdAt?.toDate() || new Date(),
+        user: {
+            _id: data.user._id,
+            name: data.user.name,
+        },
+        image: data.image,
+        video: data.video,
+        audio: data.audio,
+        file: data.file,
+        fileName: data.fileName,
+        fileSize: data.fileSize,
+        delivered: data.delivered ?? false,
+        read: data.read ?? false,
+        audioPlayed: data.audioPlayed ?? false,
+        deleted: data.deleted ?? false,
+        sentAt: data.sentAt?.toDate(),
+    };
+};
 
 // Habilitar LayoutAnimation en Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -978,7 +1011,18 @@ const ChatScreen = () => {
     const { userData, relationshipData, plan, isLoading: planLoading } = usePlan();
 
     // Estados principales
-    const [messages, setMessages] = useState<ExtendedMessage[]>([]);
+    // 'messages' se arma a partir de dos piezas: la ventana en vivo (los
+    // últimos MESSAGES_PAGE_SIZE, vía onSnapshot) y las páginas anteriores
+    // ya cargadas con "cargar mensajes anteriores" (estáticas, vía getDocs).
+    const [liveMessages, setLiveMessages] = useState<ExtendedMessage[]>([]);
+    const [earlierMessages, setEarlierMessages] = useState<ExtendedMessage[]>([]);
+    const [hasMoreMessages, setHasMoreMessages] = useState(false);
+    const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
+    const oldestMessageDocRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+    const messages = useMemo(
+        () => [...liveMessages, ...earlierMessages],
+        [liveMessages, earlierMessages]
+    );
     const [inputText, setInputText] = useState('');
     const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
     const [loading, setLoading] = useState(true);
@@ -1521,43 +1565,39 @@ const ChatScreen = () => {
 
     useEffect(() => {
         if (!currentUser || !userData?.partnerId) {
-            setMessages([]);
+            setLiveMessages([]);
+            setEarlierMessages([]);
+            setHasMoreMessages(false);
+            oldestMessageDocRef.current = null;
             setLoading(false);
             return;
         }
 
+        // Nueva conversación (cambió el usuario o la pareja): descartar
+        // cualquier página "anterior" que se hubiera cargado para la charla previa.
+        setEarlierMessages([]);
+        setHasMoreMessages(false);
+        oldestMessageDocRef.current = null;
+
         const relationshipId = [currentUser.uid, userData.partnerId].sort().join('_');
         const messagesRef = collection(db, 'relationships', relationshipId, 'messages');
-        const q = query(messagesRef, orderBy('createdAt', 'desc'));
+        const q = query(messagesRef, orderBy('createdAt', 'desc'), limit(MESSAGES_PAGE_SIZE));
 
         const unsubscribe = onSnapshot(q, async (snapshot) => {
-            const loadedMessages: ExtendedMessage[] = snapshot.docs.map(doc => {
-                const data = doc.data();
-                return {
-                    _id: doc.id,
-                    text: data.text || '',
-                    createdAt: data.createdAt?.toDate() || new Date(),
-                    user: {
-                        _id: data.user._id,
-                        name: data.user.name,
-                    },
-                    image: data.image,
-                    video: data.video,
-                    audio: data.audio,
-                    file: data.file,
-                    fileName: data.fileName,
-                    fileSize: data.fileSize,
-                    delivered: data.delivered ?? false,
-                    read: data.read ?? false,
-                    audioPlayed: data.audioPlayed ?? false,
-                    deleted: data.deleted ?? false,
-                    sentAt: data.sentAt?.toDate(),
-                };
-            });
+            const loadedMessages: ExtendedMessage[] = snapshot.docs.map(mapMessageDoc);
 
             console.log('📨 Mensajes cargados:', loadedMessages.length, 'primer mensaje:', loadedMessages[0]?._id);
-            setMessages(loadedMessages);
+            setLiveMessages(loadedMessages);
             setLoading(false);
+
+            // El cursor de paginación se fija con la primera carga de esta
+            // ventana en vivo. Los siguientes disparos del listener (por un
+            // 'delivered'/'read' que cambia, por ejemplo) no deben moverlo —
+            // eso rompería 'cargar mensajes anteriores' a mitad de sesión.
+            if (oldestMessageDocRef.current === null) {
+                oldestMessageDocRef.current = snapshot.docs[snapshot.docs.length - 1] ?? null;
+                setHasMoreMessages(snapshot.docs.length === MESSAGES_PAGE_SIZE);
+            }
 
             // Marcar mensajes como entregados
             const undeliveredMessages = snapshot.docs.filter(doc => {
@@ -1586,6 +1626,40 @@ const ChatScreen = () => {
 
         return () => unsubscribe();
     }, [currentUser, userData?.partnerId]);
+
+    // Cargar mensajes anteriores (paginación). Es una lectura puntual
+    // (getDocs), no un listener en tiempo real — los mensajes viejos ya
+    // enviados no necesitan actualizarse en vivo.
+    const handleLoadEarlier = useCallback(async () => {
+        if (!currentUser || !userData?.partnerId || !oldestMessageDocRef.current || isLoadingEarlier) {
+            return;
+        }
+
+        setIsLoadingEarlier(true);
+        try {
+            const relationshipId = [currentUser.uid, userData.partnerId].sort().join('_');
+            const messagesRef = collection(db, 'relationships', relationshipId, 'messages');
+            const q = query(
+                messagesRef,
+                orderBy('createdAt', 'desc'),
+                startAfter(oldestMessageDocRef.current),
+                limit(MESSAGES_PAGE_SIZE)
+            );
+
+            const snapshot = await getDocs(q);
+            const olderMessages = snapshot.docs.map(mapMessageDoc);
+
+            setEarlierMessages(prev => [...prev, ...olderMessages]);
+            if (snapshot.docs.length > 0) {
+                oldestMessageDocRef.current = snapshot.docs[snapshot.docs.length - 1];
+            }
+            setHasMoreMessages(snapshot.docs.length === MESSAGES_PAGE_SIZE);
+        } catch (error) {
+            console.error('Error cargando mensajes anteriores:', error);
+        } finally {
+            setIsLoadingEarlier(false);
+        }
+    }, [currentUser, userData?.partnerId, isLoadingEarlier]);
 
     // Enviar mensaje de texto
     const onSend = useCallback(async (newMessages: IMessage[] = []) => {
@@ -2458,6 +2532,9 @@ const ChatScreen = () => {
                 <GiftedChat
                     messages={messages}
                     onSend={onSend}
+                    loadEarlier={hasMoreMessages}
+                    onLoadEarlier={handleLoadEarlier}
+                    isLoadingEarlier={isLoadingEarlier}
                     user={{
                         _id: currentUser?.uid || '',
                         name: userData?.name || 'Usuario',

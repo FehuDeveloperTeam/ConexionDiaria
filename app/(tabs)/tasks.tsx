@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
 import {
-    collection, addDoc, onSnapshot, query, orderBy, doc,
+    collection, addDoc, onSnapshot, query, orderBy, doc, limit,
     DocumentData, serverTimestamp, updateDoc, deleteDoc // 3. Añadimos deleteDoc
 } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
@@ -123,7 +123,7 @@ const TasksScreen: React.FC = () => {
         setLoading(true);
         const chatId = [user.uid, partnerId].sort().join('_');
         const tasksCollectionRef = collection(db, 'relationships', chatId, 'tasks');
-        const q = query(tasksCollectionRef, orderBy('isCompleted', 'asc'), orderBy('createdAt', 'desc'));
+        const q = query(tasksCollectionRef, orderBy('isCompleted', 'asc'), orderBy('createdAt', 'desc'), limit(300));
 
         const unsubscribeTasks = onSnapshot(q, (snapshot) => {
             setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));

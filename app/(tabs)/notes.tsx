@@ -7,7 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../src/config/firebaseConfig'; // Verifica tu ruta
 import { themes } from '../../src/config/theme'; // Verifica tu ruta
-import { collection, addDoc, onSnapshot, query, orderBy, doc, DocumentData, serverTimestamp, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, doc, limit, DocumentData, serverTimestamp, deleteDoc, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 import { usePlan } from '../../src/contexts/planContext';
 
@@ -69,7 +69,7 @@ const NotesScreen: React.FC = () => {
         setLoading(true);
         const chatId = [user.uid, partnerId].sort().join('_');
         const notesCollectionRef = collection(db, 'relationships', chatId, 'notes');
-        const q = query(notesCollectionRef, orderBy('createdAt', 'desc'));
+        const q = query(notesCollectionRef, orderBy('createdAt', 'desc'), limit(200));
 
         const unsubscribeNotes = onSnapshot(q, (snapshot) => {
             setNotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));

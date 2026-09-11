@@ -284,19 +284,22 @@ const Home: React.FC = () => {
     // --- Efectos ---
 
     // useEffect para cargar el Historial (ACTUALIZADO CON LÍMITE FREEMIUM)
+    const missYouPartnerId = userData?.partnerId as string | undefined;
+
     useEffect(() => {
-        if (!user || !userData || !userData.partnerId) {
+        if (!user || !missYouPartnerId) {
             setMissYouHistory([]);
             return;
         }
-        const relationshipId = [user.uid, userData.partnerId].sort().join('_');
+        const relationshipId = [user.uid, missYouPartnerId].sort().join('_');
         const historyCollectionRef = collection(db, 'relationships', relationshipId, 'missYouHistory');
         
         // --- LÓGICA DE LÍMITE FREEMIUM ---
         let q;
         if (plan === 'premium') {
-            // Premium: Carga todo el historial
-            q = query(historyCollectionRef, orderBy('__name__', 'desc'));
+            // Premium: historial ilimitado en la práctica, pero con un techo
+            // razonable (un año) — sin esto, la colección crece sin límite.
+            q = query(historyCollectionRef, orderBy('__name__', 'desc'), limit(365));
         } else {
             // Free: Carga solo los últimos 3 días
             q = query(historyCollectionRef, orderBy('__name__', 'desc'), limit(3));
@@ -310,7 +313,7 @@ const Home: React.FC = () => {
             setMissYouHistory([]);
         });
         return () => unsubscribeHistory();
-    }, [user, userData, plan]); // <-- Añadido 'plan' a las dependencias
+    }, [user, missYouPartnerId, plan]);
 
     // useEffect para el intervalo de reset
     useEffect(() => {

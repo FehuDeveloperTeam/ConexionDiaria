@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
 import {
-    collection, addDoc, onSnapshot, query, doc,
+    collection, addDoc, onSnapshot, query, doc, orderBy, limit,
     serverTimestamp, Timestamp, deleteDoc, updateDoc
 } from 'firebase/firestore';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
@@ -445,7 +445,10 @@ const CalendarScreen: React.FC = () => {
         setLoading(true);
         const chatId = [user.uid, partnerId].sort().join('_');
         const eventsCollectionRef = collection(db, 'relationships', chatId, 'events');
-        const q = query(eventsCollectionRef);
+        // Sin 'orderBy' + 'limit', Firestore no tiene un criterio para decidir
+        // CUÁLES 500 eventos devolver si la relación supera el límite — con
+        // 'dateTime desc' nos aseguramos de que sean los más recientes.
+        const q = query(eventsCollectionRef, orderBy('dateTime', 'desc'), limit(500));
 
         const unsubscribeEvents = onSnapshot(q, (snapshot) => {
             const eventsList = snapshot.docs
