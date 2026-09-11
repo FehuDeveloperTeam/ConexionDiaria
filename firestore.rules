@@ -41,10 +41,32 @@ service cloud.firestore {
              request.auth.uid == resource.data.partnerId;
     }
 
-    // --- REGLA TEMPORAL PARA DESARROLLO ---
-    // ⚠️ ELIMINAR ANTES DE PRODUCCIÓN
-    match /{document=**} {
-      allow read, write: if request.time < timestamp.date(2025, 12, 7);
+    // ¿El documento de destino me tiene HOY como pareja? Se usa para
+    // desconectar, y para escribir campos compartidos como la fecha de
+    // aniversario en el documento del otro.
+    function isCurrentPartnerOf() {
+      return isAuthenticated() && resource.data.partnerId == request.auth.uid;
+    }
+
+    // ¿Estoy reclamando a esta persona como mi pareja, y ella no tenía
+    // pareja todavía? (paso de 'conectar' que toca el documento ajeno)
+    function isClaimingAsPartner() {
+      return isAuthenticated()
+        && resource.data.partnerId == null
+        && request.resource.data.partnerId == request.auth.uid;
+    }
+
+    // ¿Estoy liberando a esta persona de ser mi pareja? (paso de
+    // 'desconectar' que toca el documento ajeno)
+    function isReleasingAsPartner() {
+      return isCurrentPartnerOf() && request.resource.data.partnerId == null;
+    }
+
+    // ¿La escritura toca EXCLUSIVAMENTE estos campos? Así una excepción para
+    // "escribir el documento ajeno" no se puede usar de paso para tocar
+    // cualquier otro campo del perfil.
+    function onlyFieldsChanged(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
     }
 
     // --- REGLAS PARA LA COLECCIÓN 'users' ---
@@ -56,10 +78,16 @@ service cloud.firestore {
       // Solo tú puedes crear tu propio perfil
       allow create: if isUser(userId);
 
-      // Solo tú puedes actualizar tu propio perfil
-      // (Incluye: mood, name, photoURL, partnerId, invitationCode, etc.)
-      // La validación del código de invitación se hace en el cliente
-      allow update: if isUser(userId);
+      // Solo tú puedes actualizar tu propio perfil libremente (mood, name,
+      // photoURL, partnerId propio, invitationCode, etc.). Además, dos
+      // excepciones acotadas para tocar el documento AJENO, cada una
+      // restringida a un único campo y a una condición previa específica:
+      allow update: if isUser(userId)
+        // Conectar o desconectar pareja: solo el campo 'partnerId', y solo
+        // reclamando a alguien libre o liberando a quien me tiene como pareja.
+        || (onlyFieldsChanged(['partnerId']) && (isClaimingAsPartner() || isReleasingAsPartner()))
+        // Fecha de aniversario compartida: solo entre pareja actual.
+        || (onlyFieldsChanged(['relationshipStartDate']) && isCurrentPartnerOf());
 
       // Nadie puede borrar perfiles
       allow delete: if false;

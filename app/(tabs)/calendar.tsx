@@ -467,16 +467,20 @@ const CalendarScreen: React.FC = () => {
         
         const startDate = userData.relationshipStartDate.toDate();
         const today = new Date();
+        // Comparar solo por fecha, no por hora: si no, el día exacto del
+        // aniversario cae "antes" que 'today' (que trae la hora actual) y
+        // salta erróneamente al año siguiente.
+        const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         const currentYear = today.getFullYear();
-        
+
         let nextAnnivDate = new Date(currentYear, startDate.getMonth(), startDate.getDate());
-        
-        if (nextAnnivDate < today) {
+
+        if (nextAnnivDate < todayMidnight) {
             nextAnnivDate = new Date(currentYear + 1, startDate.getMonth(), startDate.getDate());
         }
-        
+
         const yearsCount = nextAnnivDate.getFullYear() - startDate.getFullYear();
-        const daysUntil = Math.ceil((nextAnnivDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        const daysUntil = Math.round((nextAnnivDate.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
         
         return {
             date: nextAnnivDate,
@@ -789,7 +793,9 @@ const CalendarScreen: React.FC = () => {
                             })}
                         </Text>
                         <Text style={styles.anniversaryCountdown}>
-                            Faltan {nextAnniversary.daysUntil} {nextAnniversary.daysUntil === 1 ? 'día' : 'días'}
+                            {nextAnniversary.daysUntil === 0
+                                ? '¡Hoy es el aniversario! 🎉'
+                                : `Faltan ${nextAnniversary.daysUntil} ${nextAnniversary.daysUntil === 1 ? 'día' : 'días'}`}
                         </Text>
                     </View>
                 )}
