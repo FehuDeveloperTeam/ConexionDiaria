@@ -11,7 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 // import { onAuthStateChanged, User } from 'firebase/auth'; // <--- Ya no es necesario
 import {
-    doc, getDoc, DocumentData, writeBatch, onSnapshot,
+    doc, DocumentData, writeBatch, onSnapshot,
     updateDoc, collection, query, orderBy, Timestamp, setDoc,
     increment,
     limit // --- AÑADIDO: Importamos 'limit' para el paywall ---
@@ -26,8 +26,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications'; 
 
 // --- Hooks de Contexto ---
-import { usePlan } from '../../src/contexts/planContext'; 
+import { usePlan } from '../../src/contexts/planContext';
 import { useTheme } from '../../src/contexts/themeContext';
+import { resolveInvitationCode } from '../../src/services/invitationCode';
 
 // --- Constantes de Emojis (Free vs Premium) ---
 const MOODS_BASE = [
@@ -348,25 +349,33 @@ const Home: React.FC = () => {
 
     // --- Funciones de Manejo de Eventos ---
     const handleCopyCode = useCallback(async () => {
-        if (user?.uid) {
-            await Clipboard.setStringAsync(user.uid);
+        if (userData?.invitationCode) {
+            await Clipboard.setStringAsync(userData.invitationCode);
             Toast.show({ type: 'success', text1: '¡Código Copiado!' });
         }
-    }, [user]);
+    }, [userData]);
 
     const handleConnectPartner = useCallback(async () => {
-        const code = partnerCode.trim();
-        if (!code || !user) return;
-        if (code === user.uid) return Toast.show({ type: 'error', text1: '¡Oops!', text2: 'No puedes conectarte contigo mismo.' });
-        const partnerDocRef = doc(db, 'users', code);
-        try {
-            const partnerDocSnap = await getDoc(partnerDocRef);
-            if (!partnerDocSnap.exists()) return Toast.show({ type: 'error', text1: 'Código Inválido' });
-            if (partnerDocSnap.data().partnerId) return Toast.show({ type: 'info', text1: 'Lo sentimos', text2: 'Esa persona ya está conectada.' });
+        const rawCode = partnerCode.trim();
+        if (!rawCode || !user) return;
 
+        try {
+            // Resolver el código a un UID no requiere leer el perfil ajeno —
+            // 'invitationCodes' solo guarda ese mapeo. Ver src/services/invitationCode.ts.
+            const partnerUid = await resolveInvitationCode(rawCode);
+            if (!partnerUid) return Toast.show({ type: 'error', text1: 'Código Inválido' });
+            if (partnerUid === user.uid) return Toast.show({ type: 'error', text1: '¡Oops!', text2: 'No puedes conectarte contigo mismo.' });
+
+            // NOTA (Sprint 2, sesión 2.2): el chequeo de "esa persona ya tiene
+            // pareja" y esta escritura recíproca todavía dependen de que las
+            // reglas de 'users' permitan escribir el documento ajeno, cosa
+            // que hoy no permiten. Esta llamada fallará con permission-denied
+            // hasta que 2.2 reescriba esa regla — es un límite conocido de
+            // esta sesión, no un bug nuevo.
             const batch = writeBatch(db);
             const currentUserRef = doc(db, 'users', user.uid);
-            batch.update(currentUserRef, { partnerId: code });
+            const partnerDocRef = doc(db, 'users', partnerUid);
+            batch.update(currentUserRef, { partnerId: partnerUid });
             batch.update(partnerDocRef, { partnerId: user.uid });
 
             await batch.commit();
@@ -463,7 +472,7 @@ const Home: React.FC = () => {
                     <Text style={styles.subtitle}>Para empezar, conecta con tu pareja.</Text>
                     <Text style={styles.infoText}>Tu código de conexión:</Text>
                     <View style={styles.codeBox}>
-                        <Text style={styles.codeText}>{user?.uid}</Text>
+                        <Text style={styles.codeText}>{userData?.invitationCode ?? '——————'}</Text>
                         <TouchableOpacity onPress={handleCopyCode}>
                             <Feather name="copy" size={24} color={theme.primary} />
                         </TouchableOpacity>
@@ -474,7 +483,8 @@ const Home: React.FC = () => {
                         placeholderTextColor={theme.placeholder}
                         value={partnerCode}
                         onChangeText={setPartnerCode}
-                        autoCapitalize="none"
+                        autoCapitalize="characters"
+                        maxLength={6}
                     />
                     <Button title="Conectar" onPress={handleConnectPartner} color={theme.primary} />
                 </View>

@@ -65,6 +65,21 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // --- REGLAS PARA LA COLECCIÓN 'invitationCodes' ---
+    // Mapeo público código -> uid, para emparejar sin tener que leer el
+    // perfil privado del otro usuario (ver Sprint 2 / src/services/invitationCode.ts).
+    // El documento solo contiene { uid, createdAt } — nada personal.
+    match /invitationCodes/{code} {
+      // Cualquier usuario autenticado puede resolver un código.
+      allow read: if isAuthenticated();
+
+      // Solo se crea al registrarse, y solo apuntando a uno mismo.
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+
+      // Inmutable: no se reescribe ni se borra desde el cliente.
+      allow update, delete: if false;
+    }
+
     // --- REGLAS PARA LA COLECCIÓN 'relationships' ---
     // (Contiene todos los datos compartidos)
     match /relationships/{relationshipId} {

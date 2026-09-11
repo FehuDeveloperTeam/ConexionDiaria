@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput as RNTextInput, Button, useColorScheme, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../src/config/firebaseConfig';
 import { themes } from '../src/config/theme';
 import { Feather } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { generateUniqueInvitationCode, buildInvitationCodeDoc } from '../src/services/invitationCode';
 
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     container: {
@@ -86,20 +87,28 @@ const Register: React.FC = () => {
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
             const user = userCredential.user;
-            
-            // ⭐ ACTUALIZADO: Incluye isOnline y lastSeen
-            await setDoc(doc(db, "users", user.uid), {
+
+            const invitationCode = await generateUniqueInvitationCode();
+
+            // El perfil y el código de invitación se crean en el mismo batch:
+            // si uno fallara, no queda un código huérfano sin dueño ni un
+            // perfil sin código para emparejar.
+            const batch = writeBatch(db);
+            batch.set(doc(db, "users", user.uid), {
                 email: user.email,
                 displayName: displayName.trim(),
                 createdAt: serverTimestamp(),
                 partnerId: null,
                 relationshipStartDate: null,
+                invitationCode,
+                gender: null,
                 currentMood: { emoji: '😊', name: 'Neutral', status: '' },
-                // ⭐ CAMPOS NUEVOS PARA ESTADO ONLINE ⭐
-                isOnline: true,              // Usuario online al registrarse
-                lastSeen: serverTimestamp()  // Timestamp actual
+                isOnline: true,
+                lastSeen: serverTimestamp()
             });
-            
+            batch.set(doc(db, "invitationCodes", invitationCode), buildInvitationCodeDoc(user.uid));
+            await batch.commit();
+
             router.replace('/(tabs)/home');
         } catch (error: any) {
             console.error(error);
