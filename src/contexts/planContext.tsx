@@ -33,7 +33,8 @@ export const PlanProvider = ({ children }: { children: ReactNode }) => {
     const [partnerData, setPartnerData] = useState<DocumentData | null>(null);
     const [relationshipData, setRelationshipData] = useState<DocumentData | null>(null);
     const [plan, setPlan] = useState<'free' | 'premium'>('free');
-    const [isLoading, setIsLoading] = useState(true);
+    const [isUserLoading, setIsUserLoading] = useState(true);
+    const [isPartnerLoading, setIsPartnerLoading] = useState(false);
 
     // 1. Efecto para manejar la Autenticación (Auth)
     useEffect(() => {
@@ -47,72 +48,76 @@ export const PlanProvider = ({ children }: { children: ReactNode }) => {
                 setPartnerData(null);
                 setRelationshipData(null);
                 setPlan('free');
-                setIsLoading(false);
+                setIsUserLoading(false);
                 Purchases.logOut();
             }
         });
         return () => unsubscribeAuth();
     }, []);
 
-    // 2. Efecto para cargar datos de Firestore (depende del 'user')
+    // 2. Efecto para el propio documento de usuario (depende de 'user').
+    // OJO: este listener se dispara seguido (isOnline cada 30s, cambios de
+    // ánimo, etc.), así que no debe crear listeners de pareja/relación aquí
+    // adentro — eso es el efecto 3, con dependencias más finas.
     useEffect(() => {
         if (!user) {
-            // Si no hay usuario, nos aseguramos de no estar cargando
-            setIsLoading(false);
+            setIsUserLoading(false);
             return;
         }
 
-        // Si hay usuario, empezamos a cargar
-        setIsLoading(true);
+        setIsUserLoading(true);
         const userDocRef = doc(db, 'users', user.uid);
-        
+
         const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 setUserData(data);
                 setPlan(data.plan || 'free');
-
-                // Si el usuario tiene una pareja, cargamos sus datos
-                if (data.partnerId) {
-                    const relationshipId = [user.uid, data.partnerId].sort().join('_');
-
-                    // Listener para los datos de la pareja
-                    const partnerDocRef = doc(db, 'users', data.partnerId);
-                    const unsubscribePartner = onSnapshot(partnerDocRef, (partnerSnap) => {
-                        setPartnerData(partnerSnap.data() || null);
-                    });
-
-                    // Listener para los datos de la relación (almacenamiento, etc.)
-                    const relationshipDocRef = doc(db, 'relationships', relationshipId);
-                    const unsubscribeRelationship = onSnapshot(relationshipDocRef, (relSnap) => {
-                        setRelationshipData(relSnap.data() || null);
-                        setIsLoading(false); // Terminamos de cargar TODO
-                    });
-
-                    // Devolvemos la limpieza para estos listeners anidados
-                    return () => {
-                        unsubscribePartner();
-                        unsubscribeRelationship();
-                    };
-
-                } else {
-                    // No tiene pareja, limpiamos los datos y terminamos de cargar
-                    setPartnerData(null);
-                    setRelationshipData(null);
-                    setIsLoading(false);
-                }
-
             } else {
                 // El usuario está en Auth pero no en Firestore
                 auth.signOut();
-                setIsLoading(false);
             }
+            setIsUserLoading(false);
         });
 
-        // Devolvemos la limpieza del listener principal del usuario
         return () => unsubscribeUser();
-        
-    }, [user]); // Este efecto se ejecuta solo si 'user' cambia
+    }, [user]);
+
+    // 3. Efecto para pareja + relación. Depende del uid de la pareja (un
+    // string plano), NO del objeto 'userData' completo — así solo se vuelve
+    // a suscribir cuando la pareja realmente cambia, y su cleanup (real,
+    // a diferencia del anterior) cierra ambos listeners antes de abrir otros.
+    const partnerId: string | null = userData?.partnerId ?? null;
+
+    useEffect(() => {
+        if (!user || !partnerId) {
+            setPartnerData(null);
+            setRelationshipData(null);
+            setIsPartnerLoading(false);
+            return;
+        }
+
+        setIsPartnerLoading(true);
+        const relationshipId = [user.uid, partnerId].sort().join('_');
+
+        const partnerDocRef = doc(db, 'users', partnerId);
+        const unsubscribePartner = onSnapshot(partnerDocRef, (partnerSnap) => {
+            setPartnerData(partnerSnap.data() || null);
+        });
+
+        const relationshipDocRef = doc(db, 'relationships', relationshipId);
+        const unsubscribeRelationship = onSnapshot(relationshipDocRef, (relSnap) => {
+            setRelationshipData(relSnap.data() || null);
+            setIsPartnerLoading(false);
+        });
+
+        return () => {
+            unsubscribePartner();
+            unsubscribeRelationship();
+        };
+    }, [user, partnerId]);
+
+    const isLoading = isUserLoading || isPartnerLoading;
 
     return (
         // 3. CORRECCIÓN: Pasamos TODOS los datos en el 'value'
