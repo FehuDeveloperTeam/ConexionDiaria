@@ -1585,7 +1585,7 @@ const ChatScreen = () => {
         });
 
         return () => unsubscribe();
-    }, [currentUser, userData]);
+    }, [currentUser, userData?.partnerId]);
 
     // Enviar mensaje de texto
     const onSend = useCallback(async (newMessages: IMessage[] = []) => {

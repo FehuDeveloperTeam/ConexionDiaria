@@ -7,16 +7,15 @@ import {
     Alert  // 2. Añadimos Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { auth, db } from '../../src/config/firebaseConfig';
+import { db } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
-import { 
-    collection, addDoc, onSnapshot, query, orderBy, doc, 
+import {
+    collection, addDoc, onSnapshot, query, orderBy, doc,
     DocumentData, serverTimestamp, updateDoc, deleteDoc // 3. Añadimos deleteDoc
 } from 'firebase/firestore';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
+import { usePlan } from '../../src/contexts/planContext';
 
 // --- Estilos (Añadimos estilos para el modal y detalles de la tarea) ---
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
@@ -96,10 +95,10 @@ const TasksScreen: React.FC = () => {
     const colorScheme = useColorScheme() || 'light';
     const theme = themes[colorScheme];
     const styles = getStyles(theme);
-    const router = useRouter();
 
-    const [user, setUser] = useState<FirebaseUser | null>(null);
-    const [userData, setUserData] = useState<DocumentData | null>(null);
+    // 'user' y 'userData' vienen del contexto: nada de esto necesita su
+    // propio listener de auth ni de users/{uid} — ya existen en PlanContext.
+    const { user, userData } = usePlan();
     const [tasks, setTasks] = useState<DocumentData[]>([]);
     const [newTask, setNewTask] = useState('');
     const [loading, setLoading] = useState(true);
@@ -109,55 +108,30 @@ const TasksScreen: React.FC = () => {
     const [editingTask, setEditingTask] = useState<EditingTask | null>(null);
     const [editedText, setEditedText] = useState('');
 
-    // (useEffect de Autenticación y Carga de Perfil/Tareas no cambia, sigue siendo perfecto)
-    // 1. useEffect: Maneja estado de autenticación
-    useEffect(() => {
-        setLoading(true);
-        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-            setUser(currentUser);
-            if (!currentUser) {
-                setUserData(null); setTasks([]); setLoading(false);
-                router.replace('/login');
-            }
-        });
-        return () => unsubscribeAuth();
-    }, [router]);
+    // Listener de la colección de tareas. Depende del uid de la pareja (un
+    // string plano), no del objeto 'userData' completo, para no resuscribirse
+    // de más cuando cambian campos ajenos (ánimo, isOnline, etc.).
+    const partnerId = userData?.partnerId as string | undefined;
 
-    // 2. useEffect: Carga perfil y tareas
     useEffect(() => {
-        if (!user) return; 
-
-        let unsubscribeUser: () => void = () => {};
-        let unsubscribeTasks: () => void = () => {};
+        if (!user || !partnerId) {
+            setTasks([]);
+            setLoading(false);
+            return;
+        }
 
         setLoading(true);
-        const userDocRef = doc(db, 'users', user.uid);
-        unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
-            unsubscribeTasks(); 
+        const chatId = [user.uid, partnerId].sort().join('_');
+        const tasksCollectionRef = collection(db, 'relationships', chatId, 'tasks');
+        const q = query(tasksCollectionRef, orderBy('isCompleted', 'asc'), orderBy('createdAt', 'desc'));
 
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                setUserData(data);
+        const unsubscribeTasks = onSnapshot(q, (snapshot) => {
+            setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setLoading(false);
+        }, (error) => { console.error("Error fetching tasks:", error); setLoading(false); });
 
-                if (data.partnerId) {
-                    const chatId = [user.uid, data.partnerId].sort().join('_');
-                    const tasksCollectionRef = collection(db, 'relationships', chatId, 'tasks');
-                    const q = query(tasksCollectionRef, orderBy('isCompleted', 'asc'), orderBy('createdAt', 'desc'));
-                    
-                    unsubscribeTasks = onSnapshot(q, (snapshot) => {
-                        setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                        setLoading(false);
-                    }, (error) => { console.error("Error fetching tasks:", error); setLoading(false); });
-                } else {
-                    setTasks([]); setLoading(false); 
-                }
-            } else {
-                auth.signOut(); setLoading(false);
-            }
-        }, (error) => { console.error("Error user listener:", error); auth.signOut(); setLoading(false); });
-
-        return () => { unsubscribeUser(); unsubscribeTasks(); };
-    }, [user]);
+        return () => unsubscribeTasks();
+    }, [user, partnerId]);
 
     // 3. Función para añadir una nueva tarea (Añadimos más metadatos)
     const handleAddTask = useCallback(async () => {

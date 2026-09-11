@@ -368,14 +368,18 @@ const WishlistScreen: React.FC = () => {
         }, 2500);
     };
 
-    // Cargar la lista de deseos
+    // Cargar la lista de deseos. Depende del uid de la pareja (string
+    // plano), no de 'userData' completo, para no resuscribirse de más ante
+    // cambios ajenos (ánimo, isOnline, etc.).
+    const partnerId = userData?.partnerId as string | undefined;
+
     useEffect(() => {
-        if (!user || !userData?.partnerId) {
+        if (!user || !partnerId) {
             setAllItems([]);
             return;
         }
 
-        const chatId = [user.uid, userData.partnerId].sort().join('_');
+        const chatId = [user.uid, partnerId].sort().join('_');
         const wishlistRef = collection(db, 'relationships', chatId, 'wishlist');
         const q = query(wishlistRef, orderBy('createdAt', 'desc'));
 
@@ -387,7 +391,7 @@ const WishlistScreen: React.FC = () => {
         });
 
         return () => unsubscribe();
-    }, [user, userData]);
+    }, [user, partnerId]);
 
     // Lógica para separar y filtrar las listas
     const sectionData = useMemo(() => {

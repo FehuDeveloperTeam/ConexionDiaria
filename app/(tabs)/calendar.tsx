@@ -5,13 +5,11 @@ import {
     ScrollView, Switch
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { auth, db } from '../../src/config/firebaseConfig';
+import { db } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
-import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
 import {
     collection, addDoc, onSnapshot, query, doc,
-    DocumentData, serverTimestamp, Timestamp, deleteDoc, updateDoc
+    serverTimestamp, Timestamp, deleteDoc, updateDoc
 } from 'firebase/firestore';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import Toast from 'react-native-toast-message';
@@ -403,13 +401,10 @@ const CalendarScreen: React.FC = () => {
     const colorScheme = useColorScheme();
     const theme = colorScheme === 'dark' ? themes.dark : themes.light;
     const styles = getStyles(theme);
-    const router = useRouter();
 
-    // Context de Plan
-    const { user: contextUser, userData: contextUserData, plan, isLoading: planLoading } = usePlan();
-
-    const [user, setUser] = useState<FirebaseUser | null>(null);
-    const [userData, setUserData] = useState<DocumentData | null>(null);
+    // 'user', 'userData' y 'plan' vienen del contexto — nada de esto necesita
+    // su propio listener de auth ni de users/{uid}.
+    const { user, userData, plan, isLoading: planLoading } = usePlan();
     const [loading, setLoading] = useState(true);
 
     const [allEvents, setAllEvents] = useState<CalendarEvent[]>([]);
@@ -435,68 +430,33 @@ const CalendarScreen: React.FC = () => {
     // Estado para modal de upgrade
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
-    // Usar datos del contexto si están disponibles, sino usar estados locales
-    useEffect(() => {
-        if (contextUser) {
-            setUser(contextUser);
-        }
-        if (contextUserData) {
-            setUserData(contextUserData);
-        }
-    }, [contextUser, contextUserData]);
+    // Listener de eventos. Depende del uid de la pareja (string plano), no
+    // de 'userData' completo, para no resuscribirse de más ante cambios
+    // ajenos (ánimo, isOnline, etc.).
+    const partnerId = userData?.partnerId as string | undefined;
 
     useEffect(() => {
-        if (!contextUser) {
-            setLoading(true);
-            const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-                setUser(currentUser);
-                if (!currentUser) {
-                    setUserData(null); 
-                    setAllEvents([]); 
-                    setLoading(false);
-                    router.replace('/login');
-                }
-            });
-            return () => unsubscribeAuth();
+        if (!user || !partnerId) {
+            setAllEvents([]);
+            setLoading(false);
+            return;
         }
-    }, [contextUser, router]);
-
-    useEffect(() => {
-        if (!user) return;
-        let unsubscribeUser: () => void = () => {};
-        let unsubscribeEvents: () => void = () => {};
 
         setLoading(true);
-        const userDocRef = doc(db, 'users', user.uid);
-        unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
-            unsubscribeEvents();
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                setUserData(data);
-                if (data.partnerId) {
-                    const chatId = [user.uid, data.partnerId].sort().join('_');
-                    const eventsCollectionRef = collection(db, 'relationships', chatId, 'events');
-                    const q = query(eventsCollectionRef);
+        const chatId = [user.uid, partnerId].sort().join('_');
+        const eventsCollectionRef = collection(db, 'relationships', chatId, 'events');
+        const q = query(eventsCollectionRef);
 
-                    unsubscribeEvents = onSnapshot(q, (snapshot) => {
-                        const eventsList = snapshot.docs
-                            .map(doc => ({ id: doc.id, ...doc.data() } as CalendarEvent))
-                            .sort((a, b) => a.dateTime.toDate().getTime() - b.dateTime.toDate().getTime());
-                        setAllEvents(eventsList);
-                        setLoading(false);
-                    }, (error) => { console.error("Error fetching events:", error); setLoading(false); });
-                } else {
-                    setAllEvents([]); 
-                    setLoading(false);
-                }
-            } else {
-                auth.signOut(); 
-                setLoading(false);
-            }
-        }, (error) => { console.error("Error user listener:", error); auth.signOut(); setLoading(false); });
+        const unsubscribeEvents = onSnapshot(q, (snapshot) => {
+            const eventsList = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() } as CalendarEvent))
+                .sort((a, b) => a.dateTime.toDate().getTime() - b.dateTime.toDate().getTime());
+            setAllEvents(eventsList);
+            setLoading(false);
+        }, (error) => { console.error("Error fetching events:", error); setLoading(false); });
 
-        return () => { unsubscribeUser(); unsubscribeEvents(); };
-    }, [user]);
+        return () => unsubscribeEvents();
+    }, [user, partnerId]);
 
     // Calcular próximo aniversario
     const nextAnniversary = useMemo(() => {

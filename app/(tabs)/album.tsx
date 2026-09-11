@@ -5,18 +5,17 @@ import {
     Modal // 1. Importamos Modal
 } from 'react-native';
 // 2. Importamos useSafeAreaInsets
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'; 
-import { useRouter } from 'expo-router';
-import { auth, db, storage } from '../../src/config/firebaseConfig';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { db, storage } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
-import { doc, DocumentData, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { DocumentData, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import * as Crypto from 'expo-crypto';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons'; // 3. Importamos Ionicons
+import { usePlan } from '../../src/contexts/planContext';
 
 // --- Función Helper para Blob (Asumo que la tienes o la necesitas) ---
 // (Esta función es necesaria para que la subida funcione en iOS/Android)
@@ -76,61 +75,41 @@ const AlbumScreen: React.FC = () => {
     const colorScheme = useColorScheme() || 'light';
     const theme = themes[colorScheme];
     const styles = getStyles(theme);
-    const router = useRouter();
     const insets = useSafeAreaInsets(); // 5. Hook para los márgenes seguros
 
     // --- 6. NUEVOS ESTADOS PARA EL MODAL ---
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null);
 
-    // (El resto de tus estados permanecen igual)
-    const [user, setUser] = useState<FirebaseUser | null>(null);
-    const [userData, setUserData] = useState<DocumentData | null>(null);
+    // 'user' y 'userData' vienen del contexto, no de un listener propio.
+    const { user, userData } = usePlan();
     const [photos, setPhotos] = useState<DocumentData[]>([]);
     const [loading, setLoading] = useState(true);
     const [isUploading, setIsUploading] = useState(false);
 
-    // --- Lógica de Listeners (Sin Cambios) ---
-    useEffect(() => {
-        setLoading(true);
-        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-            setUser(currentUser);
-            if (!currentUser) {
-                setUserData(null); setPhotos([]); setLoading(false);
-                router.replace('/login');
-            }
-        });
-        return () => unsubscribeAuth();
-    }, [router]);
+    // Listener de la colección de fotos. Depende del uid de la pareja
+    // (string plano), no de 'userData' completo.
+    const partnerId = userData?.partnerId as string | undefined;
 
     useEffect(() => {
-        if (!user) return;
-        let unsubscribeUser: () => void = () => {};
-        let unsubscribePhotos: () => void = () => {};
+        if (!user || !partnerId) {
+            setPhotos([]);
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
-        const userDocRef = doc(db, 'users', user.uid);
-        unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
-            unsubscribePhotos();
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                setUserData(data);
-                if (data.partnerId) {
-                    const chatId = [user.uid, data.partnerId].sort().join('_');
-                    const photosCollectionRef = collection(db, 'relationships', chatId, 'photos');
-                    const q = query(photosCollectionRef, orderBy('createdAt', 'desc'));
-                    unsubscribePhotos = onSnapshot(q, (snapshot) => {
-                        setPhotos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                        setLoading(false);
-                    }, (error) => { console.error("Error fetching photos:", error); setLoading(false); });
-                } else {
-                    setPhotos([]); setLoading(false);
-                }
-            } else {
-                auth.signOut(); setLoading(false);
-            }
-        }, (error) => { console.error("Error user listener:", error); auth.signOut(); setLoading(false); });
-        return () => { unsubscribeUser(); unsubscribePhotos(); };
-    }, [user]);
+        const chatId = [user.uid, partnerId].sort().join('_');
+        const photosCollectionRef = collection(db, 'relationships', chatId, 'photos');
+        const q = query(photosCollectionRef, orderBy('createdAt', 'desc'));
+
+        const unsubscribePhotos = onSnapshot(q, (snapshot) => {
+            setPhotos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setLoading(false);
+        }, (error) => { console.error("Error fetching photos:", error); setLoading(false); });
+
+        return () => unsubscribePhotos();
+    }, [user, partnerId]);
 
     // --- Lógica de Subida (Sin Cambios) ---
     const handleAddPhoto = useCallback(async () => {

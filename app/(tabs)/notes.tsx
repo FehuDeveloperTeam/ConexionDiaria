@@ -5,12 +5,11 @@ import {
     KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Alert, TouchableOpacity
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { auth, db } from '../../src/config/firebaseConfig'; // Verifica tu ruta
+import { db } from '../../src/config/firebaseConfig'; // Verifica tu ruta
 import { themes } from '../../src/config/theme'; // Verifica tu ruta
 import { collection, addDoc, onSnapshot, query, orderBy, doc, DocumentData, serverTimestamp, deleteDoc, updateDoc } from 'firebase/firestore';
-import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth'; // Aseguramos onAuthStateChanged
 import Toast from 'react-native-toast-message';
+import { usePlan } from '../../src/contexts/planContext';
 
 // --- Estilos ---
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
@@ -44,11 +43,10 @@ const NotesScreen: React.FC = () => {
     const colorScheme = useColorScheme() || 'light';
     const theme = themes[colorScheme];
     const styles = getStyles(theme);
-    const router = useRouter();
 
     // --- Estados ---
-    const [user, setUser] = useState<FirebaseUser | null>(null); // Usuario de Auth
-    const [userData, setUserData] = useState<DocumentData | null>(null); // Perfil de Firestore del usuario
+    // 'user' y 'userData' vienen del contexto, no de un listener propio.
+    const { user, userData } = usePlan();
     const [notes, setNotes] = useState<DocumentData[]>([]); // Lista de notas
     const [newNote, setNewNote] = useState(''); // Texto de la nueva nota
     const [loading, setLoading] = useState(true); // Estado general de carga
@@ -56,68 +54,30 @@ const NotesScreen: React.FC = () => {
     const [editingNote, setEditingNote] = useState<EditingNote | null>(null); // Nota actual en edición
     const [editedText, setEditedText] = useState(''); // Texto editado en el modal
 
-    // --- Efectos para Carga de Datos ---
+    // --- Efecto para cargar notas ---
+    // Depende del uid de la pareja (string plano), no de 'userData' completo,
+    // para no resuscribirse de más ante cambios ajenos (ánimo, isOnline, etc.).
+    const partnerId = userData?.partnerId as string | undefined;
 
-    // 1. useEffect: Maneja estado de autenticación
     useEffect(() => {
+        if (!user || !partnerId) {
+            setNotes([]);
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
-        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-            setUser(currentUser); // Actualiza el estado 'user'
-            if (!currentUser) {
-                // Si no hay usuario, limpiar todo y redirigir
-                setUserData(null);
-                setNotes([]);
-                setLoading(false);
-                router.replace('/(tabs)/login');
-            }
-            // Si hay usuario, esperamos al siguiente useEffect para cargar datos y setLoading
-        });
-        return () => unsubscribeAuth(); // Limpiar listener de auth
-    }, [router]);
+        const chatId = [user.uid, partnerId].sort().join('_');
+        const notesCollectionRef = collection(db, 'relationships', chatId, 'notes');
+        const q = query(notesCollectionRef, orderBy('createdAt', 'desc'));
 
-    // 2. useEffect: Carga perfil y notas una vez que 'user' está disponible
-    useEffect(() => {
-        if (!user) return; // Salir si no hay usuario autenticado
+        const unsubscribeNotes = onSnapshot(q, (snapshot) => {
+            setNotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setLoading(false);
+        }, (error) => { console.error("Error fetching notes:", error); setLoading(false); });
 
-        // Limpiar listeners anteriores al cambiar de usuario o estado
-        let unsubscribeUser: () => void = () => {};
-        let unsubscribeNotes: () => void = () => {};
-
-        setLoading(true); // Indicar inicio de carga de datos específicos del usuario
-        const userDocRef = doc(db, 'users', user.uid);
-        unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
-            unsubscribeNotes(); // Limpiar listener de notas si el perfil cambia
-
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                setUserData(data);
-
-                if (data.partnerId) {
-                    // Si tiene pareja, configurar listener de notas
-                    const chatId = [user.uid, data.partnerId].sort().join('_');
-                    const notesCollectionRef = collection(db, 'relationships', chatId, 'notes');
-                    const q = query(notesCollectionRef, orderBy('createdAt', 'desc'));
-                    unsubscribeNotes = onSnapshot(q, (snapshot) => {
-                        setNotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                        setLoading(false); // Parar carga al tener notas (o lista vacía)
-                    }, (error) => { console.error("Error fetching notes:", error); setLoading(false); });
-                } else {
-                    // No tiene pareja, limpiar notas y parar carga
-                    setNotes([]);
-                    setLoading(false);
-                }
-            } else {
-                auth.signOut(); // Perfil no existe
-                setLoading(false);
-            }
-        }, (error) => { console.error("Error user listener:", error); auth.signOut(); setLoading(false); });
-
-        // Limpieza al desmontar o si 'user' cambia
-        return () => {
-            unsubscribeUser();
-            unsubscribeNotes();
-        };
-    }, [user]); // Depende DIRECTAMENTE del estado 'user'
+        return () => unsubscribeNotes();
+    }, [user, partnerId]);
 
     // --- Funciones de Manejo ---
 
