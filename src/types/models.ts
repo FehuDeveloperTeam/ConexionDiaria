@@ -49,6 +49,17 @@ export interface UserDoc {
   // miembros, no se guarda por separado.
   plan: Plan;
   premiumSince: Timestamp | null;
+
+  // Push remoto (Sprint 5.2): token de Expo Push de este dispositivo, y
+  // preferencia de qué avisos quiere recibir. Ambos opcionales — sin
+  // permiso concedido, o antes de tener un proyecto EAS configurado, no
+  // hay token; sin preferencia guardada, el default es recibir todo (ver
+  // functions/src/index.ts).
+  expoPushToken?: string | null;
+  notificationPrefs?: {
+    newMessages?: boolean;
+    missYou?: boolean;
+  };
 }
 
 export interface RelationshipSettings {

@@ -213,6 +213,16 @@ service cloud.firestore {
         // [Home] Cualquiera en la relación puede leer y escribir (actualizar su contador)
         allow read, write: if isInRelationship(relationshipId);
       }
+
+      // --- SUB-COLECCIÓN: Avisos "Te Extraño" (Sprint 5.2) ---
+      // Un documento por cada "te extraño" enviado, solo para que la Cloud
+      // Function que manda el push a la pareja tenga un evento de creación
+      // limpio del cual dispararse. Inmutable: se crea y no se vuelve a tocar.
+      match /missYouPings/{pingId} {
+        allow read: if isInRelationship(relationshipId);
+        allow create: if isInRelationship(relationshipId) && request.resource.data.from == request.auth.uid;
+        allow update, delete: if false;
+      }
     }
   }
 }

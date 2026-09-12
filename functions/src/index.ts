@@ -34,6 +34,9 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 initializeApp();
 const db = getFirestore();
 
+// Push remoto a la pareja (Sprint 5.2) — ver functions/src/pushNotifications.ts.
+export { onNewChatMessage, onNewMissYouPing } from './pushNotifications';
+
 const REVENUECAT_WEBHOOK_SECRET = defineSecret('REVENUECAT_WEBHOOK_SECRET');
 
 // Debe coincidir con el identificador de Entitlement en el dashboard de

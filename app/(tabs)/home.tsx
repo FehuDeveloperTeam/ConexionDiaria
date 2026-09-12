@@ -2,11 +2,10 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, Button,
     ActivityIndicator, TextInput, TouchableOpacity,
-    Alert, // Keep Alert import
+    Alert,
     Modal, ScrollView, FlatList,
     Animated,
     Pressable,
-    Platform // <- Add Platform import
 } from 'react-native';
 import { useRouter } from 'expo-router';
 // import { onAuthStateChanged, User } from 'firebase/auth'; // <--- Ya no es necesario
@@ -29,6 +28,7 @@ import * as Notifications from 'expo-notifications';
 import { usePlan } from '../../src/contexts/planContext';
 import { useTheme } from '../../src/contexts/themeContext';
 import { resolveInvitationCode } from '../../src/services/invitationCode';
+import { registerPushToken } from '../../src/services/notifications';
 
 // --- Constantes de Emojis (Free vs Premium) ---
 const MOODS_BASE = [
@@ -230,27 +230,13 @@ const Home: React.FC = () => {
     const [relationshipDuration, setRelationshipDuration] = useState<string | null>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
 
-    // Función para solicitar permisos
-    const requestNotificationPermissions = async () => {
-        const { status } = await Notifications.requestPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert(
-                'Permiso Denegado',
-                'Para recibir recordatorios de eventos, necesitas habilitar las notificaciones en los ajustes de tu teléfono.',
-                [{ text: 'Entendido' }]
-            );
-            return false;
-        }
-        if (Platform.OS === 'android') {
-             await Notifications.setNotificationChannelAsync('default', {
-                name: 'default',
-                importance: Notifications.AndroidImportance.MAX,
-                vibrationPattern: [0, 250, 250, 250],
-                lightColor: '#FF231F7C',
-            });
-        }
-        return true;
-    };
+    // Registrar el token de push apenas hay pareja conectada, si todavía no
+    // hay uno guardado (primera conexión, reinstalación, u otro
+    // dispositivo). No pide permiso de nuevo si ya estaba concedido.
+    useEffect(() => {
+        if (!user || !userData?.partnerId || userData?.expoPushToken) return;
+        registerPushToken(user.uid);
+    }, [user, userData?.partnerId, userData?.expoPushToken]);
 
     // Función para resetear contadores
     const checkAndResetMissYouCounter = useCallback(async (relationshipId: string, currentData: DocumentData) => {
@@ -366,12 +352,6 @@ const Home: React.FC = () => {
             if (!partnerUid) return Toast.show({ type: 'error', text1: 'Código Inválido' });
             if (partnerUid === user.uid) return Toast.show({ type: 'error', text1: '¡Oops!', text2: 'No puedes conectarte contigo mismo.' });
 
-            // NOTA (Sprint 2, sesión 2.2): el chequeo de "esa persona ya tiene
-            // pareja" y esta escritura recíproca todavía dependen de que las
-            // reglas de 'users' permitan escribir el documento ajeno, cosa
-            // que hoy no permiten. Esta llamada fallará con permission-denied
-            // hasta que 2.2 reescriba esa regla — es un límite conocido de
-            // esta sesión, no un bug nuevo.
             const batch = writeBatch(db);
             const currentUserRef = doc(db, 'users', user.uid);
             const partnerDocRef = doc(db, 'users', partnerUid);
@@ -383,7 +363,7 @@ const Home: React.FC = () => {
             setPartnerCode('');
             Toast.show({ type: 'success', text1: '¡Conexión Exitosa!' });
 
-            await requestNotificationPermissions();
+            await registerPushToken(user.uid);
 
         } catch (error) { Toast.show({ type: 'error', text1: 'Error al conectar' }); console.error(error); }
     }, [partnerCode, user]);
@@ -444,6 +424,11 @@ const Home: React.FC = () => {
         const today = getTodayDateKey();
         const relationshipDocRef = doc(db, 'relationships', chatId);
         const historyDocRef = doc(db, 'relationships', chatId, 'missYouHistory', today);
+        // 'missYouPings' es solo para que la Cloud Function tenga un evento
+        // de creación limpio del cual dispararse (Sprint 5.2) — los
+        // contadores de arriba no sirven para eso: son un update, no dicen
+        // "esto es un ping nuevo" sin comparar contra el valor anterior.
+        const pingDocRef = doc(collection(db, 'relationships', chatId, 'missYouPings'));
         try {
             const batch = writeBatch(db);
             batch.set(relationshipDocRef, {
@@ -451,6 +436,7 @@ const Home: React.FC = () => {
                 lastResetDate: today
             }, { merge: true });
             batch.set(historyDocRef, { [currentUserUid]: increment(1) }, { merge: true });
+            batch.set(pingDocRef, { from: currentUserUid, createdAt: Timestamp.now() });
             await batch.commit();
         } catch (error) {
             console.error("Error al enviar 'miss you':", error);

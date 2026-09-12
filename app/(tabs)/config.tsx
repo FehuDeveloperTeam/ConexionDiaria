@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, useColorScheme, ActivityIndicator,
-    Alert, Image, TouchableOpacity, TextInput, Button, ScrollView
+    Alert, Image, TouchableOpacity, TextInput, Button, ScrollView, Switch
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db, storage } from '../../src/config/firebaseConfig';
@@ -170,7 +170,20 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     premiumLockText: {
         fontSize: 16,
         color: theme.placeholder,
-    }
+    },
+    notificationPrefRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        paddingVertical: 6,
+    },
+    notificationPrefLabel: {
+        fontSize: 15,
+        color: theme.text,
+        flex: 1,
+        marginRight: 10,
+    },
 });
 
 const ConfigScreen: React.FC = () => {
@@ -311,6 +324,22 @@ const ConfigScreen: React.FC = () => {
         setIsSaving(false);
     }, [user, displayName]); // 'user' del hook
 
+    // --- Función para las preferencias de notificaciones push (Sprint 5.2) ---
+    // Dot-notation en el campo para no pisar la otra preferencia: un
+    // updateDoc con { notificationPrefs: { newMessages: false } } completo
+    // reemplazaría el mapa entero y borraría 'missYou' si ya estaba guardado.
+    const handleToggleNotificationPref = useCallback(async (key: 'newMessages' | 'missYou', value: boolean) => {
+        if (!user) return;
+        try {
+            await updateDoc(doc(db, 'users', user.uid), {
+                [`notificationPrefs.${key}`]: value,
+            });
+        } catch (error) {
+            console.error('Error guardando preferencia de notificaciones:', error);
+            Toast.show({ type: 'error', text1: 'No se pudo guardar el cambio' });
+        }
+    }, [user]);
+
     // --- Función para Desconectar de la Pareja ---
     const handleDisconnect = useCallback(async () => {
         if (!user || !userData || !userData.partnerId) return; // 'user' y 'userData' del hook
@@ -446,7 +475,28 @@ const ConfigScreen: React.FC = () => {
                             />
                         )}
                     </View>
-                    
+
+                    {/* --- Preferencias de notificaciones (Sprint 5.2) --- */}
+                    <View style={styles.planSection}>
+                        <Text style={styles.sectionTitle}>Notificaciones</Text>
+                        <View style={styles.notificationPrefRow}>
+                            <Text style={styles.notificationPrefLabel}>Mensajes nuevos</Text>
+                            <Switch
+                                value={userData?.notificationPrefs?.newMessages !== false}
+                                onValueChange={(value) => handleToggleNotificationPref('newMessages', value)}
+                                thumbColor={userData?.notificationPrefs?.newMessages !== false ? theme.primary : theme.placeholder}
+                            />
+                        </View>
+                        <View style={styles.notificationPrefRow}>
+                            <Text style={styles.notificationPrefLabel}>&quot;Te extraño&quot; de tu pareja</Text>
+                            <Switch
+                                value={userData?.notificationPrefs?.missYou !== false}
+                                onValueChange={(value) => handleToggleNotificationPref('missYou', value)}
+                                thumbColor={userData?.notificationPrefs?.missYou !== false ? theme.primary : theme.placeholder}
+                            />
+                        </View>
+                    </View>
+
                     {/* --- Zona de Peligro --- */}
                     {userData?.partnerId && (
                         <View style={styles.dangerZone}>
