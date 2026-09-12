@@ -17,6 +17,7 @@ import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { Ionicons } from '@expo/vector-icons';
 import { usePlan } from '../../src/contexts/planContext';
 import { scheduleEventReminder, cancelEventReminder } from '../../src/services/notifications';
+import { getChileanHolidaysForYears } from '../../src/services/holidays';
 
 // Configuración de idioma español
 LocaleConfig.locales['es'] = {
@@ -26,43 +27,6 @@ LocaleConfig.locales['es'] = {
   dayNamesShort: ['D','L','M','X','J','V','S'],
 };
 LocaleConfig.defaultLocale = 'es';
-
-// Feriados chilenos 2024-2025
-const chileanHolidays: { [key: string]: string } = {
-    '2024-01-01': 'Año Nuevo',
-    '2024-03-29': 'Viernes Santo',
-    '2024-03-30': 'Sábado Santo',
-    '2024-05-01': 'Día del Trabajo',
-    '2024-05-21': 'Día de las Glorias Navales',
-    '2024-06-20': 'Día de los Pueblos Indígenas',
-    '2024-06-29': 'San Pedro y San Pablo',
-    '2024-07-16': 'Día de la Virgen del Carmen',
-    '2024-08-15': 'Asunción de la Virgen',
-    '2024-09-18': 'Día de la Independencia',
-    '2024-09-19': 'Día de las Glorias del Ejército',
-    '2024-09-20': 'Feriado adicional',
-    '2024-10-12': 'Encuentro de Dos Mundos',
-    '2024-10-31': 'Día de las Iglesias Evangélicas',
-    '2024-11-01': 'Día de Todos los Santos',
-    '2024-12-08': 'Inmaculada Concepción',
-    '2024-12-25': 'Navidad',
-    '2025-01-01': 'Año Nuevo',
-    '2025-04-18': 'Viernes Santo',
-    '2025-04-19': 'Sábado Santo',
-    '2025-05-01': 'Día del Trabajo',
-    '2025-05-21': 'Día de las Glorias Navales',
-    '2025-06-20': 'Día de los Pueblos Indígenas',
-    '2025-06-29': 'San Pedro y San Pablo',
-    '2025-07-16': 'Día de la Virgen del Carmen',
-    '2025-08-15': 'Asunción de la Virgen',
-    '2025-09-18': 'Día de la Independencia',
-    '2025-09-19': 'Día de las Glorias del Ejército',
-    '2025-10-12': 'Encuentro de Dos Mundos',
-    '2025-10-31': 'Día de las Iglesias Evangélicas',
-    '2025-11-01': 'Día de Todos los Santos',
-    '2025-12-08': 'Inmaculada Concepción',
-    '2025-12-25': 'Navidad',
-};
 
 interface CalendarEvent {
     id: string;
@@ -81,6 +45,15 @@ const toDateString = (d: Date) => {
     const month = (d.getMonth() + 1).toString().padStart(2, '0');
     const day = d.getDate().toString().padStart(2, '0');
     return `${year}-${month}-${day}`;
+};
+
+// Inversa de toDateString. OJO: 'new Date("YYYY-MM-DD")' NO sirve para esto
+// — JS interpreta esa forma como medianoche UTC, y en Chile (UTC-3/-4) eso
+// muestra el día ANTERIOR al mostrarlo de vuelta en hora local. Construir la
+// fecha a mano, en local, evita ese desfase.
+const parseDateString = (dateString: string): Date => {
+    const [year, month, day] = dateString.split('-').map(Number);
+    return new Date(year, month - 1, day);
 };
 
 // Modal de Upgrade Premium
@@ -492,6 +465,25 @@ const CalendarScreen: React.FC = () => {
         };
     }, [userData]);
 
+    // Rango de años para el que se calculan feriados y se repite el
+    // aniversario en el calendario. No depende de qué mes esté mirando el
+    // usuario en <Calendar> (no hay un onMonthChange que lo trackee) — un
+    // rango fijo alrededor de hoy es más simple y cubre navegar unos meses
+    // para adelante o atrás sin recalcular nada.
+    const visibleYears = useMemo(() => {
+        const currentYear = new Date().getFullYear();
+        return [currentYear - 1, currentYear, currentYear + 1, currentYear + 2];
+    }, []);
+
+    // Feriados nacionales de Chile, calculados (no una tabla fija por año —
+    // ver src/services/holidays.ts para el alcance y las limitaciones
+    // aceptadas: solo nacionales, sin traslados a lunes ni feriados
+    // adicionales de una sola vez).
+    const chileanHolidays = useMemo(
+        () => getChileanHolidaysForYears(visibleYears),
+        [visibleYears]
+    );
+
     const markedDates = useMemo(() => {
         const markers: { [key: string]: any } = {};
         
@@ -530,17 +522,21 @@ const CalendarScreen: React.FC = () => {
             };
         });
         
-        // Marcar fecha de inicio de relación
+        // Marcar el aniversario en CADA año visible, no solo en el año en
+        // que empezó la relación — antes solo se marcaba ese año exacto, así
+        // que el punto dorado nunca volvía a aparecer en los aniversarios siguientes.
         if (userData?.relationshipStartDate) {
-            const startDateString = toDateString(userData.relationshipStartDate.toDate());
-            if (!markers[startDateString]) {
-                markers[startDateString] = {};
-            }
-            markers[startDateString] = {
-                ...markers[startDateString],
-                marked: true,
-                dotColor: '#FFD700',
-            };
+            const startDate = userData.relationshipStartDate.toDate();
+            visibleYears
+                .filter(year => year >= startDate.getFullYear())
+                .forEach(year => {
+                    const annivDateString = toDateString(new Date(year, startDate.getMonth(), startDate.getDate()));
+                    markers[annivDateString] = {
+                        ...markers[annivDateString],
+                        marked: true,
+                        dotColor: '#FFD700',
+                    };
+                });
         }
         
         // Marcar la fecha seleccionada
@@ -554,7 +550,7 @@ const CalendarScreen: React.FC = () => {
         };
 
         return markers;
-    }, [allEvents, selectedDate, userData, theme]);
+    }, [allEvents, selectedDate, userData, theme, chileanHolidays, visibleYears]);
 
     const eventsForSelectedDate = useMemo(() => {
         return allEvents.filter(event => {
@@ -849,7 +845,7 @@ const CalendarScreen: React.FC = () => {
                 {eventsForSelectedDate.length > 0 ? (
                     <>
                         <Text style={styles.listHeader}>
-                            Eventos para {new Date(selectedDate).toLocaleDateString('es-CL', { 
+                            Eventos para {parseDateString(selectedDate).toLocaleDateString('es-CL', { 
                                 day: 'numeric', 
                                 month: 'long', 
                                 year: 'numeric' 
