@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
     View, useColorScheme, Platform, KeyboardAvoidingView, StyleSheet,
     ActivityIndicator, Text, TouchableOpacity, Image, UIManager,
-    Keyboard
+    Keyboard, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GiftedChat, InputToolbar, Composer, Send, Actions, Bubble } from 'react-native-gifted-chat';
@@ -71,7 +71,22 @@ const ChatScreen = () => {
         isLoadingEarlier,
         handleLoadEarlier,
         onSend,
+        deleteMessage,
     } = useChatMessages(userData, () => setInputText(''));
+
+    // Mantener presionado un mensaje propio (no borrado) ofrece borrarlo.
+    const handleMessageLongPress = (_context: unknown, message: ExtendedMessage) => {
+        if (message.deleted || message.user._id !== currentUser?.uid) return;
+
+        Alert.alert(
+            'Eliminar mensaje',
+            'Se mostrará como eliminado para los dos.',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Eliminar', style: 'destructive', onPress: () => deleteMessage(message._id.toString()) },
+            ]
+        );
+    };
 
     const {
         isUploading,
@@ -176,10 +191,13 @@ const ChatScreen = () => {
             });
 
             return (
-                <View style={{
-                    marginVertical: 4,
-                    marginHorizontal: 8,
-                }}>
+                <TouchableOpacity
+                    activeOpacity={1}
+                    onLongPress={() => handleMessageLongPress(null, message)}
+                    style={{
+                        marginVertical: 4,
+                        marginHorizontal: 8,
+                    }}>
                     <View style={{
                         backgroundColor: isOwn ? theme.primary : (colorScheme === 'dark' ? '#2C2C2E' : '#E8E8E8'),
                         borderRadius: 16,
@@ -294,17 +312,20 @@ const ChatScreen = () => {
                             {isOwn && <MessageStatus message={message} isOwn={isOwn} />}
                         </View>
                     </View>
-                </View>
+                </TouchableOpacity>
             );
         }
 
         // Renderizar mensaje de archivo
         if (message.file) {
             return (
-                <View style={{
-                    marginVertical: 4,
-                    marginHorizontal: 8,
-                }}>
+                <TouchableOpacity
+                    activeOpacity={1}
+                    onLongPress={() => handleMessageLongPress(null, message)}
+                    style={{
+                        marginVertical: 4,
+                        marginHorizontal: 8,
+                    }}>
                     <View style={{
                         backgroundColor: isOwn ? theme.primary : (colorScheme === 'dark' ? '#2C2C2E' : '#E8E8E8'),
                         borderRadius: 16,
@@ -385,7 +406,7 @@ const ChatScreen = () => {
                             {isOwn && <MessageStatus message={message} isOwn={isOwn} />}
                         </View>
                     </View>
-                </View>
+                </TouchableOpacity>
             );
         }
 
@@ -663,6 +684,7 @@ const ChatScreen = () => {
                     alwaysShowSend
                     showUserAvatar={false}
                     renderBubble={renderBubble}
+                    onLongPress={handleMessageLongPress}
                     renderAvatar={null}
                     text={inputText}
                     onInputTextChanged={setInputText}

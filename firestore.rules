@@ -141,8 +141,15 @@ service cloud.firestore {
         // [Chat] Solo el autor puede eliminar su propio mensaje
         allow delete: if isInRelationship(relationshipId) && isAuthorOfExistingData();
 
-        // [Chat] No se pueden editar mensajes (para mantener integridad)
-        allow update: if false;
+        // [Chat] Dos únicas formas de editar un mensaje ya creado:
+        // - Confirmación de entrega/lectura: cualquiera de los dos, y solo
+        //   esos dos campos (así no sirve para tocar el contenido).
+        // - Borrado suave del propio mensaje: solo el autor, solo para
+        //   marcarlo borrado (no para "des-borrarlo").
+        allow update: if isInRelationship(relationshipId) && (
+          onlyFieldsChanged(['delivered', 'read']) ||
+          (isAuthorOfExistingData() && onlyFieldsChanged(['deleted']) && request.resource.data.deleted == true)
+        );
       }
 
       // --- SUB-COLECCIÓN: Álbum ('photos') ---

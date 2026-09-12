@@ -112,6 +112,7 @@ export function useChatUploads({
                         image: downloadURL,
                         text: '',
                         createdAt: Timestamp.now(),
+                        authorId: currentUser.uid,
                         user: {
                             _id: currentUser.uid,
                             name: userData.name || 'Usuario',
@@ -194,6 +195,7 @@ export function useChatUploads({
                         audio: downloadURL,
                         text: '',
                         createdAt: Timestamp.now(),
+                        authorId: currentUser.uid,
                         user: {
                             _id: currentUser.uid,
                             name: userData.name || 'Usuario',
@@ -276,6 +278,7 @@ export function useChatUploads({
                         fileSize: fileSize,
                         text: '',
                         createdAt: Timestamp.now(),
+                        authorId: currentUser.uid,
                         user: {
                             _id: currentUser.uid,
                             name: userData.name || 'Usuario',

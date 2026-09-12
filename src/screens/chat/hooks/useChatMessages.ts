@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
 import {
     collection, addDoc, onSnapshot, query, orderBy, doc,
-    updateDoc, Timestamp, limit, getDocs, startAfter,
+    updateDoc, Timestamp, limit, getDocs, startAfter, writeBatch,
     QueryDocumentSnapshot, DocumentData
 } from 'firebase/firestore';
 import { IMessage } from 'react-native-gifted-chat';
@@ -110,28 +110,31 @@ export function useChatMessages(userData: DocumentData | null, resetInput: () =>
                 setHasMoreMessages(snapshot.docs.length === MESSAGES_PAGE_SIZE);
             }
 
-            // Marcar mensajes como entregados
-            const undeliveredMessages = snapshot.docs.filter(doc => {
-                const data = doc.data();
-                return data.user._id !== currentUser.uid && !data.delivered;
-            });
+            // Marcar como entregados y leídos los mensajes de la pareja que
+            // aún no lo estén, en un solo lote (antes eran N escrituras
+            // sueltas, una por await, y hasta dos por mensaje si aplicaban
+            // ambos campos por separado).
+            const appActive = AppState.currentState === 'active';
+            const batch = writeBatch(db);
+            let hasWrites = false;
 
-            for (const messageDoc of undeliveredMessages) {
-                const messageRef = doc(db, 'relationships', relationshipId, 'messages', messageDoc.id);
-                await updateDoc(messageRef, { delivered: true });
+            for (const messageDoc of snapshot.docs) {
+                const data = messageDoc.data();
+                if (data.user._id === currentUser.uid) continue;
+
+                const update: { delivered?: true; read?: true } = {};
+                if (!data.delivered) update.delivered = true;
+                if (appActive && !data.read) update.read = true;
+
+                if (Object.keys(update).length > 0) {
+                    const messageRef = doc(db, 'relationships', relationshipId, 'messages', messageDoc.id);
+                    batch.update(messageRef, update);
+                    hasWrites = true;
+                }
             }
 
-            // Marcar mensajes como leídos cuando la app está activa
-            if (AppState.currentState === 'active') {
-                const unreadMessages = snapshot.docs.filter(doc => {
-                    const data = doc.data();
-                    return data.user._id !== currentUser.uid && !data.read;
-                });
-
-                for (const messageDoc of unreadMessages) {
-                    const messageRef = doc(db, 'relationships', relationshipId, 'messages', messageDoc.id);
-                    await updateDoc(messageRef, { read: true });
-                }
+            if (hasWrites) {
+                await batch.commit();
             }
         });
 
@@ -183,6 +186,7 @@ export function useChatMessages(userData: DocumentData | null, resetInput: () =>
             await addDoc(collection(db, 'relationships', relationshipId, 'messages'), {
                 text: message.text,
                 createdAt: Timestamp.now(),
+                authorId: currentUser.uid,
                 user: {
                     _id: currentUser.uid,
                     name: userData.name || 'Usuario',
@@ -203,6 +207,30 @@ export function useChatMessages(userData: DocumentData | null, resetInput: () =>
         }
     }, [currentUser, userData]);
 
+    // Borrado suave de un mensaje propio: deja el documento (con su
+    // contenido) pero lo marca 'deleted' para que se muestre como
+    // tombstone. Las reglas de Firestore solo permiten esto para el autor,
+    // y solo para pasar 'deleted' a true (no para revertirlo).
+    const deleteMessage = useCallback(async (messageId: string) => {
+        if (!currentUser || !userData?.partnerId) return;
+
+        const relationshipId = [currentUser.uid, userData.partnerId].sort().join('_');
+        const messageRef = doc(db, 'relationships', relationshipId, 'messages', messageId);
+
+        try {
+            await updateDoc(messageRef, { deleted: true });
+            setLiveMessages(prev => prev.map(m => m._id === messageId ? { ...m, deleted: true } : m));
+            setEarlierMessages(prev => prev.map(m => m._id === messageId ? { ...m, deleted: true } : m));
+        } catch (error) {
+            console.error('Error eliminando mensaje:', error);
+            Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'No se pudo eliminar el mensaje',
+            });
+        }
+    }, [currentUser, userData?.partnerId]);
+
     return {
         currentUser,
         loading,
@@ -211,5 +239,6 @@ export function useChatMessages(userData: DocumentData | null, resetInput: () =>
         isLoadingEarlier,
         handleLoadEarlier,
         onSend,
+        deleteMessage,
     };
 }
