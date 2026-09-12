@@ -1,11 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { Audio } from 'expo-av';
+import { User as FirebaseUser } from 'firebase/auth';
+import { doc, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
+import { db } from '../../../config/firebaseConfig';
 import { ExtendedMessage } from '../types';
 
-// Reproducción de notas de voz recibidas: config del modo de audio,
-// precarga de duraciones y control de reproducción (play/pause/progreso).
-export function useAudioPlayback(messages: ExtendedMessage[]) {
+// Reproducción de notas de voz recibidas: config del modo de audio y
+// control de reproducción (play/pause/progreso/marcar escuchado). La
+// duración de cada audio no se mide acá — viaja en 'message.audioDuration',
+// grabada por useAudioRecording al terminar de grabar.
+export function useAudioPlayback(
+    currentUser: FirebaseUser | null,
+    partnerId: string | null | undefined
+) {
     const [currentSound, setCurrentSound] = useState<Audio.Sound | null>(null);
     const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
     const [audioProgress, setAudioProgress] = useState<{ [key: string]: number }>({});
@@ -103,8 +111,27 @@ export function useAudioPlayback(messages: ExtendedMessage[]) {
         }
     };
 
+    // Marca un audio ajeno como escuchado (el punto de "no reproducido"
+    // junto al mensaje). Las reglas de Firestore solo dejan tocar
+    // exactamente este campo desde acá, no el resto del mensaje.
+    const markAudioPlayed = async (messageId: string) => {
+        if (!currentUser || !partnerId) return;
+
+        const relationshipId = [currentUser.uid, partnerId].sort().join('_');
+        const messageRef = doc(db, 'relationships', relationshipId, 'messages', messageId);
+
+        try {
+            await updateDoc(messageRef, { audioPlayed: true });
+        } catch (error) {
+            console.error('Error marcando audio como escuchado:', error);
+        }
+    };
+
     // Función SIMPLIFICADA para reproducir audio (sin cola)
-    const playAudio = async (messageId: string, audioUrl: string) => {
+    const playAudio = async (message: ExtendedMessage) => {
+        const messageId = message._id.toString();
+        const audioUrl = message.audio!;
+
         try {
             console.log('🎬 Reproduciendo audio:', messageId);
             setIsLoadingAudio(messageId);
@@ -130,14 +157,17 @@ export function useAudioPlayback(messages: ExtendedMessage[]) {
                 (status) => onPlaybackStatusUpdate(messageId, status)
             );
 
-            // Obtener duración si no la tenemos
-            const status = await sound.getStatusAsync();
-            if (status.isLoaded && status.durationMillis && !audioDurations[messageId]) {
-                console.log('✅ Duración:', status.durationMillis);
-                setAudioDurations(prev => ({
-                    ...prev,
-                    [messageId]: status.durationMillis!
-                }));
+            // Duración de respaldo, solo para mensajes viejos que no tengan
+            // 'audioDuration' guardado desde la grabación.
+            if (!message.audioDuration && !audioDurations[messageId]) {
+                const status = await sound.getStatusAsync();
+                if (status.isLoaded && status.durationMillis) {
+                    console.log('✅ Duración (respaldo):', status.durationMillis);
+                    setAudioDurations(prev => ({
+                        ...prev,
+                        [messageId]: status.durationMillis!
+                    }));
+                }
             }
 
             setCurrentSound(sound);
@@ -145,6 +175,10 @@ export function useAudioPlayback(messages: ExtendedMessage[]) {
             setIsLoadingAudio(null);
 
             console.log('✅ Audio reproduciéndose');
+
+            if (currentUser && message.user._id !== currentUser.uid && !message.audioPlayed) {
+                markAudioPlayed(messageId);
+            }
 
         } catch (error) {
             console.error('❌ Error reproduciendo audio:', error);
@@ -159,7 +193,8 @@ export function useAudioPlayback(messages: ExtendedMessage[]) {
     };
 
     // Función SIMPLE para pausar/reanudar audio
-    const toggleAudioPlayback = async (messageId: string, audioUrl: string) => {
+    const toggleAudioPlayback = async (message: ExtendedMessage) => {
+        const messageId = message._id.toString();
         console.log('🎮 Toggle audio:', messageId, 'currentlyPlaying:', currentlyPlayingId);
 
         // Si este audio está reproduciéndose, PAUSARLO
@@ -169,7 +204,7 @@ export function useAudioPlayback(messages: ExtendedMessage[]) {
         } else {
             // Si no está reproduciéndose, REPRODUCIRLO (detendrá cualquier otro primero)
             console.log('▶️ Reproduciendo audio');
-            await playAudio(messageId, audioUrl);
+            await playAudio(message);
         }
     };
 
@@ -179,47 +214,6 @@ export function useAudioPlayback(messages: ExtendedMessage[]) {
             stopCurrentAudio();
         };
     }, []);
-
-    // Precargar duraciones de audios cuando se cargan mensajes
-    useEffect(() => {
-        const loadAudioDurations = async () => {
-            const audioMessages = messages.filter(m => m.audio);
-
-            for (const message of audioMessages) {
-                const messageId = message._id.toString();
-
-                // Solo cargar si no tenemos la duración ya
-                if (audioDurations[messageId]) {
-                    continue;
-                }
-
-                try {
-                    const { sound } = await Audio.Sound.createAsync(
-                        { uri: message.audio! },
-                        { shouldPlay: false }
-                    );
-
-                    const status = await sound.getStatusAsync();
-
-                    if (status.isLoaded && status.durationMillis) {
-                        console.log('✅ Duración precargada:', messageId, status.durationMillis);
-                        setAudioDurations(prev => ({
-                            ...prev,
-                            [messageId]: status.durationMillis!
-                        }));
-                    }
-
-                    await sound.unloadAsync();
-                } catch (error) {
-                    console.error('❌ Error precargando:', messageId, error);
-                }
-            }
-        };
-
-        if (messages.length > 0) {
-            loadAudioDurations();
-        }
-    }, [messages.length]); // Solo cuando cambia el número de mensajes
 
     // Función para formatear duración de audio
     const formatAudioDuration = (milliseconds: number) => {

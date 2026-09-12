@@ -124,7 +124,7 @@ const ChatScreen = () => {
         isLoadingAudio,
         toggleAudioPlayback,
         formatAudioDuration,
-    } = useAudioPlayback(messages);
+    } = useAudioPlayback(currentUser, userData?.partnerId);
 
     const { partnerInfo } = usePartnerPresence({
         currentUser,
@@ -179,7 +179,7 @@ const ChatScreen = () => {
             const messageId = message._id.toString();
             const isPlaying = currentlyPlayingId === messageId;
             const progress = audioProgress[messageId] || 0;
-            const duration = audioDurations[messageId];
+            const duration = message.audioDuration ?? audioDurations[messageId];
             const isLoading = isLoadingAudio === messageId;
 
             console.log('🎵 Audio bubble:', {
@@ -213,7 +213,7 @@ const ChatScreen = () => {
                             <TouchableOpacity
                                 onPress={() => {
                                     console.log('🔘 Botón audio presionado:', messageId.substring(0, 10));
-                                    toggleAudioPlayback(messageId, message.audio!);
+                                    toggleAudioPlayback(message);
                                 }}
                                 disabled={isLoading}
                                 style={{

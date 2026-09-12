@@ -15,7 +15,7 @@ export function useAudioRecording({
     plan: 'free' | 'premium';
     usedStorage: number;
     maxStorage: number;
-    uploadAudio: (uri: string) => Promise<void>;
+    uploadAudio: (uri: string, durationMillis?: number) => Promise<void>;
     onNeedUpgrade: () => void;
 }) {
     const [recording, setRecording] = useState<Audio.Recording | null>(null);
@@ -88,7 +88,10 @@ export function useAudioRecording({
             }
 
             setIsRecording(false);
-            await recording.stopAndUnloadAsync();
+            // stopAndUnloadAsync() devuelve el estado final de la grabación,
+            // que ya trae 'durationMillis' — así no hay que volver a abrir el
+            // archivo después solo para medir cuánto dura.
+            const finalStatus = await recording.stopAndUnloadAsync();
             const uri = recording.getURI();
 
             if (uri) {
@@ -105,7 +108,7 @@ export function useAudioRecording({
                     }
                 }
 
-                await uploadAudio(uri);
+                await uploadAudio(uri, finalStatus.durationMillis);
             }
 
             setRecording(null);

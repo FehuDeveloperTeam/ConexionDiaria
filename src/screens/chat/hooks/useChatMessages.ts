@@ -32,6 +32,7 @@ const mapMessageDoc = (doc: QueryDocumentSnapshot<DocumentData>): ExtendedMessag
         image: data.image,
         video: data.video,
         audio: data.audio,
+        audioDuration: data.audioDuration,
         file: data.file,
         fileName: data.fileName,
         fileSize: data.fileSize,

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { User as FirebaseUser } from 'firebase/auth';
-import { addDoc, collection, doc, updateDoc, Timestamp, DocumentData } from 'firebase/firestore';
+import { addDoc, collection, doc, updateDoc, Timestamp, DocumentData, increment } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -122,10 +122,13 @@ export function useChatUploads({
                         sentAt: Timestamp.now(),
                     });
 
-                    // Actualizar almacenamiento usado
+                    // Actualizar almacenamiento usado: incremento atómico en el
+                    // servidor, no lectura-modificación-escritura con el valor
+                    // que este hook tenía en el momento de renderizar (podía
+                    // perder incrementos si dos subidas terminaban a la vez).
                     const relationshipRef = doc(db, 'relationships', relationshipId);
                     await updateDoc(relationshipRef, {
-                        usedStorage: (usedStorage || 0) + fileSize
+                        usedStorage: increment(fileSize)
                     });
 
                     setIsUploading(false);
@@ -149,8 +152,10 @@ export function useChatUploads({
         }
     };
 
-    // Función para subir audio
-    const uploadAudio = async (uri: string) => {
+    // Función para subir audio. 'durationMillis' viene de la grabación misma
+    // (useAudioRecording ya la tiene al terminar de grabar) para no tener que
+    // descargar el audio después solo para medirlo.
+    const uploadAudio = async (uri: string, durationMillis?: number) => {
         if (!currentUser || !userData?.partnerId) return;
 
         try {
@@ -193,6 +198,7 @@ export function useChatUploads({
 
                     await addDoc(collection(db, 'relationships', relationshipId, 'messages'), {
                         audio: downloadURL,
+                        ...(durationMillis != null ? { audioDuration: durationMillis } : {}),
                         text: '',
                         createdAt: Timestamp.now(),
                         authorId: currentUser.uid,
@@ -206,10 +212,13 @@ export function useChatUploads({
                         sentAt: Timestamp.now(),
                     });
 
-                    // Actualizar almacenamiento usado
+                    // Actualizar almacenamiento usado: incremento atómico en el
+                    // servidor, no lectura-modificación-escritura con el valor
+                    // que este hook tenía en el momento de renderizar (podía
+                    // perder incrementos si dos subidas terminaban a la vez).
                     const relationshipRef = doc(db, 'relationships', relationshipId);
                     await updateDoc(relationshipRef, {
-                        usedStorage: (usedStorage || 0) + fileSize
+                        usedStorage: increment(fileSize)
                     });
 
                     setIsUploading(false);
@@ -288,10 +297,13 @@ export function useChatUploads({
                         sentAt: Timestamp.now(),
                     });
 
-                    // Actualizar almacenamiento usado
+                    // Actualizar almacenamiento usado: incremento atómico en el
+                    // servidor, no lectura-modificación-escritura con el valor
+                    // que este hook tenía en el momento de renderizar (podía
+                    // perder incrementos si dos subidas terminaban a la vez).
                     const relationshipRef = doc(db, 'relationships', relationshipId);
                     await updateDoc(relationshipRef, {
-                        usedStorage: (usedStorage || 0) + fileSize
+                        usedStorage: increment(fileSize)
                     });
 
                     setIsUploading(false);

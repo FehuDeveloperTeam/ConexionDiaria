@@ -147,7 +147,7 @@ service cloud.firestore {
         // - Borrado suave del propio mensaje: solo el autor, solo para
         //   marcarlo borrado (no para "des-borrarlo").
         allow update: if isInRelationship(relationshipId) && (
-          onlyFieldsChanged(['delivered', 'read']) ||
+          onlyFieldsChanged(['delivered', 'read', 'audioPlayed']) ||
           (isAuthorOfExistingData() && onlyFieldsChanged(['deleted']) && request.resource.data.deleted == true)
         );
       }
