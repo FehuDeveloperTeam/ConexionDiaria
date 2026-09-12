@@ -16,6 +16,7 @@ import Toast from 'react-native-toast-message';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { Ionicons } from '@expo/vector-icons';
 import { usePlan } from '../../src/contexts/planContext';
+import { scheduleEventReminder, cancelEventReminder } from '../../src/services/notifications';
 
 // Configuración de idioma español
 LocaleConfig.locales['es'] = {
@@ -69,6 +70,7 @@ interface CalendarEvent {
     dateTime: Timestamp;
     description?: string;
     reminder: boolean;
+    notificationId?: string | null;
     authorId: string;
     authorName: string;
     createdAt: Timestamp;
@@ -416,6 +418,7 @@ const CalendarScreen: React.FC = () => {
     const [eventDescription, setEventDescription] = useState('');
     const [eventDateTime, setEventDateTime] = useState<Date>(new Date());
     const [eventReminder, setEventReminder] = useState(false);
+    const [editingEventNotificationId, setEditingEventNotificationId] = useState<string | null>(null);
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
     // Estados para el modal de detalles
@@ -566,6 +569,7 @@ const CalendarScreen: React.FC = () => {
         setEventDateTime(new Date());
         setEventReminder(false);
         setEditingEventId(null);
+        setEditingEventNotificationId(null);
         setIsEventModalVisible(true);
     };
 
@@ -575,6 +579,7 @@ const CalendarScreen: React.FC = () => {
         setEventDateTime(event.dateTime.toDate());
         setEventReminder(event.reminder);
         setEditingEventId(event.id);
+        setEditingEventNotificationId(event.notificationId ?? null);
         setIsDetailModalVisible(false);
         setIsEventModalVisible(true);
     };
@@ -586,6 +591,7 @@ const CalendarScreen: React.FC = () => {
         setEventReminder(false);
         setIsEventModalVisible(false);
         setEditingEventId(null);
+        setEditingEventNotificationId(null);
     };
 
     const showEventDetails = (event: CalendarEvent) => {
@@ -691,6 +697,16 @@ const CalendarScreen: React.FC = () => {
         const eventsCollectionRef = collection(db, 'relationships', chatId, 'events');
 
         try {
+            // Si se estaba editando y ya había una notificación programada,
+            // se cancela: puede haber cambiado la fecha, o haberse apagado
+            // el recordatorio. Se reprograma desde cero si sigue activo.
+            if (editingEventId && editingEventNotificationId) {
+                await cancelEventReminder(editingEventNotificationId);
+            }
+            const notificationId = eventReminder
+                ? await scheduleEventReminder(title, eventDescription.trim() || 'Tu evento es ahora', eventDateTime)
+                : null;
+
             if (editingEventId) {
                 const eventDocRef = doc(db, 'relationships', chatId, 'events', editingEventId);
                 await updateDoc(eventDocRef, {
@@ -698,6 +714,7 @@ const CalendarScreen: React.FC = () => {
                     dateTime: Timestamp.fromDate(eventDateTime),
                     description: eventDescription.trim() || null,
                     reminder: eventReminder,
+                    notificationId,
                 });
                 Toast.show({ type: 'success', text1: 'Evento actualizado' });
             } else {
@@ -706,6 +723,7 @@ const CalendarScreen: React.FC = () => {
                     dateTime: Timestamp.fromDate(eventDateTime),
                     description: eventDescription.trim() || null,
                     reminder: eventReminder,
+                    notificationId,
                     authorId: user.uid,
                     authorName: userData.displayName || 'Usuario',
                     createdAt: serverTimestamp(),
@@ -717,29 +735,30 @@ const CalendarScreen: React.FC = () => {
             console.error("Error al guardar evento:", error);
             Toast.show({ type: 'error', text1: 'Error al guardar el evento' });
         }
-    }, [eventTitle, eventDescription, eventDateTime, eventReminder, userData, user, editingEventId, plan]);
+    }, [eventTitle, eventDescription, eventDateTime, eventReminder, userData, user, editingEventId, editingEventNotificationId, plan]);
 
-    const handleDeleteEvent = (eventId: string, authorId: string) => {
-        if (user?.uid !== authorId) {
+    const handleDeleteEvent = (event: CalendarEvent) => {
+        if (user?.uid !== event.authorId) {
             Toast.show({ type: 'error', text1: 'Solo el autor puede borrarlo' });
             return;
         }
         Alert.alert("Confirmar Eliminación", "¿Borrar este evento?",
-            [ 
-                { text: "Cancelar", style: "cancel" }, 
+            [
+                { text: "Cancelar", style: "cancel" },
                 {
-                    text: "Eliminar", 
+                    text: "Eliminar",
                     style: "destructive",
                     onPress: async () => {
                         if (!userData || !userData.partnerId) return;
                         const chatId = [user.uid, userData.partnerId].sort().join('_');
-                        const eventDocRef = doc(db, 'relationships', chatId, 'events', eventId);
-                        try { 
+                        const eventDocRef = doc(db, 'relationships', chatId, 'events', event.id);
+                        try {
+                            await cancelEventReminder(event.notificationId);
                             await deleteDoc(eventDocRef);
                             Toast.show({ type: 'success', text1: 'Evento eliminado' });
                             setIsDetailModalVisible(false);
-                        } catch (error) { 
-                            console.error("Error eliminando:", error); 
+                        } catch (error) {
+                            console.error("Error eliminando:", error);
                             Toast.show({ type: 'error', text1: 'Error al eliminar' });
                         }
                     }
@@ -1151,7 +1170,7 @@ const CalendarScreen: React.FC = () => {
                                                 flex: 1,
                                                 marginLeft: 5,
                                             }}
-                                            onPress={() => handleDeleteEvent(selectedEvent.id, selectedEvent.authorId)}
+                                            onPress={() => handleDeleteEvent(selectedEvent)}
                                         >
                                             <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600' }}>
                                                 Eliminar
