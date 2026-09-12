@@ -1,6 +1,6 @@
 // En: src/contexts/PlanContext.tsx
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, DocumentData, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../config/firebaseConfig';
@@ -32,7 +32,6 @@ export const PlanProvider = ({ children }: { children: ReactNode }) => {
     const [userData, setUserData] = useState<DocumentData | null>(null);
     const [partnerData, setPartnerData] = useState<DocumentData | null>(null);
     const [relationshipData, setRelationshipData] = useState<DocumentData | null>(null);
-    const [plan, setPlan] = useState<'free' | 'premium'>('free');
     const [isUserLoading, setIsUserLoading] = useState(true);
     const [isPartnerLoading, setIsPartnerLoading] = useState(false);
 
@@ -47,7 +46,6 @@ export const PlanProvider = ({ children }: { children: ReactNode }) => {
                 setUserData(null);
                 setPartnerData(null);
                 setRelationshipData(null);
-                setPlan('free');
                 setIsUserLoading(false);
                 Purchases.logOut();
             }
@@ -72,7 +70,6 @@ export const PlanProvider = ({ children }: { children: ReactNode }) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 setUserData(data);
-                setPlan(data.plan || 'free');
             } else {
                 // El usuario está en Auth pero no en Firestore
                 auth.signOut();
@@ -118,6 +115,16 @@ export const PlanProvider = ({ children }: { children: ReactNode }) => {
     }, [user, partnerId]);
 
     const isLoading = isUserLoading || isPartnerLoading;
+
+    // Plan de la pareja, no de la persona: "uno paga, ambos disfrutan"
+    // (Sprint 3, sesión 3.3). Se deriva de los dos documentos en vez de
+    // guardarse aparte, así que no puede desincronizarse entre uno y otro.
+    const plan = useMemo<'free' | 'premium'>(() => {
+        if (userData?.plan === 'premium' || partnerData?.plan === 'premium') {
+            return 'premium';
+        }
+        return 'free';
+    }, [userData, partnerData]);
 
     return (
         // 3. CORRECCIÓN: Pasamos TODOS los datos en el 'value'
