@@ -1,0 +1,21 @@
+{
+  "name": "functions",
+  "description": "Cloud Functions de ConexionDiaria — proyecto Node separado de la app Expo.",
+  "private": true,
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "deploy": "firebase deploy --only functions"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^5.1.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

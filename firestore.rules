@@ -69,20 +69,38 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
     }
 
+    // ¿La escritura toca 'plan' o 'premiumSince'? Esos dos campos son de
+    // solo lectura para cualquier cliente — los escribe exclusivamente la
+    // Cloud Function que valida el webhook de RevenueCat, vía Admin SDK
+    // (que nunca pasa por estas reglas, así que no necesita una excepción
+    // aquí). Antes de esto, cualquier usuario podía autoasignarse premium.
+    function touchesLockedFields() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['plan', 'premiumSince']);
+    }
+
+    // Mismo espíritu que touchesLockedFields(), pero para 'create': ahí no
+    // existe 'resource' (el documento previo) para hacer diff, así que se
+    // valida el valor inicial directamente — nadie puede crear su propio
+    // perfil ya en premium.
+    function createsWithoutPremium() {
+      return request.resource.data.plan == 'free' && request.resource.data.premiumSince == null;
+    }
+
     // --- REGLAS PARA LA COLECCIÓN 'users' ---
     match /users/{userId} {
 
       // Solo tú y tu pareja pueden leer tu perfil
       allow read: if isUser(userId) || isPartner(userId);
 
-      // Solo tú puedes crear tu propio perfil
-      allow create: if isUser(userId);
+      // Solo tú puedes crear tu propio perfil, y solo en plan free.
+      allow create: if isUser(userId) && createsWithoutPremium();
 
       // Solo tú puedes actualizar tu propio perfil libremente (mood, name,
-      // photoURL, partnerId propio, invitationCode, etc.). Además, dos
+      // photoURL, partnerId propio, invitationCode, etc.) — excepto 'plan'
+      // y 'premiumSince', bloqueados para todo cliente. Además, dos
       // excepciones acotadas para tocar el documento AJENO, cada una
       // restringida a un único campo y a una condición previa específica:
-      allow update: if isUser(userId)
+      allow update: if (isUser(userId) && !touchesLockedFields())
         // Conectar o desconectar pareja: solo el campo 'partnerId', y solo
         // reclamando a alguien libre o liberando a quien me tiene como pareja.
         || (onlyFieldsChanged(['partnerId']) && (isClaimingAsPartner() || isReleasingAsPartner()))

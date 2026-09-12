@@ -38,9 +38,17 @@ export interface UserDoc {
   isOnline: boolean;
   lastSeen: Timestamp;
 
-  // De solo lectura para el cliente a partir del Sprint 3 — la escritura
-  // real la hace la Cloud Function que valida el webhook de RevenueCat.
+  // De solo lectura para el cliente desde el Sprint 3 — los escribe
+  // exclusivamente la Cloud Function que valida el webhook de RevenueCat
+  // (functions/src/revenuecatWebhook.ts), nunca el cliente.
+  //
+  // Viven en el USUARIO, no en la relación: una suscripción le pertenece a
+  // la cuenta que paga, no a la pareja en la que esté en ese momento — si
+  // el que paga se desvincula, se lleva su plan consigo. El plan "de la
+  // pareja" (Sprint 3.3) se deriva en el cliente como el OR de ambos
+  // miembros, no se guarda por separado.
   plan: Plan;
+  premiumSince: Timestamp | null;
 }
 
 export interface RelationshipSettings {
@@ -57,12 +65,9 @@ export interface RelationshipSettings {
 export interface RelationshipDoc {
   members: [string, string];
 
-  // Quién de los dos paga la suscripción compartida. null si la relación
-  // está en plan free.
-  payerId: string | null;
-  // Fecha desde la que 'payerId' es premium — desempate por antigüedad
-  // cuando la herencia de tema no se resuelve por género (Sprint 2).
-  premiumSince: Timestamp | null;
+  // No hay 'payerId'/'premiumSince' acá — viven en UserDoc (ver por qué
+  // ahí). Quién paga y desde cuándo se deriva mirando 'plan' y
+  // 'premiumSince' de los dos miembros, no se duplica en la relación.
 
   settings?: RelationshipSettings;
 

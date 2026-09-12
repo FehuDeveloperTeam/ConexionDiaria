@@ -104,7 +104,9 @@ const Register: React.FC = () => {
                 gender: null,
                 currentMood: { emoji: '😊', name: 'Neutral', status: '' },
                 isOnline: true,
-                lastSeen: serverTimestamp()
+                lastSeen: serverTimestamp(),
+                plan: 'free',
+                premiumSince: null
             });
             batch.set(doc(db, "invitationCodes", invitationCode), buildInvitationCodeDoc(user.uid));
             await batch.commit();

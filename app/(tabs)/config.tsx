@@ -209,10 +209,15 @@ const ConfigScreen: React.FC = () => {
                 const packageToPurchase = offerings.current.availablePackages[0];
                 const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
                 
-                // Reemplaza "premium_entitlement" con el ID de tu Entitlement en RevenueCat
-                if (customerInfo.entitlements.active["premium_entitlement"]) { 
-                    await updateDoc(doc(db, 'users', user.uid), { plan: 'premium' });
-                    Toast.show({ type: 'success', text1: '¡Bienvenido a Premium!' });
+                // Reemplaza "premium_entitlement" con el ID de tu Entitlement en RevenueCat.
+                //
+                // OJO: ya NO escribimos 'plan' acá. Las reglas de Firestore
+                // bloquean que el cliente toque ese campo — lo hace
+                // exclusivamente la Cloud Function que valida el webhook de
+                // RevenueCat (functions/), unos segundos después de esto.
+                // El listener de PlanContext refleja el cambio solo.
+                if (customerInfo.entitlements.active["premium_entitlement"]) {
+                    Toast.show({ type: 'success', text1: '¡Compra exitosa!', text2: 'Activando tu Premium...' });
                 }
             }
         } catch (e: any) { // 5. CORRECCIÓN de sintaxis: (e: any) {
