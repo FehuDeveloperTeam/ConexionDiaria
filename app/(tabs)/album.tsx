@@ -8,10 +8,10 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db, storage } from '../../src/config/firebaseConfig';
 import { themes } from '../../src/config/theme';
-import { DocumentData, onSnapshot, collection, query, orderBy, limit, addDoc, serverTimestamp } from 'firebase/firestore';
+import { DocumentData, onSnapshot, collection, query, orderBy, limit, addDoc, doc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import * as Crypto from 'expo-crypto';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons'; // 3. Importamos Ionicons
@@ -79,7 +79,7 @@ const AlbumScreen: React.FC = () => {
 
     // --- 6. NUEVOS ESTADOS PARA EL MODAL ---
     const [isModalVisible, setIsModalVisible] = useState(false);
-    const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null);
+    const [selectedPhoto, setSelectedPhoto] = useState<DocumentData | null>(null);
 
     // 'user' y 'userData' vienen del contexto, no de un listener propio.
     const { user, userData } = usePlan();
@@ -168,14 +168,49 @@ const AlbumScreen: React.FC = () => {
     }, [user, userData]);
 
     // --- 7. NUEVAS FUNCIONES PARA EL MODAL ---
-    const openPhotoModal = (imageUrl: string) => {
-        setSelectedPhotoUrl(imageUrl);
+    const openPhotoModal = (photo: DocumentData) => {
+        setSelectedPhoto(photo);
         setIsModalVisible(true);
     };
 
     const closePhotoModal = () => {
         setIsModalVisible(false);
-        setSelectedPhotoUrl(null); // Limpiar la URL al cerrar
+        setSelectedPhoto(null);
+    };
+
+    // Borrar una foto: el documento en Firestore y el archivo en Storage.
+    // Antes el álbum solo acumulaba fotos, sin ninguna forma de borrarlas.
+    // Se borra primero el documento y después el archivo — si el archivo
+    // fallara, queda un archivo huérfano en Storage (inofensivo, solo
+    // espacio desperdiciado), en vez de un documento roto apuntando a una
+    // imagen que ya no existe.
+    const handleDeletePhoto = (photo: DocumentData) => {
+        if (!user || photo.authorId !== user.uid) return;
+
+        Alert.alert(
+            "Eliminar foto",
+            "¿Seguro que quieres borrar esta foto? No se puede deshacer.",
+            [
+                { text: "Cancelar", style: "cancel" },
+                {
+                    text: "Eliminar",
+                    style: "destructive",
+                    onPress: async () => {
+                        if (!userData?.partnerId) return;
+                        const chatId = [user.uid, userData.partnerId].sort().join('_');
+                        try {
+                            await deleteDoc(doc(db, 'relationships', chatId, 'photos', photo.id));
+                            await deleteObject(ref(storage, photo.imageUrl));
+                            closePhotoModal();
+                            Toast.show({ type: 'success', text1: 'Foto eliminada' });
+                        } catch (error) {
+                            console.error("Error eliminando foto:", error);
+                            Toast.show({ type: 'error', text1: 'Error al eliminar la foto' });
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     // --- Renderizado (con estados de carga y no conectado) ---
@@ -222,7 +257,7 @@ const AlbumScreen: React.FC = () => {
                         // --- 8. IMAGEN AHORA CLICKEABLE ---
                         <TouchableOpacity
                             style={styles.photoItem}
-                            onPress={() => openPhotoModal(item.imageUrl)}
+                            onPress={() => openPhotoModal(item)}
                         >
                             <Image 
                                 source={{ uri: item.imageUrl }} 
@@ -255,10 +290,20 @@ const AlbumScreen: React.FC = () => {
                     >
                         <Ionicons name="arrow-back-outline" size={30} color="#fff" />
                     </TouchableOpacity>
-                    
-                    <Image 
-                        source={{ uri: selectedPhotoUrl || undefined }} 
-                        style={styles.modalImage} 
+
+                    {/* Borrar: solo visible para el autor de la foto */}
+                    {selectedPhoto && user?.uid === selectedPhoto.authorId && (
+                        <TouchableOpacity
+                            style={[styles.closeButton, { top: insets.top + 10, right: insets.right + 15 }]}
+                            onPress={() => handleDeletePhoto(selectedPhoto)}
+                        >
+                            <Ionicons name="trash-outline" size={26} color="#fff" />
+                        </TouchableOpacity>
+                    )}
+
+                    <Image
+                        source={{ uri: selectedPhoto?.imageUrl || undefined }}
+                        style={styles.modalImage}
                     />
                 </View>
             </Modal>
