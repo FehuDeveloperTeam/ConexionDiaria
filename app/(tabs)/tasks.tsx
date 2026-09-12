@@ -203,12 +203,6 @@ const TasksScreen: React.FC = () => {
     const handleUpdateTask = async () => {
         if (!editingTask || editedText.trim() === '' || !userData || !userData.partnerId || !user) return;
         
-        // Verificación de permisos
-        if (user.uid !== editingTask.authorId) {
-             Toast.show({ type: 'error', text1: 'Acción no permitida' });
-             return;
-        }
-
         const chatId = [user.uid, userData.partnerId].sort().join('_');
         const taskDocRef = doc(db, 'relationships', chatId, 'tasks', editingTask.id);
         
@@ -245,20 +239,18 @@ const TasksScreen: React.FC = () => {
         );
     };
 
-    // Menú de pulsación larga (Long Press)
+    // Menú de pulsación larga (Long Press). Ambos pueden editar cualquier
+    // tarea de la relación; borrar sigue siendo solo del autor.
     const handleTaskLongPress = (item: DocumentData) => {
-        // Solo el autor puede editar o borrar
+        const options: { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }[] = [
+            { text: "Editar", onPress: () => openEditModal(item) },
+        ];
         if (user?.uid === item.authorId) {
-            Alert.alert( "Opciones de Tarea", item.text.substring(0, 50) + '...',
-                [
-                    { text: "Editar", onPress: () => openEditModal(item) },
-                    { text: "Eliminar", onPress: () => handleDeleteTask(item.id, item.authorId), style: "destructive" },
-                    { text: "Cancelar", style: "cancel" },
-                ],
-                { cancelable: true }
-            );
+            options.push({ text: "Eliminar", onPress: () => handleDeleteTask(item.id, item.authorId), style: "destructive" });
         }
-        // Si no es el autor, no hacer nada en long press
+        options.push({ text: "Cancelar", style: "cancel" });
+
+        Alert.alert("Opciones de Tarea", item.text.substring(0, 50) + '...', options, { cancelable: true });
     };
 
     // --- Renderizado ---

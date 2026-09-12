@@ -397,7 +397,11 @@ const WishlistScreen: React.FC = () => {
     const sectionData = useMemo(() => {
         if (!user || !partnerData) return [];
 
-        let partnerList = allItems.filter(item => item.authorId === partnerData.uid);
+        // 'partnerData' es el documento del socio en Firestore — no tiene un
+        // campo 'uid' propio (el uid es el ID del documento, no un campo
+        // dentro de él). Comparar contra 'partnerData.uid' siempre daba
+        // undefined, así que esta lista quedaba permanentemente vacía.
+        let partnerList = allItems.filter(item => item.authorId === partnerId);
         let myList = allItems.filter(item => item.authorId === user.uid);
 
         if (filterType !== 'Todos') {
@@ -409,7 +413,7 @@ const WishlistScreen: React.FC = () => {
             { title: `Lista de ${partnerData.displayName}`, data: partnerList },
             { title: "Mi Lista", data: myList },
         ];
-    }, [allItems, user, partnerData, filterType]);
+    }, [allItems, user, partnerData, partnerId, filterType]);
 
     // --- Manejadores ---
 
