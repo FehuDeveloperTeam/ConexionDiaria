@@ -16,6 +16,8 @@ import { ExtendedMessage } from '../../src/screens/chat/types';
 import { MessageStatus } from '../../src/screens/chat/components/MessageStatus';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
+import { useResponsive } from '../../src/hooks/useResponsive';
+import { ChatDesktopRail } from '../../src/screens/chat/components/ChatDesktopRail';
 import { ImageViewerModal } from '../../src/screens/chat/components/ImageViewerModal';
 import { VideoViewerModal } from '../../src/screens/chat/components/VideoViewerModal';
 import { FileViewerModal } from '../../src/screens/chat/components/FileViewerModal';
@@ -36,6 +38,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 // Componente Principal del Chat
 const ChatScreen = () => {
     const { theme, isDarkMode, fontFamilies } = useTheme();
+    const { isWide } = useResponsive();
     const router = useRouter();
 
     // Context de Plan
@@ -519,6 +522,7 @@ const ChatScreen = () => {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
+            <View style={{ flex: 1, flexDirection: 'row' }}>
             <DesktopContentWrap>
             {/* Header */}
             <View style={{
@@ -1125,6 +1129,25 @@ const ChatScreen = () => {
             </View>
             </KeyboardAvoidingView>
             </DesktopContentWrap>
+
+            {/* Carril derecho — Sprint 8.8, solo en escritorio ancho (>=1080px) */}
+            {isWide && (
+                <ChatDesktopRail
+                    partnerInfo={partnerInfo}
+                    messages={messages}
+                    usedStorage={usedStorage}
+                    maxStorage={maxStorage}
+                    onOpenImage={(uri) => {
+                        setSelectedMediaUri(uri);
+                        setImageViewerVisible(true);
+                    }}
+                    onOpenFile={(file) => {
+                        setSelectedFile(file);
+                        setFileViewerVisible(true);
+                    }}
+                />
+            )}
+            </View>
         </SafeAreaView>
     );
 };
