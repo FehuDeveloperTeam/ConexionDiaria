@@ -15,19 +15,19 @@ import {
     increment,
     limit // --- AÑADIDO: Importamos 'limit' para el paywall ---
 } from 'firebase/firestore';
-import { db } from '../../src/config/firebaseConfig';
+import { db, functions } from '../../src/config/firebaseConfig';
+import { httpsCallable } from 'firebase/functions';
 import { themes } from '../../src/config/theme'; // Importamos la definición base de 'themes'
 import * as Clipboard from 'expo-clipboard';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Notifications from 'expo-notifications'; 
+import * as Notifications from 'expo-notifications';
 
 // --- Hooks de Contexto ---
 import { usePlan } from '../../src/contexts/planContext';
 import { useTheme } from '../../src/contexts/themeContext';
-import { resolveInvitationCode } from '../../src/services/invitationCode';
 import { registerPushToken } from '../../src/services/notifications';
 
 // --- Constantes de Emojis (Free vs Premium) ---
@@ -55,6 +55,16 @@ const MOODS_PREMIUM_ADDON = [
 ];
 
 const MOODS_PREMIUM_FULL = [...MOODS_BASE, ...MOODS_PREMIUM_ADDON];
+
+// Títulos de toast para los códigos de error que puede lanzar la Cloud
+// Function 'pairWithCode' (ver functions/src/pairing.ts, hallazgo F-02). El
+// detalle va en el mensaje de la propia HttpsError, que sí llega al cliente.
+const PAIRING_ERROR_TITLES: Record<string, string> = {
+    'functions/not-found': 'Código Inválido',
+    'functions/invalid-argument': 'Código Inválido',
+    'functions/failed-precondition': 'No se puede conectar',
+    'functions/unauthenticated': 'Sesión expirada',
+};
 
 const getTodayDateKey = (): string => {
     const today = new Date();
@@ -346,26 +356,23 @@ const Home: React.FC = () => {
         if (!rawCode || !user) return;
 
         try {
-            // Resolver el código a un UID no requiere leer el perfil ajeno —
-            // 'invitationCodes' solo guarda ese mapeo. Ver src/services/invitationCode.ts.
-            const partnerUid = await resolveInvitationCode(rawCode);
-            if (!partnerUid) return Toast.show({ type: 'error', text1: 'Código Inválido' });
-            if (partnerUid === user.uid) return Toast.show({ type: 'error', text1: '¡Oops!', text2: 'No puedes conectarte contigo mismo.' });
-
-            const batch = writeBatch(db);
-            const currentUserRef = doc(db, 'users', user.uid);
-            const partnerDocRef = doc(db, 'users', partnerUid);
-            batch.update(currentUserRef, { partnerId: partnerUid });
-            batch.update(partnerDocRef, { partnerId: user.uid });
-
-            await batch.commit();
+            // El emparejamiento lo resuelve y lo escribe el servidor: es la
+            // única forma de validar de verdad el código de invitación
+            // (hallazgo F-02). Ver functions/src/pairing.ts.
+            const pairWithCode = httpsCallable<{ code: string }, { partnerUid: string }>(functions, 'pairWithCode');
+            await pairWithCode({ code: rawCode });
 
             setPartnerCode('');
             Toast.show({ type: 'success', text1: '¡Conexión Exitosa!' });
 
             await registerPushToken(user.uid);
 
-        } catch (error) { Toast.show({ type: 'error', text1: 'Error al conectar' }); console.error(error); }
+        } catch (error: any) {
+            const title = PAIRING_ERROR_TITLES[error?.code as string] ?? 'Error al conectar';
+            const detail = typeof error?.message === 'string' ? error.message : undefined;
+            Toast.show({ type: 'error', text1: title, text2: detail });
+            console.error(error);
+        }
     }, [partnerCode, user]);
 
     const openMoodSelector = useCallback(() => { setIsMoodSelectorVisible(true); }, []);

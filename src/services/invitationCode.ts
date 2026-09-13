@@ -8,14 +8,17 @@
 // hoja de ruta).
 //
 // La solución: un código corto vive en su propia colección de solo-mapeo,
-// 'invitationCodes/{code}' -> { uid }. Resolver un código a un UID no
-// requiere leer nada del perfil del dueño, así que puede ser legible por
-// cualquier usuario autenticado sin filtrar datos personales.
+// 'invitationCodes/{code}' -> { uid }. Resolverlo a un UID no requiere leer
+// nada del perfil del dueño, así que el 'get' es legible por cualquier
+// usuario autenticado sin filtrar datos personales (ver firestore.rules).
 //
-// Esta sesión deja lista la generación y resolución del código. El chequeo
-// de "esa persona ya tiene pareja" y la escritura recíproca de 'partnerId'
-// siguen pendientes de la sesión 2.2, que reescribe las reglas de 'users'
-// para permitirlo.
+// Este archivo solo GENERA códigos. Resolverlos y usarlos para emparejar es
+// trabajo exclusivo de la Cloud Function 'pairWithCode' (ver
+// functions/src/pairing.ts): antes esa resolución la hacía el cliente
+// directamente contra Firestore y solo comprobaba "el código existe", sin
+// validar nada más — cualquiera podía escribir el uid resuelto en el perfil
+// ajeno sin pasar por ningún otro chequeo (hallazgo F-02 de la auditoría de
+// seguridad).
 
 import { doc, getDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebaseConfig';
@@ -67,17 +70,3 @@ export const buildInvitationCodeDoc = (uid: string) => ({
     uid,
     createdAt: serverTimestamp(),
 });
-
-/**
- * Resuelve un código de invitación al UID de su dueño, sin leer el perfil
- * privado de esa persona. Devuelve null si el código no existe.
- */
-export const resolveInvitationCode = async (rawCode: string): Promise<string | null> => {
-    const code = rawCode.trim().toUpperCase();
-    if (!code) return null;
-
-    const codeSnap = await getDoc(doc(db, 'invitationCodes', code));
-    if (!codeSnap.exists()) return null;
-
-    return (codeSnap.data() as InvitationCodeDoc).uid;
-};

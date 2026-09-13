@@ -18,7 +18,7 @@ import {
     assertFails,
     assertSucceeds,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getBytes, deleteObject } from 'firebase/storage';
 
 const firestoreRules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
@@ -30,6 +30,7 @@ const storageRules = readFileSync(new URL('../storage.rules', import.meta.url), 
 const ALICE = 'aliceAAAAAAAAAAAAAAAAAAAAAA1';
 const BOB = 'bobBBBBBBBBBBBBBBBBBBBBBBBB2';
 const EVE = 'eveEEEEEEEEEEEEEEEEEEEEEEEE3'; // atacante: se registró, nada más
+const SOLO = 'soloSSSSSSSSSSSSSSSSSSSSSSS4'; // registrado, todavía sin pareja
 const REL = [ALICE, BOB].sort().join('_');
 
 let pass = 0;
@@ -61,6 +62,13 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(db, 'invitationCodes', 'ABC123'), { uid: ALICE });
     await setDoc(doc(db, 'invitationCodes', 'XYZ789'), { uid: BOB });
 
+    // Perfiles mínimos para las pruebas de emparejamiento (F-02): Alice y
+    // Bob ya son pareja, Eve y Solo están registrados pero sin pareja.
+    await setDoc(doc(db, 'users', ALICE), { partnerId: BOB });
+    await setDoc(doc(db, 'users', BOB), { partnerId: ALICE });
+    await setDoc(doc(db, 'users', EVE), { partnerId: null });
+    await setDoc(doc(db, 'users', SOLO), { partnerId: null });
+
     const st = ctx.storage();
     await uploadBytes(ref(st, `relationships/${REL}/images/foto.jpg`), new Uint8Array([1, 2, 3]));
     await uploadBytes(ref(st, `relationships/${REL}/audios/nota.m4a`), new Uint8Array([1, 2, 3]));
@@ -70,6 +78,34 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
 
 const alice = testEnv.authenticatedContext(ALICE);
 const eve = testEnv.authenticatedContext(EVE);
+const solo = testEnv.authenticatedContext(SOLO);
+
+console.log('\nEmparejamiento (Firestore) — F-02');
+
+await check(
+    'ATAQUE: Eve NO puede forzar su uid como partnerId de alguien sin pareja',
+    assertFails(updateDoc(doc(eve.firestore(), 'users', SOLO), { partnerId: EVE }))
+);
+await check(
+    'ATAQUE: Eve NO puede ponerse a sí misma un partnerId inventado',
+    assertFails(updateDoc(doc(eve.firestore(), 'users', EVE), { partnerId: SOLO }))
+);
+await check(
+    'ATAQUE: Eve NO puede liberar la pareja de Alice y Bob sin ser parte de ella',
+    assertFails(updateDoc(doc(eve.firestore(), 'users', BOB), { partnerId: null }))
+);
+await check(
+    'LEGÍTIMO: Solo sí puede seguir sin pareja (no toca partnerId)',
+    assertSucceeds(updateDoc(doc(solo.firestore(), 'users', SOLO), { mood: '😊' }))
+);
+await check(
+    'LEGÍTIMO: Alice sí puede desconectarse (su propio partnerId -> null)',
+    assertSucceeds(updateDoc(doc(alice.firestore(), 'users', ALICE), { partnerId: null }))
+);
+await check(
+    'LEGÍTIMO: Alice sí puede liberar a Bob, que hoy la tiene como pareja',
+    assertSucceeds(updateDoc(doc(alice.firestore(), 'users', BOB), { partnerId: null }))
+);
 
 console.log('\nCódigos de invitación (Firestore)');
 

@@ -37,6 +37,10 @@ const db = getFirestore();
 // Push remoto a la pareja (Sprint 5.2) — ver functions/src/pushNotifications.ts.
 export { onNewChatMessage, onNewMissYouPing } from './pushNotifications';
 
+// Emparejamiento con código verificado en el servidor (F-02) — ver
+// functions/src/pairing.ts.
+export { pairWithCode } from './pairing';
+
 const REVENUECAT_WEBHOOK_SECRET = defineSecret('REVENUECAT_WEBHOOK_SECRET');
 
 // Debe coincidir con el identificador de Entitlement en el dashboard de
