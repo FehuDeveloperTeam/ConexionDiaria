@@ -7,7 +7,6 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Crypto from 'expo-crypto';
 import Toast from 'react-native-toast-message';
-import { useActionSheet } from '@expo/react-native-action-sheet';
 import { db, storage } from '../../../config/firebaseConfig';
 
 // Función helper para convertir URI a Blob
@@ -42,7 +41,6 @@ export function useChatUploads({
     maxStorage: number;
     onNeedUpgrade: () => void;
 }) {
-    const { showActionSheetWithOptions } = useActionSheet();
     const [uploadProgress, setUploadProgress] = useState(0);
     const [isUploading, setIsUploading] = useState(false);
 
@@ -315,60 +313,45 @@ export function useChatUploads({
         }
     };
 
-    // Función para mostrar menú de adjuntos
-    const showAttachmentMenu = () => {
-        const options = ['Cámara', 'Galería', 'Documento', 'Cancelar'];
-        const cancelButtonIndex = 3;
+    // Sprint 7.4b: la hoja de adjuntar pasó a ser un bottom sheet propio de
+    // 3 tiles (ver chat.tsx), en vez del action sheet nativo del sistema —
+    // este hook ya no decide CÓMO se elige la opción, solo QUÉ pasa al
+    // elegir cada una.
+    const pickFromCamera = async () => {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) return;
+        const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            quality: 0.8,
+        });
+        if (!result.canceled && result.assets[0]) {
+            await uploadImage(result.assets[0].uri);
+        }
+    };
 
-        showActionSheetWithOptions(
-            {
-                options,
-                cancelButtonIndex,
-                title: 'Adjuntar archivo',
-            },
-            async (buttonIndex) => {
-                if (buttonIndex === 0) {
-                    // Cámara
-                    const permission = await ImagePicker.requestCameraPermissionsAsync();
-                    if (permission.granted) {
-                        const result = await ImagePicker.launchCameraAsync({
-                            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                            allowsEditing: true,
-                            quality: 0.8,
-                        });
+    const pickFromGallery = async () => {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) return;
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            quality: 0.8,
+        });
+        if (!result.canceled && result.assets[0]) {
+            await uploadImage(result.assets[0].uri);
+        }
+    };
 
-                        if (!result.canceled && result.assets[0]) {
-                            await uploadImage(result.assets[0].uri);
-                        }
-                    }
-                } else if (buttonIndex === 1) {
-                    // Galería
-                    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                    if (permission.granted) {
-                        const result = await ImagePicker.launchImageLibraryAsync({
-                            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                            allowsEditing: true,
-                            quality: 0.8,
-                        });
-
-                        if (!result.canceled && result.assets[0]) {
-                            await uploadImage(result.assets[0].uri);
-                        }
-                    }
-                } else if (buttonIndex === 2) {
-                    // Documento
-                    const result = await DocumentPicker.getDocumentAsync({
-                        type: '*/*',
-                        copyToCacheDirectory: true,
-                    });
-
-                    if (!result.canceled && result.assets[0]) {
-                        const file = result.assets[0];
-                        await uploadFile(file.uri, file.name, file.size || 0);
-                    }
-                }
-            }
-        );
+    const pickDocument = async () => {
+        const result = await DocumentPicker.getDocumentAsync({
+            type: '*/*',
+            copyToCacheDirectory: true,
+        });
+        if (!result.canceled && result.assets[0]) {
+            const file = result.assets[0];
+            await uploadFile(file.uri, file.name, file.size || 0);
+        }
     };
 
     return {
@@ -378,6 +361,8 @@ export function useChatUploads({
         uploadImage,
         uploadAudio,
         uploadFile,
-        showAttachmentMenu,
+        pickFromCamera,
+        pickFromGallery,
+        pickDocument,
     };
 }

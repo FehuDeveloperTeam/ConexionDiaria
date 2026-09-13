@@ -2,14 +2,13 @@ import React, { useState } from 'react';
 import {
     View, useColorScheme, Platform, KeyboardAvoidingView, StyleSheet,
     ActivityIndicator, Text, TouchableOpacity, Image, UIManager,
-    Keyboard, Alert
+    Keyboard, Alert, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GiftedChat, InputToolbar, Composer, Send, Actions, Bubble } from 'react-native-gifted-chat';
 import { useRouter } from 'expo-router';
-import { themes } from '../../src/config/theme';
-import { Feather, Ionicons } from '@expo/vector-icons';
-import { ActionSheetProvider } from '@expo/react-native-action-sheet';
+import { themes, fontFamilies, spacing, radii } from '../../src/config/theme';
+import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { usePlan } from '../../src/contexts/planContext';
 import { ExtendedMessage } from '../../src/screens/chat/types';
@@ -56,12 +55,19 @@ const ChatScreen = () => {
     const [showProfilePhoto, setShowProfilePhoto] = useState(false);
     const [profilePhotoSize, setProfilePhotoSize] = useState<'medium' | 'full'>('medium');
 
+    // Hoja de adjuntar propia (Sprint 7.4b) — reemplaza el action sheet nativo.
+    const [isAttachSheetVisible, setIsAttachSheetVisible] = useState(false);
+
     // Estado para manejar el teclado
     const [, setKeyboardHeight] = useState(0);
 
     // Calcular almacenamiento usado
     const usedStorage = relationshipData?.usedStorage || 0;
     const maxStorage = plan === 'premium' ? 25 * 1024 * 1024 * 1024 : 100 * 1024 * 1024; // 25GB vs 100MB
+    // Aviso de almacenamiento — solo aplica al plan gratuito (premium ya tiene 25GB).
+    const storageUsageRatio = maxStorage > 0 ? usedStorage / maxStorage : 0;
+    const showStorageWarning = plan === 'free' && storageUsageRatio >= 0.9;
+    const formatStorageMB = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
 
     const {
         currentUser,
@@ -92,7 +98,9 @@ const ChatScreen = () => {
         isUploading,
         uploadProgress,
         uploadAudio,
-        showAttachmentMenu,
+        pickFromCamera,
+        pickFromGallery,
+        pickDocument,
     } = useChatUploads({
         currentUser,
         userData,
@@ -493,21 +501,21 @@ const ChatScreen = () => {
             <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                paddingHorizontal: 16,
-                paddingVertical: 12,
+                paddingHorizontal: spacing.s16,
+                paddingVertical: spacing.s12,
                 backgroundColor: theme.background,
                 borderBottomWidth: 1,
-                borderBottomColor: theme.borderColor,
+                borderBottomColor: theme.borderSoft,
             }}>
                 {/* Botón de regreso */}
                 <TouchableOpacity
                     onPress={() => router.back()}
                     style={{
-                        marginRight: 12,
+                        marginRight: spacing.s12,
                         padding: 4,
                     }}
                 >
-                    <Ionicons name="chevron-back" size={28} color={theme.text} />
+                    <Ionicons name="arrow-back" size={24} color={theme.text} />
                 </TouchableOpacity>
 
                 {/* Info de pareja (clickeable) */}
@@ -528,26 +536,26 @@ const ChatScreen = () => {
                         <Image
                             source={{ uri: partnerInfo.photoURL }}
                             style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                marginRight: 12,
+                                width: 42,
+                                height: 42,
+                                borderRadius: 21,
+                                marginRight: spacing.s12,
                             }}
                         />
                     ) : (
                         <View style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 20,
+                            width: 42,
+                            height: 42,
+                            borderRadius: 21,
                             backgroundColor: theme.primary,
                             justifyContent: 'center',
                             alignItems: 'center',
-                            marginRight: 12,
+                            marginRight: spacing.s12,
                         }}>
                             <Text style={{
                                 color: theme.white,
                                 fontSize: 18,
-                                fontWeight: '600',
+                                fontFamily: fontFamilies.bodySemiBold,
                             }}>
                                 {partnerInfo?.name?.charAt(0).toUpperCase() || '❤️'}
                             </Text>
@@ -557,23 +565,30 @@ const ChatScreen = () => {
                     {/* Nombre e info */}
                     <View style={{ flex: 1 }}>
                         <Text style={{
-                            fontSize: 17,
-                            fontWeight: '600',
+                            fontSize: 16,
+                            fontFamily: fontFamilies.bodyBold,
                             color: theme.text,
                         }}>
                             {partnerInfo?.name || 'Pareja'}
                         </Text>
                         {partnerInfo?.isOnline ? (
-                            <Text style={{
-                                fontSize: 13,
-                                color: '#34C759',
-                            }}>
-                                En línea
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                                <View style={{
+                                    width: 7,
+                                    height: 7,
+                                    borderRadius: 3.5,
+                                    backgroundColor: theme.success,
+                                    marginRight: 5,
+                                }} />
+                                <Text style={{ fontSize: 13, color: theme.success }}>
+                                    En línea
+                                </Text>
+                            </View>
                         ) : partnerInfo?.lastSeen ? (
                             <Text style={{
                                 fontSize: 13,
-                                color: theme.placeholder,
+                                color: theme.textFaint,
+                                marginTop: 2,
                             }}>
                                 {(() => {
                                     const lastSeenDate = partnerInfo.lastSeen.toDate();
@@ -635,7 +650,7 @@ const ChatScreen = () => {
                         _id: currentUser?.uid || '',
                         name: userData?.name || 'Usuario',
                     }}
-                    placeholder="Escribe un mensaje..."
+                    placeholder="Escribe algo lindo…"
                     alwaysShowSend
                     showUserAvatar={false}
                     renderBubble={renderBubble}
@@ -675,30 +690,66 @@ const ChatScreen = () => {
                         </View>
                     )}
                     renderInputToolbar={(toolbarProps) => (
-                        !isRecording ? (
-                            <InputToolbar
-                                {...toolbarProps}
-                                containerStyle={{
-                                    backgroundColor: theme.background,
-                                    borderTopColor: theme.borderColor,
-                                    borderTopWidth: 1,
-                                    paddingVertical: 4,
-                                    paddingHorizontal: 8,
-                                    minHeight: 48,
-                                    marginBottom: 0,
-                                }}
-                                primaryStyle={{
+                        <View>
+                            {showStorageWarning && (
+                                <View style={{
+                                    flexDirection: 'row',
                                     alignItems: 'center',
-                                    justifyContent: 'center',
-                                    minHeight: 44,
-                                }}
-                                renderActions={(actionsProps) =>
-                                    !isRecording ? (
+                                    gap: spacing.s10,
+                                    backgroundColor: theme.warnBg,
+                                    borderTopWidth: 1,
+                                    borderTopColor: theme.warnBorder,
+                                    paddingHorizontal: spacing.s16,
+                                    paddingVertical: spacing.s10,
+                                }}>
+                                    <Ionicons name="cloud-offline-outline" size={18} color={theme.warnText} />
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 12, color: theme.warnText }}>
+                                            {formatStorageMB(usedStorage)} de {formatStorageMB(maxStorage)} usados
+                                        </Text>
+                                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 11, color: theme.warnText, opacity: 0.85 }}>
+                                            Premium sube a 25 GB compartidos
+                                        </Text>
+                                    </View>
+                                    <TouchableOpacity
+                                        onPress={() => setShowUpgradeModal(true)}
+                                        style={{
+                                            paddingHorizontal: spacing.s14,
+                                            paddingVertical: spacing.s8,
+                                            borderRadius: radii.pill,
+                                            backgroundColor: theme.premium,
+                                        }}
+                                    >
+                                        <Text style={{ fontFamily: fontFamilies.actionBold, fontSize: 12, color: theme.premiumTextOnFill }}>
+                                            Ampliar
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+
+                            {!isRecording ? (
+                                <InputToolbar
+                                    {...toolbarProps}
+                                    containerStyle={{
+                                        backgroundColor: theme.background,
+                                        borderTopColor: theme.borderSoft,
+                                        borderTopWidth: showStorageWarning ? 0 : 1,
+                                        paddingVertical: 4,
+                                        paddingHorizontal: 8,
+                                        minHeight: 48,
+                                        marginBottom: 0,
+                                    }}
+                                    primaryStyle={{
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        minHeight: 44,
+                                    }}
+                                    renderActions={(actionsProps) => (
                                         <Actions
                                             {...actionsProps}
                                             containerStyle={{
-                                                width: 44,
-                                                height: 44,
+                                                width: 40,
+                                                height: 40,
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
                                                 marginLeft: 4,
@@ -708,57 +759,23 @@ const ChatScreen = () => {
                                             icon={() => (
                                                 <Ionicons
                                                     name="add-circle"
-                                                    size={32}
+                                                    size={23}
                                                     color={theme.primary}
                                                 />
                                             )}
-                                            onPressActionButton={showAttachmentMenu}
+                                            onPressActionButton={() => setIsAttachSheetVisible(true)}
                                         />
-                                    ) : null
-                                }
-                                renderComposer={(composerProps) => (
-                                    isRecording ? (
-                                        <View style={{
-                                            flex: 1,
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            backgroundColor: theme.inputBackground,
-                                            borderRadius: 20,
-                                            paddingHorizontal: 12,
-                                            marginLeft: 0,
-                                            marginTop: 0,
-                                            marginBottom: 0,
-                                            height: 40,
-                                        }}>
-                                            <View style={{
-                                                width: 8,
-                                                height: 8,
-                                                borderRadius: 4,
-                                                backgroundColor: '#FF5252',
-                                                marginRight: 8,
-                                            }} />
-
-                                            <SoundWaveAnimation />
-
-                                            <Text style={{
-                                                color: theme.text,
-                                                fontSize: 14,
-                                                marginLeft: 12,
-                                                fontWeight: '500',
-                                            }}>
-                                                {formatRecordingTime(recordingDuration)}
-                                            </Text>
-                                        </View>
-                                    ) : (
+                                    )}
+                                    renderComposer={(composerProps) => (
                                         <Composer
                                             {...composerProps}
                                             textInputStyle={{
                                                 backgroundColor: theme.inputBackground,
                                                 color: theme.text,
-                                                borderRadius: 20,
+                                                borderRadius: radii.pill,
                                                 paddingTop: Platform.OS === 'ios' ? 10 : 8,
                                                 paddingBottom: Platform.OS === 'ios' ? 10 : 8,
-                                                paddingHorizontal: 12,
+                                                paddingHorizontal: spacing.s16,
                                                 marginLeft: 0,
                                                 marginTop: 0,
                                                 marginBottom: 0,
@@ -771,54 +788,15 @@ const ChatScreen = () => {
                                                 blurOnSubmit: false,
                                             }}
                                         />
-                                    )
-                                )}
-                                renderSend={(sendProps) => (
-                                    isRecording ? (
-                                        <View style={{
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            marginBottom: 8,
-                                            marginLeft: 4,
-                                            marginRight: 4,
-
-                                        }}>
-                                            <TouchableOpacity
-                                                onPress={cancelRecording}
-                                                style={{
-                                                    width: 40,
-                                                    height: 40,
-                                                    borderRadius: 20,
-                                                    backgroundColor: theme.placeholder + '30',
-                                                    justifyContent: 'center',
-                                                    alignItems: 'center',
-                                                }}
-                                            >
-                                                <Ionicons name="close" size={24} color={theme.text} />
-                                            </TouchableOpacity>
-
-                                            <TouchableOpacity
-                                                onPress={stopRecording}
-                                                style={{
-                                                    width: 44,
-                                                    height: 44,
-                                                    borderRadius: 22,
-                                                    backgroundColor: theme.primary,
-                                                    justifyContent: 'center',
-                                                    alignItems: 'center',
-                                                }}
-                                            >
-                                                <Ionicons name="send" size={20} color={theme.white} />
-                                            </TouchableOpacity>
-                                        </View>
-                                    ) : (
+                                    )}
+                                    renderSend={(sendProps) => (
                                         inputText.trim().length > 0 ? (
                                             <Send
                                                 {...sendProps}
                                                 disabled={!inputText.trim()}
                                                 containerStyle={{
-                                                    width: 44,
-                                                    height: 44,
+                                                    width: 40,
+                                                    height: 40,
                                                     alignItems: 'center',
                                                     justifyContent: 'center',
                                                     marginLeft: 4,
@@ -829,23 +807,23 @@ const ChatScreen = () => {
                                                 <View
                                                     style={{
                                                         backgroundColor: theme.primary,
-                                                        borderRadius: 22,
-                                                        width: 44,
-                                                        height: 44,
+                                                        borderRadius: 20,
+                                                        width: 40,
+                                                        height: 40,
                                                         justifyContent: 'center',
                                                         alignItems: 'center',
                                                     }}
                                                 >
-                                                    <Feather name="arrow-up" size={24} color={theme.white} />
+                                                    <Ionicons name="send" size={20} color={theme.white} />
                                                 </View>
                                             </Send>
                                         ) : (
                                             <TouchableOpacity
                                                 onPress={startRecording}
                                                 style={{
-                                                    width: 44,
-                                                    height: 44,
-                                                    borderRadius: 22,
+                                                    width: 40,
+                                                    height: 40,
+                                                    borderRadius: 20,
                                                     backgroundColor: theme.primary,
                                                     justifyContent: 'center',
                                                     alignItems: 'center',
@@ -854,102 +832,109 @@ const ChatScreen = () => {
                                                     marginBottom: 0,
                                                 }}
                                             >
-                                                <Ionicons name="mic" size={24} color={theme.white} />
+                                                <Ionicons name="mic" size={23} color={theme.white} />
                                             </TouchableOpacity>
                                         )
-                                    )
-                                )}
-                            />
-                        ) : (
-                            <InputToolbar
-                                {...toolbarProps}
-                                containerStyle={{
-                                    backgroundColor: theme.background,
-                                    borderTopColor: theme.borderColor,
-                                    borderTopWidth: 1,
-                                    paddingVertical: 4,
-                                    paddingHorizontal: 8,
-                                    minHeight: 48,
-                                    marginBottom: 0,
-                                }}
-                                primaryStyle={{
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    minHeight: 44,
-                                }}
-                                renderComposer={(composerProps) => (
-                                    <View style={{
-                                        flex: 1,
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        backgroundColor: theme.inputBackground,
-                                        borderRadius: 20,
-                                        paddingHorizontal: 12,
-                                        marginLeft: 0,
-                                        marginTop: 0,
-                                        marginBottom: 4,
-                                        height: 40,
-                                    }}>
-                                        <View style={{
-                                            width: 8,
-                                            height: 8,
-                                            borderRadius: 4,
-                                            backgroundColor: '#FF5252',
-                                            marginRight: 8,
-                                        }} />
-
-                                        <SoundWaveAnimation />
-
-                                        <Text style={{
-                                            color: theme.text,
-                                            fontSize: 14,
-                                            marginLeft: 12,
-                                            fontWeight: '500',
-                                        }}>
-                                            {formatRecordingTime(recordingDuration)}
-                                        </Text>
-                                    </View>
-                                )}
-                                renderSend={(sendProps) => (
-                                    <View style={{
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
+                                    )}
+                                />
+                            ) : (
+                                <InputToolbar
+                                    {...toolbarProps}
+                                    containerStyle={{
+                                        backgroundColor: theme.background,
+                                        borderTopColor: theme.borderSoft,
+                                        borderTopWidth: showStorageWarning ? 0 : 1,
+                                        paddingVertical: 8,
+                                        paddingHorizontal: 8,
+                                        minHeight: 64,
                                         marginBottom: 0,
-                                        marginLeft: 4,
-                                        marginRight: 4,
-
-                                    }}>
+                                    }}
+                                    primaryStyle={{
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        minHeight: 48,
+                                    }}
+                                    renderActions={() => (
                                         <TouchableOpacity
                                             onPress={cancelRecording}
                                             style={{
                                                 width: 40,
                                                 height: 40,
                                                 borderRadius: 20,
-                                                backgroundColor: theme.placeholder + '30',
-                                                justifyContent: 'center',
                                                 alignItems: 'center',
+                                                justifyContent: 'center',
+                                                marginLeft: 4,
+                                                marginRight: 4,
                                             }}
                                         >
-                                            <Ionicons name="close" size={24} color={theme.text} />
+                                            <Ionicons name="trash-outline" size={22} color={theme.danger} />
                                         </TouchableOpacity>
+                                    )}
+                                    renderComposer={() => (
+                                        <View style={{ flex: 1 }}>
+                                            <View style={{
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                backgroundColor: theme.dangerBg,
+                                                borderRadius: radii.pill,
+                                                paddingHorizontal: spacing.s14,
+                                                height: 40,
+                                            }}>
+                                                <View style={{
+                                                    width: 8,
+                                                    height: 8,
+                                                    borderRadius: 4,
+                                                    backgroundColor: theme.danger,
+                                                    marginRight: spacing.s8,
+                                                }} />
 
-                                        <TouchableOpacity
-                                            onPress={stopRecording}
-                                            style={{
-                                                width: 44,
-                                                height: 44,
-                                                borderRadius: 22,
-                                                backgroundColor: theme.primary,
-                                                justifyContent: 'center',
-                                                alignItems: 'center',
-                                            }}
-                                        >
-                                            <Ionicons name="send" size={20} color={theme.white} />
-                                        </TouchableOpacity>
-                                    </View>
-                                )}
-                            />
-                        )
+                                                <SoundWaveAnimation />
+
+                                                <Text style={{
+                                                    color: theme.danger,
+                                                    fontSize: 13,
+                                                    marginLeft: spacing.s10,
+                                                    fontFamily: fontFamilies.bodySemiBold,
+                                                }}>
+                                                    {formatRecordingTime(recordingDuration)}
+                                                </Text>
+                                            </View>
+                                            <Text style={{
+                                                fontSize: 10.5,
+                                                color: theme.textFaint,
+                                                marginTop: 3,
+                                                marginLeft: spacing.s14,
+                                            }}>
+                                                Suelta para enviar
+                                            </Text>
+                                        </View>
+                                    )}
+                                    renderSend={() => (
+                                        <View style={{
+                                            padding: 6,
+                                            borderRadius: 29,
+                                            backgroundColor: 'rgba(187,134,252,0.18)',
+                                            marginLeft: 4,
+                                            marginRight: 4,
+                                        }}>
+                                            <TouchableOpacity
+                                                onPress={stopRecording}
+                                                style={{
+                                                    width: 46,
+                                                    height: 46,
+                                                    borderRadius: 23,
+                                                    backgroundColor: theme.primary,
+                                                    justifyContent: 'center',
+                                                    alignItems: 'center',
+                                                }}
+                                            >
+                                                <Ionicons name="send" size={20} color={theme.white} />
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+                                />
+                            )}
+                        </View>
                     )}
                 />
 
@@ -999,6 +984,113 @@ const ChatScreen = () => {
                 maxStorage={maxStorage}
             />
 
+            {/* Hoja de adjuntar — Sprint 7.4b: reemplaza el action sheet nativo */}
+            <Modal
+                visible={isAttachSheetVisible}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setIsAttachSheetVisible(false)}
+            >
+                <TouchableOpacity
+                    style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}
+                    activeOpacity={1}
+                    onPress={() => setIsAttachSheetVisible(false)}
+                >
+                    <View
+                        style={{
+                            backgroundColor: theme.surface,
+                            borderTopLeftRadius: radii.sheetTop,
+                            borderTopRightRadius: radii.sheetTop,
+                            paddingTop: spacing.s12,
+                            paddingBottom: spacing.s26,
+                            paddingHorizontal: spacing.s20,
+                        }}
+                    >
+                        <View style={{
+                            width: 40,
+                            height: 4,
+                            borderRadius: 2,
+                            backgroundColor: theme.borderStrong,
+                            alignSelf: 'center',
+                            marginBottom: spacing.s20,
+                        }} />
+                        <View style={{ flexDirection: 'row', gap: spacing.s12 }}>
+                            <TouchableOpacity
+                                style={{
+                                    flex: 1,
+                                    alignItems: 'center',
+                                    paddingVertical: spacing.s16,
+                                    borderRadius: 16,
+                                    backgroundColor: theme.surfaceAlt,
+                                }}
+                                onPress={() => {
+                                    setIsAttachSheetVisible(false);
+                                    pickFromCamera();
+                                }}
+                            >
+                                <Ionicons name="camera" size={26} color={theme.primary} />
+                                <Text style={{
+                                    fontFamily: fontFamilies.bodySemiBold,
+                                    fontSize: 11,
+                                    color: theme.text,
+                                    marginTop: spacing.s8,
+                                }}>
+                                    Cámara
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={{
+                                    flex: 1,
+                                    alignItems: 'center',
+                                    paddingVertical: spacing.s16,
+                                    borderRadius: 16,
+                                    backgroundColor: theme.surfaceAlt,
+                                }}
+                                onPress={() => {
+                                    setIsAttachSheetVisible(false);
+                                    pickFromGallery();
+                                }}
+                            >
+                                <Ionicons name="image" size={26} color={theme.primary} />
+                                <Text style={{
+                                    fontFamily: fontFamilies.bodySemiBold,
+                                    fontSize: 11,
+                                    color: theme.text,
+                                    marginTop: spacing.s8,
+                                }}>
+                                    Galería
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={{
+                                    flex: 1,
+                                    alignItems: 'center',
+                                    paddingVertical: spacing.s16,
+                                    borderRadius: 16,
+                                    backgroundColor: theme.surfaceAlt,
+                                }}
+                                onPress={() => {
+                                    setIsAttachSheetVisible(false);
+                                    pickDocument();
+                                }}
+                            >
+                                <Ionicons name="attach" size={26} color={theme.primary} />
+                                <Text style={{
+                                    fontFamily: fontFamilies.bodySemiBold,
+                                    fontSize: 11,
+                                    color: theme.text,
+                                    marginTop: spacing.s8,
+                                }}>
+                                    Documento
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
             {/* Toast Container */}
             <Toast />
             </View>
@@ -1018,13 +1110,4 @@ const styles = StyleSheet.create({
     }
 });
 
-// Exportar envuelto en ActionSheetProvider
-const ChatScreenWithActions = () => {
-    return (
-        <ActionSheetProvider>
-            <ChatScreen />
-        </ActionSheetProvider>
-    );
-};
-
-export default ChatScreenWithActions;
+export default ChatScreen;
