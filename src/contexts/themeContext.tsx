@@ -1,9 +1,16 @@
 // En: src/contexts/ThemeContext.tsx
 
-import React, { createContext, useContext, ReactNode, useMemo } from 'react';
+import React, { createContext, useContext, ReactNode, useMemo, useState, useEffect, useCallback } from 'react';
 import { useColorScheme } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { themes, ThemeColors } from '../config/theme'; // Asumo que 'themes' exporta tus colores base
 import { usePlan } from './planContext'; // Usamos el hook que ya creamos
+
+// Preferencia local de "modo oscuro" — Sprint 7.8a (Ajustes). El sistema
+// operativo ya decide un modo por defecto (useColorScheme), pero el switch
+// de Ajustes permite forzarlo, guardado en el dispositivo (no en Firestore:
+// es una preferencia de aparato, no de la relación).
+const DARK_MODE_OVERRIDE_KEY = 'colorSchemeOverride';
 
 // Define la estructura de los settings guardados en Firestore
 // (Asumimos que los guardas en 'relationshipData.settings')
@@ -20,6 +27,8 @@ interface ThemeContextType {
     theme: ThemeColors; // Los colores finales
     fontFamily: string | undefined; // La fuente final
     borderStyle: any; // El estilo de borde final
+    isDarkMode: boolean; // Modo oscuro efectivo (override manual o del sistema)
+    setDarkMode: (value: boolean) => void; // Forzar el modo desde Ajustes
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -41,8 +50,23 @@ const PREMIUM_BORDERS = {
 };
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-    const colorScheme = useColorScheme() || 'light';
+    const systemColorScheme = useColorScheme() || 'light';
+    const [darkModeOverride, setDarkModeOverride] = useState<'light' | 'dark' | null>(null);
     const { plan, relationshipData } = usePlan(); // Obtenemos el plan y los datos de la relación
+
+    useEffect(() => {
+        AsyncStorage.getItem(DARK_MODE_OVERRIDE_KEY).then((value) => {
+            if (value === 'light' || value === 'dark') setDarkModeOverride(value);
+        });
+    }, []);
+
+    const setDarkMode = useCallback((value: boolean) => {
+        const next = value ? 'dark' : 'light';
+        setDarkModeOverride(next);
+        AsyncStorage.setItem(DARK_MODE_OVERRIDE_KEY, next).catch(() => {});
+    }, []);
+
+    const colorScheme = darkModeOverride ?? systemColorScheme;
 
     // 1. Obtenemos los settings premium guardados en Firestore
     const settings: PremiumSettings = relationshipData?.settings || {};
@@ -82,7 +106,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     }, [plan, settings, colorScheme]);
 
     return (
-        <ThemeContext.Provider value={{ theme, fontFamily, borderStyle }}>
+        <ThemeContext.Provider value={{ theme, fontFamily, borderStyle, isDarkMode: colorScheme === 'dark', setDarkMode }}>
             {children}
         </ThemeContext.Provider>
     );

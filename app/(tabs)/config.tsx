@@ -1,30 +1,55 @@
+// Sprint 7.8a — re-skin de Ajustes según el sistema de diseño: avatar con
+// badge de cámara, nombre editable inline, tarjeta de plan (free/premium),
+// lista de preferencias y zona delicada separada visualmente.
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, useColorScheme, ActivityIndicator,
-    Alert, Image, TouchableOpacity, TextInput, Button, ScrollView, Switch
+    View, Text, ActivityIndicator, Alert, Image, TouchableOpacity,
+    TextInput, ScrollView, Switch, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import { auth, db, storage } from '../../src/config/firebaseConfig';
-import { themes } from '../../src/config/theme';
-import { signOut } from 'firebase/auth'; // 'onAuthStateChanged' ya no es necesario aquí
-import { doc, updateDoc, writeBatch } from 'firebase/firestore'; // 'onSnapshot' ya no es necesario aquí
+import { fontFamilies, radii, spacing } from '../../src/config/theme';
+import { signOut } from 'firebase/auth';
+import { doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Crypto from 'expo-crypto';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
-import { usePlan } from '../../src/contexts/planContext'; // Asegúrate que la ruta sea correcta
+import { usePlan } from '../../src/contexts/planContext';
+import { useTheme } from '../../src/contexts/themeContext';
 import Purchases from 'react-native-purchases';
+import { Button } from '../../src/components/Button';
+import { PaywallSheet } from '../../src/components/PaywallSheet';
+import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
+import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 
-// --- Función Helper para Blob ---
+// Nombres de los 10 estilos de borde premium (ver ThemeContext), en el
+// mismo orden que el catálogo del handoff — se reutiliza para mostrar el
+// tema activo acá, y será la base del probador de tema (sesión 7.8b).
+const BORDER_STYLE_NAMES: Record<string, string> = {
+    heartBorder1: 'Corazón rosado',
+    heartBorder2: 'Corazón fucsia punteado',
+    heartBorder3: 'Circular',
+    heartBorder4: 'Sombra rosa',
+    heartBorder5: 'Lavanda pastel',
+    heartBorder6: 'Azul pastel',
+    heartBorder7: 'Menta pastel',
+    heartBorder8: 'Limón pastel',
+    heartBorder9: 'Durazno pastel',
+    heartBorder10: 'Coral pastel',
+};
+
 const uriToBlob = (uri: string): Promise<Blob> => {
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.onload = function () { resolve(xhr.response); };
-        xhr.onerror = function (e) { 
+        xhr.onerror = function (e) {
             console.error("uriToBlob falló:", e);
-            reject(new TypeError("Network request failed")); 
+            reject(new TypeError("Network request failed"));
         };
         xhr.responseType = 'blob';
         xhr.open('GET', uri, true);
@@ -32,188 +57,70 @@ const uriToBlob = (uri: string): Promise<Blob> => {
     });
 };
 
-// --- Estilos ---
-const getStyles = (theme: typeof themes.light) => StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: theme.background },
-    container: { flex: 1, padding: 20, alignItems: 'center' },
-    title: { fontSize: 28, fontWeight: 'bold', color: theme.text, textAlign: 'center', marginBottom: 30 },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background },
-    
-    // Avatar
-    avatarContainer: {
-        marginBottom: 20,
-        alignItems: 'center',
-    },
-    avatar: {
-        width: 120,
-        height: 120,
-        borderRadius: 60,
-        backgroundColor: theme.placeholder,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 3,
-        borderColor: theme.primary,
-    },
-    avatarPlaceholder: {
-        width: 120,
-        height: 120,
-        borderRadius: 60,
-        backgroundColor: theme.primary + '20',
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 3,
-        borderColor: theme.primary,
-    },
-    avatarPlaceholderText: {
-        color: theme.primary,
-        fontSize: 48,
-        fontWeight: 'bold',
-    },
-    avatarLoadingOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        borderRadius: 60,
-        backgroundColor: 'rgba(0,0,0,0.4)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    avatarEditText: {
-        color: theme.link,
-        marginTop: 10,
-        fontSize: 14,
-    },
-    
-    // Input de Nombre
-    inputGroup: {
-        width: '100%',
-        marginBottom: 20,
-    },
-    inputLabel: {
-        fontSize: 16,
-        color: theme.placeholder,
-        marginBottom: 8,
-        marginLeft: 5,
-    },
-    input: {
-        height: 50,
-        width: '100%',
-        borderColor: theme.borderColor,
-        borderWidth: 1,
-        borderRadius: 10,
-        paddingHorizontal: 15,
-        fontSize: 16,
-        color: theme.text,
-        backgroundColor: theme.inputBackground,
-    },
-    buttonSpacer: {
-        height: 10,
-    },
+const PrefRow: React.FC<{
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    subcopy?: string;
+    isLast?: boolean;
+    right: React.ReactNode;
+    onPress?: () => void;
+}> = ({ icon, label, subcopy, isLast, right, onPress }) => {
+    const { theme } = useTheme();
+    return (
+        <TouchableOpacity
+            onPress={onPress}
+            disabled={!onPress}
+            activeOpacity={onPress ? 0.7 : 1}
+            style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: spacing.s12,
+                paddingVertical: 11,
+                paddingHorizontal: 15,
+                borderBottomWidth: isLast ? 0 : 1,
+                borderBottomColor: theme.divider,
+            }}
+        >
+            <Ionicons name={icon} size={20} color={theme.textMuted} />
+            <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 15, color: theme.text }}>{label}</Text>
+                {!!subcopy && (
+                    <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint, marginTop: 2 }}>{subcopy}</Text>
+                )}
+            </View>
+            {right}
+        </TouchableOpacity>
+    );
+};
 
-    // Sección de Peligro
-    dangerZone: {
-        width: '100%',
-        marginTop: 40,
-        borderColor: '#FF453A', // Rojo peligro
-        borderWidth: 1,
-        borderRadius: 10,
-        padding: 15,
-    },
-    dangerTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#FF453A',
-        textAlign: 'center',
-        marginBottom: 15,
-    },
-    
-    // Logout
-    logoutButton: {
-        width: '100%',
-        marginTop: 'auto', // Empuja al fondo
-        paddingTop: 20,
-    },
-
-    // --- Estilos para la sección del Plan ---
-    planSection: {
-        width: '100%',
-        marginTop: 20,
-        backgroundColor: theme.inputBackground,
-        borderColor: theme.borderColor,
-        borderWidth: 1,
-        borderRadius: 10,
-        padding: 15,
-        alignItems: 'center',
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: theme.text,
-        marginBottom: 15,
-    },
-    planText: {
-        fontSize: 16,
-        color: theme.text,
-        marginBottom: 15,
-        textAlign: 'center',
-    },
-    planFeatures: {
-        fontSize: 12,
-        color: theme.placeholder,
-        textAlign: 'center',
-        marginTop: 10,
-    },
-    premiumLock: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        opacity: 0.7,
-    },
-    premiumLockText: {
-        fontSize: 16,
-        color: theme.placeholder,
-    },
-    notificationPrefRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        width: '100%',
-        paddingVertical: 6,
-    },
-    notificationPrefLabel: {
-        fontSize: 15,
-        color: theme.text,
-        flex: 1,
-        marginRight: 10,
-    },
-});
+const PremiumBadge: React.FC = () => {
+    const { theme } = useTheme();
+    return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.warnBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+            <Ionicons name="lock-closed" size={13} color={theme.warnText} />
+            <Text style={{ fontFamily: fontFamilies.bodyExtraBold, fontSize: 10, color: theme.warnText }}>PREMIUM</Text>
+        </View>
+    );
+};
 
 const ConfigScreen: React.FC = () => {
-    
-    const colorScheme = useColorScheme() || 'light';
-    const theme = themes[colorScheme];
-    const styles = getStyles(theme);
+    const router = useRouter();
+    const { theme, isDarkMode, setDarkMode } = useTheme();
+    const { plan, user, userData, relationshipData, isLoading } = usePlan();
 
-    // --- ESTADOS CORREGIDOS ---
-    // 1. Obtenemos 'user', 'userData', 'plan' y 'isLoading' del contexto
-    const { plan, user, userData, isLoading } = usePlan();
-
-    // 2. Mantenemos solo los estados locales para esta pantalla
-    // (Los 'useState' para user, userData y loading fueron eliminados)
     const [displayName, setDisplayName] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
+    const [isNotificationsSheetVisible, setIsNotificationsSheetVisible] = useState(false);
+    const [isPaywallVisible, setIsPaywallVisible] = useState(false);
+    const [isDisconnectConfirmVisible, setIsDisconnectConfirmVisible] = useState(false);
 
-    // --- Carga de Autenticación y Perfil ---
-    // 3. Este useEffect actualiza 'displayName' cuando 'userData' cambia (del hook)
     useEffect(() => {
         if (userData) {
             setDisplayName(userData.displayName || '');
         }
-    }, [userData]); // Depende de 'userData' del hook
+    }, [userData]);
 
-    // 4. Los 'useEffect' de onAuthStateChanged y onSnapshot(userDocRef) se ELIMINARON
-    // porque 'usePlan()' ya maneja esa lógica.
-
-    // --- Función para actualizar a Premium ---
     const handleUpgrade = async () => {
         if (!user) return;
         try {
@@ -221,30 +128,25 @@ const ConfigScreen: React.FC = () => {
             if (offerings.current && offerings.current.availablePackages.length > 0) {
                 const packageToPurchase = offerings.current.availablePackages[0];
                 const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
-                
-                // Reemplaza "premium_entitlement" con el ID de tu Entitlement en RevenueCat.
-                //
-                // OJO: ya NO escribimos 'plan' acá. Las reglas de Firestore
-                // bloquean que el cliente toque ese campo — lo hace
-                // exclusivamente la Cloud Function que valida el webhook de
-                // RevenueCat (functions/), unos segundos después de esto.
-                // El listener de PlanContext refleja el cambio solo.
+
+                // Ya NO escribimos 'plan' acá. Las reglas de Firestore bloquean
+                // que el cliente toque ese campo — lo hace exclusivamente la
+                // Cloud Function que valida el webhook de RevenueCat. El
+                // listener de PlanContext refleja el cambio solo.
                 if (customerInfo.entitlements.active["premium_entitlement"]) {
                     Toast.show({ type: 'success', text1: '¡Compra exitosa!', text2: 'Activando tu Premium...' });
                 }
             }
-        } catch (e: any) { // 5. CORRECCIÓN de sintaxis: (e: any) {
-            // @ts-ignore
+        } catch (e: any) {
             if (!e.userCancelled) {
                 console.error(e);
                 Toast.show({ type: 'error', text1: 'Error al procesar el pago' });
             }
         }
     };
-    
-    // --- Función para cambiar el Avatar ---
+
     const handlePickAvatar = useCallback(async () => {
-        if (!user) return; // 'user' viene del hook
+        if (!user) return;
 
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
@@ -252,7 +154,7 @@ const ConfigScreen: React.FC = () => {
             return;
         }
 
-        let result = await ImagePicker.launchImageLibraryAsync({
+        const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
             allowsEditing: true,
             aspect: [1, 1],
@@ -260,7 +162,7 @@ const ConfigScreen: React.FC = () => {
         });
 
         if (result.canceled || !result.assets) return;
-        
+
         setIsUploading(true);
         const uri = result.assets[0].uri;
 
@@ -274,10 +176,10 @@ const ConfigScreen: React.FC = () => {
             const blob = await uriToBlob(manipResult.uri);
             const fileName = `${user.uid}_${Crypto.randomUUID()}.jpg`;
             const storageRef = ref(storage, `avatars/${user.uid}/${fileName}`);
-            
+
             const uploadTask = uploadBytesResumable(storageRef, blob);
 
-            uploadTask.on('state_changed', null, 
+            uploadTask.on('state_changed', null,
                 (error) => {
                     console.error("Error al subir avatar:", error);
                     setIsUploading(false);
@@ -285,241 +187,314 @@ const ConfigScreen: React.FC = () => {
                 },
                 async () => {
                     const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                    
-                    const userDocRef = doc(db, 'users', user.uid);
-                    await updateDoc(userDocRef, {
-                        photoURL: downloadURL
-                    });
-                    
+                    await updateDoc(doc(db, 'users', user.uid), { photoURL: downloadURL });
                     setIsUploading(false);
                     Toast.show({ type: 'success', text1: '¡Foto de perfil actualizada!' });
                 }
             );
-
         } catch (error) {
             console.error("Error procesando imagen:", error);
             setIsUploading(false);
             Toast.show({ type: 'error', text1: 'Error al procesar la imagen' });
         }
-    }, [user]); // 'user' del hook
+    }, [user]);
 
-    // --- Función para guardar el Nombre ---
     const handleSaveDisplayName = useCallback(async () => {
-        if (!user || !displayName.trim()) { // 'user' del hook
+        if (!user || !displayName.trim()) {
             Toast.show({ type: 'error', text1: 'El nombre no puede estar vacío' });
             return;
         }
 
         setIsSaving(true);
         try {
-            const userDocRef = doc(db, 'users', user.uid);
-            await updateDoc(userDocRef, {
-                displayName: displayName.trim()
-            });
+            await updateDoc(doc(db, 'users', user.uid), { displayName: displayName.trim() });
             Toast.show({ type: 'success', text1: 'Nombre actualizado' });
         } catch (error) {
             console.error("Error al guardar nombre:", error);
             Toast.show({ type: 'error', text1: 'Error al guardar' });
         }
         setIsSaving(false);
-    }, [user, displayName]); // 'user' del hook
+    }, [user, displayName]);
 
-    // --- Función para las preferencias de notificaciones push (Sprint 5.2) ---
-    // Dot-notation en el campo para no pisar la otra preferencia: un
-    // updateDoc con { notificationPrefs: { newMessages: false } } completo
-    // reemplazaría el mapa entero y borraría 'missYou' si ya estaba guardado.
     const handleToggleNotificationPref = useCallback(async (key: 'newMessages' | 'missYou', value: boolean) => {
         if (!user) return;
         try {
-            await updateDoc(doc(db, 'users', user.uid), {
-                [`notificationPrefs.${key}`]: value,
-            });
+            await updateDoc(doc(db, 'users', user.uid), { [`notificationPrefs.${key}`]: value });
         } catch (error) {
             console.error('Error guardando preferencia de notificaciones:', error);
             Toast.show({ type: 'error', text1: 'No se pudo guardar el cambio' });
         }
     }, [user]);
 
-    // --- Función para Desconectar de la Pareja ---
     const handleDisconnect = useCallback(async () => {
-        if (!user || !userData || !userData.partnerId) return; // 'user' y 'userData' del hook
+        if (!user || !userData || !userData.partnerId) return;
+        try {
+            const batch = writeBatch(db);
+            batch.update(doc(db, 'users', user.uid), { partnerId: null });
+            batch.update(doc(db, 'users', userData.partnerId), { partnerId: null });
+            await batch.commit();
+            Toast.show({ type: 'success', text1: 'Desconectado correctamente' });
+        } catch (error) {
+            console.error("Error al desconectar:", error);
+            Toast.show({ type: 'error', text1: 'Error al desconectar' });
+        }
+        setIsDisconnectConfirmVisible(false);
+    }, [user, userData]);
 
-        Alert.alert(
-            "¿Desconectar?",
-            "¿Estás seguro de que quieres desconectarte de tu pareja? Esta acción no se puede deshacer.",
-            [
-                { text: "Cancelar", style: "cancel" },
-                { 
-                    text: "Sí, desconectar", 
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                            const batch = writeBatch(db);
-                            const userDocRef = doc(db, 'users', user.uid);
-                            const partnerDocRef = doc(db, 'users', userData.partnerId);
-
-                            batch.update(userDocRef, { partnerId: null });
-                            batch.update(partnerDocRef, { partnerId: null });
-                            
-                            await batch.commit();
-                            Toast.show({ type: 'success', text1: 'Desconectado correctamente' });
-                        } catch (error) {
-                            console.error("Error al desconectar:", error);
-                            Toast.show({ type: 'error', text1: 'Error al desconectar' });
-                        }
-                    }
-                }
-            ]
-        );
-    }, [user, userData]); // 'user' y 'userData' del hook
-
-    // --- Función para Cerrar Sesión ---
     const handleLogout = useCallback(async () => {
         try {
             await signOut(auth);
-            // El listener en PlanContext se encargará de redirigir
         } catch (error) {
             console.error('Error al cerrar sesión:', error);
             Toast.show({ type: 'error', text1: 'Error al cerrar sesión' });
         }
     }, []);
 
-    // --- Renderizado ---
-    // Usamos 'isLoading' del hook y también verificamos 'userData'
-    if (isLoading || !userData) { 
-        return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={theme.primary} /></View>;
+    if (isLoading || !userData) {
+        return <FullScreenLoader />;
     }
 
-    return (
-        <SafeAreaView style={styles.safeArea}>
-            <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-                <View style={styles.container}>
-                    <Text style={styles.title}>Ajustes</Text>
+    const activeThemeName = relationshipData?.settings?.borderStyle
+        ? BORDER_STYLE_NAMES[relationshipData.settings.borderStyle] || 'Personalizado'
+        : 'Predeterminado';
+    const activeFontName = relationshipData?.settings?.fontFamily || 'Manrope';
 
-                    {/* --- Sección de Avatar --- */}
-                    <TouchableOpacity style={styles.avatarContainer} onPress={handlePickAvatar} disabled={isUploading}>
+    return (
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
+            <ScrollView contentContainerStyle={{ padding: spacing.s22, paddingBottom: spacing.s26 }}>
+                <Text style={{ fontFamily: fontFamilies.display, fontSize: 30, color: theme.text, marginBottom: spacing.s20 }}>
+                    Ajustes
+                </Text>
+
+                {/* Avatar + nombre */}
+                <View style={{ alignItems: 'center', marginBottom: spacing.s22 }}>
+                    <TouchableOpacity onPress={handlePickAvatar} disabled={isUploading} style={{ width: 78, height: 78 }}>
                         {userData?.photoURL ? (
-                            <Image source={{ uri: userData.photoURL }} style={styles.avatar} />
+                            <Image source={{ uri: userData.photoURL }} style={{ width: 78, height: 78, borderRadius: 39 }} />
                         ) : (
-                            <View style={styles.avatarPlaceholder}>
-                                <Text style={styles.avatarPlaceholderText}>
+                            <View style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: theme.primaryTint, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ fontFamily: fontFamilies.display, fontSize: 30, color: theme.primary }}>
                                     {userData?.displayName?.[0]?.toUpperCase() || 'U'}
                                 </Text>
                             </View>
                         )}
-                        
-                        {isUploading && (
-                            <View style={styles.avatarLoadingOverlay}>
-                                <ActivityIndicator size="large" color="#fff" />
+                        {isUploading ? (
+                            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 39, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' }}>
+                                <ActivityIndicator size="small" color="#FFFFFF" />
+                            </View>
+                        ) : (
+                            <View style={{
+                                position: 'absolute', bottom: -2, right: -2, width: 30, height: 30, borderRadius: 15,
+                                backgroundColor: theme.primary, borderWidth: 3, borderColor: theme.bg,
+                                alignItems: 'center', justifyContent: 'center',
+                            }}>
+                                <Ionicons name="camera" size={14} color={theme.white} />
                             </View>
                         )}
-                        <Text style={styles.avatarEditText}>Toca para cambiar</Text>
                     </TouchableOpacity>
 
-                    {/* --- Sección de Nombre --- */}
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>Tu nombre</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, marginTop: spacing.s16, width: '100%' }}>
                         <TextInput
-                            style={styles.input}
+                            style={{
+                                flex: 1, height: 46, borderWidth: 1, borderColor: theme.borderSoft, borderRadius: radii.field,
+                                paddingHorizontal: spacing.s14, fontFamily: fontFamilies.body, fontSize: 15, color: theme.text,
+                                backgroundColor: theme.inputBackground,
+                            }}
                             value={displayName}
                             onChangeText={setDisplayName}
                             placeholder="Tu nombre de pila"
-                            placeholderTextColor={theme.placeholder}
+                            placeholderTextColor={theme.textFaint}
                             maxLength={20}
                         />
-                        <View style={styles.buttonSpacer} />
-                        <Button
-                            title={isSaving ? "Guardando..." : "Guardar Nombre"}
+                        <TouchableOpacity
                             onPress={handleSaveDisplayName}
-                            color={theme.primary}
-                            disabled={isSaving || displayName === userData?.displayName}
-                        />
+                            disabled={isSaving || displayName.trim() === '' || displayName === userData?.displayName}
+                            style={{
+                                paddingHorizontal: spacing.s16, height: 46, borderRadius: radii.field,
+                                backgroundColor: theme.primarySoft, alignItems: 'center', justifyContent: 'center',
+                                opacity: (isSaving || displayName.trim() === '' || displayName === userData?.displayName) ? 0.5 : 1,
+                            }}
+                        >
+                            {isSaving ? <ActivityIndicator size="small" color={theme.primary} /> : (
+                                <Text style={{ fontFamily: fontFamilies.actionBold, fontSize: 14, color: theme.primary }}>Guardar</Text>
+                            )}
+                        </TouchableOpacity>
                     </View>
+                </View>
 
-                    {/* --- Sección de Plan (Añadida) --- */}
-                    <View style={styles.planSection}>
-                        <Text style={styles.sectionTitle}>Tu Plan</Text>
-                        {plan === 'free' ? (
-                            <>
-                                <Text style={styles.planText}>Actual: Conexión Esencial (Gratis)</Text>
-                                <Button 
-                                    title="✨ Actualizar a Conexión Total ✨" 
-                                    onPress={handleUpgrade} 
-                                    color={theme.primary} 
-                                />
-                                <Text style={styles.planFeatures}>
-                                    Tareas, notas y almacenamiento ilimitados, recordatorios y más.
-                                </Text>
-                            </>
-                        ) : (
-                            <Text style={styles.planText}>Actual: ¡Conexión Total! ❤️</Text>
-                        )}
+                {/* Tarjeta de plan */}
+                {plan === 'free' ? (
+                    <LinearGradient
+                        colors={theme.premiumPanelGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={{ borderRadius: radii.card, padding: spacing.s20, marginBottom: spacing.s16 }}
+                    >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s8, marginBottom: spacing.s10 }}>
+                            <Ionicons name="ribbon" size={16} color={theme.premium} />
+                            <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 0.9, color: theme.premium }}>
+                                PLAN ACTUAL: FREE
+                            </Text>
+                        </View>
+                        <Text style={{ fontFamily: fontFamilies.display, fontSize: 25, color: '#FFFFFF', marginBottom: spacing.s6 }}>
+                            Conexión Total para los dos
+                        </Text>
+                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 13.5, color: 'rgba(255,255,255,0.75)', marginBottom: spacing.s16 }}>
+                            Uno paga, ambos disfrutan.
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: spacing.s8, marginBottom: spacing.s16 }}>
+                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 14, color: 'rgba(255,255,255,0.55)', textDecorationLine: 'line-through' }}>
+                                US$9.99
+                            </Text>
+                            <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 22, color: '#FFFFFF' }}>US$2.99</Text>
+                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 13, color: 'rgba(255,255,255,0.75)' }}>/ mes</Text>
+                        </View>
+                        <TouchableOpacity
+                            onPress={handleUpgrade}
+                            style={{ backgroundColor: theme.premium, borderRadius: 15, paddingVertical: spacing.s14, alignItems: 'center' }}
+                        >
+                            <Text style={{ fontFamily: fontFamilies.actionBold, fontSize: 15, color: theme.premiumTextOnFill }}>
+                                Actualizar a Conexión Total
+                            </Text>
+                        </TouchableOpacity>
+                    </LinearGradient>
+                ) : (
+                    <View style={{
+                        flexDirection: 'row', alignItems: 'center', gap: spacing.s12,
+                        backgroundColor: theme.surface, borderWidth: 1.5, borderColor: theme.premium,
+                        borderRadius: radii.card, padding: spacing.s16, marginBottom: spacing.s16,
+                    }}>
+                        <LinearGradient
+                            colors={theme.premiumGradient}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={{ width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}
+                        >
+                            <Ionicons name="heart" size={22} color={theme.premiumTextOnFill} />
+                        </LinearGradient>
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 15, color: theme.premium }}>
+                                Conexión Total activa
+                            </Text>
+                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 12.5, color: theme.textFaint, marginTop: 2 }}>
+                                Disfruten de todo sin límites.
+                            </Text>
+                        </View>
                     </View>
+                )}
 
-                    {/* --- Bloquear Personalización (Añadido) --- */}
-                    <View style={styles.planSection}>
-                        <Text style={styles.sectionTitle}>Personalización</Text>
-                        {plan === 'free' ? (
-                            <View style={styles.premiumLock}>
-                                <Ionicons name="lock-closed" size={16} color={theme.placeholder} />
-                                <Text style={styles.premiumLockText}>
-                                    Temas de color (Función Premium)
-                                </Text>
-                            </View>
-                        ) : (
-                            <Button 
-                                title="Elegir Tema (Próximamente)" 
-                                onPress={() => Toast.show({type: 'info', text1: '¡Próximamente!'})} 
-                                color={theme.primary}
-                                disabled={true}
+                {/* Preferencias */}
+                <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 0.9, color: theme.textFaint, marginBottom: spacing.s10 }}>
+                    PREFERENCIAS
+                </Text>
+                <View style={{ backgroundColor: theme.surface, borderRadius: radii.field + 2, marginBottom: spacing.s22 }}>
+                    <PrefRow
+                        icon="moon"
+                        label="Modo oscuro"
+                        right={
+                            <Switch
+                                value={isDarkMode}
+                                onValueChange={setDarkMode}
+                                trackColor={{ false: theme.borderSoft, true: theme.primarySoft }}
+                                thumbColor={isDarkMode ? theme.primary : theme.surface}
+                                style={{ transform: [{ scaleX: 0.95 }, { scaleY: 0.95 }] }}
                             />
-                        )}
-                    </View>
+                        }
+                    />
+                    <PrefRow
+                        icon="notifications-outline"
+                        label="Notificaciones"
+                        onPress={() => setIsNotificationsSheetVisible(true)}
+                        right={<Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
+                    />
+                    <PrefRow
+                        icon="color-palette-outline"
+                        label="Personalizar tema"
+                        subcopy={plan === 'premium' ? `${activeThemeName} · ${activeFontName}` : undefined}
+                        isLast
+                        onPress={() => plan === 'premium' ? router.push('/theme-editor' as any) : setIsPaywallVisible(true)}
+                        right={plan === 'free' ? <PremiumBadge /> : <Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
+                    />
+                </View>
 
-                    {/* --- Preferencias de notificaciones (Sprint 5.2) --- */}
-                    <View style={styles.planSection}>
-                        <Text style={styles.sectionTitle}>Notificaciones</Text>
-                        <View style={styles.notificationPrefRow}>
-                            <Text style={styles.notificationPrefLabel}>Mensajes nuevos</Text>
+                {/* Zona delicada */}
+                {userData?.partnerId && (
+                    <>
+                        <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 0.9, color: theme.danger, marginBottom: spacing.s10 }}>
+                            ZONA DELICADA
+                        </Text>
+                        <TouchableOpacity
+                            onPress={() => setIsDisconnectConfirmVisible(true)}
+                            style={{
+                                flexDirection: 'row', alignItems: 'center', gap: spacing.s12,
+                                borderWidth: 1, borderColor: '#F2C4CE', backgroundColor: theme.dangerBg,
+                                borderRadius: radii.field, padding: spacing.s14, marginBottom: spacing.s22,
+                            }}
+                        >
+                            <Ionicons name="heart-dislike-outline" size={20} color={theme.danger} />
+                            <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 14.5, color: theme.danger }}>
+                                Desconectar de mi pareja
+                            </Text>
+                        </TouchableOpacity>
+                    </>
+                )}
+
+                <Button title="Cerrar sesión" variant="ghost" onPress={handleLogout} />
+            </ScrollView>
+
+            {/* Bottom sheet de notificaciones */}
+            <Modal visible={isNotificationsSheetVisible} transparent animationType="slide" onRequestClose={() => setIsNotificationsSheetVisible(false)}>
+                <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(24,22,46,0.5)' }}>
+                    <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setIsNotificationsSheetVisible(false)} />
+                    <View style={{ backgroundColor: theme.surface, borderTopLeftRadius: radii.sheetTop, borderTopRightRadius: radii.sheetTop, padding: spacing.s22, gap: spacing.s14 }}>
+                        <View style={{ alignSelf: 'center', width: 44, height: 4, borderRadius: 2, backgroundColor: theme.borderSoft }} />
+                        <Text style={{ fontFamily: fontFamilies.display, fontSize: 23, color: theme.text }}>Notificaciones</Text>
+
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.s8 }}>
+                            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 15, color: theme.text, flex: 1 }}>Mensajes nuevos</Text>
                             <Switch
                                 value={userData?.notificationPrefs?.newMessages !== false}
                                 onValueChange={(value) => handleToggleNotificationPref('newMessages', value)}
-                                thumbColor={userData?.notificationPrefs?.newMessages !== false ? theme.primary : theme.placeholder}
+                                trackColor={{ false: theme.borderSoft, true: theme.primarySoft }}
+                                thumbColor={userData?.notificationPrefs?.newMessages !== false ? theme.primary : theme.surface}
                             />
                         </View>
-                        <View style={styles.notificationPrefRow}>
-                            <Text style={styles.notificationPrefLabel}>&quot;Te extraño&quot; de tu pareja</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.s8 }}>
+                            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 15, color: theme.text, flex: 1 }}>
+                                &quot;Te extraño&quot; de tu pareja
+                            </Text>
                             <Switch
                                 value={userData?.notificationPrefs?.missYou !== false}
                                 onValueChange={(value) => handleToggleNotificationPref('missYou', value)}
-                                thumbColor={userData?.notificationPrefs?.missYou !== false ? theme.primary : theme.placeholder}
+                                trackColor={{ false: theme.borderSoft, true: theme.primarySoft }}
+                                thumbColor={userData?.notificationPrefs?.missYou !== false ? theme.primary : theme.surface}
                             />
                         </View>
+
+                        <Button title="Listo" onPress={() => setIsNotificationsSheetVisible(false)} style={{ marginTop: spacing.s8 }} />
                     </View>
-
-                    {/* --- Zona de Peligro --- */}
-                    {userData?.partnerId && (
-                        <View style={styles.dangerZone}>
-                            <Text style={styles.dangerTitle}>Zona de Peligro</Text>
-                            <Button
-                                title="Desconectar de mi pareja"
-                                onPress={handleDisconnect}
-                                color="#FF453A" // Rojo
-                            />
-                        </View>
-                    )}
-
-                    {/* --- Cerrar Sesión --- */}
-                    <View style={styles.logoutButton}>
-                        <Button
-                            title="Cerrar Sesión"
-                            onPress={handleLogout}
-                            color="grey"
-                        />
-                    </View>
-
                 </View>
-            </ScrollView>
+            </Modal>
+
+            <PaywallSheet
+                visible={isPaywallVisible}
+                onClose={() => setIsPaywallVisible(false)}
+                onUpgradePress={() => { setIsPaywallVisible(false); handleUpgrade(); }}
+                icon="color-palette"
+                title="Personaliza su tema"
+                description="Elige el color, la tipografía y el borde de la pareja con Conexión Total."
+                benefits={['10 estilos de borde exclusivos', 'Fondo y texto a su gusto', 'Se aplica para los dos']}
+            />
+
+            <ConfirmDestructiveModal
+                visible={isDisconnectConfirmVisible}
+                icon="heart-dislike"
+                title="¿Desconectar?"
+                message="Se desvincularán de su pareja. Esta acción no se puede deshacer."
+                confirmLabel="Sí, desconectar"
+                onConfirm={handleDisconnect}
+                onCancel={() => setIsDisconnectConfirmVisible(false)}
+            />
         </SafeAreaView>
     );
 };
