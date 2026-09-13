@@ -2,7 +2,7 @@ import { Link, useRouter } from 'expo-router';
 import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, Button, TextInput as RNTextInput, useColorScheme, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { auth } from '../src/config/firebaseConfig'; // Ruta corregida
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { themes } from '../src/config/theme'; // Ruta corregida
 import { Feather } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,6 +17,8 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
     footer: { marginTop: 30, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5 },
     footerText: { color: theme.text },
     link: { color: theme.link, fontWeight: 'bold' },
+    forgotPassword: { alignSelf: 'flex-end', marginBottom: 20 },
+    forgotPasswordText: { color: theme.link, fontSize: 14 },
 });
 
 const Login: React.FC = () => {
@@ -29,6 +31,7 @@ const Login: React.FC = () => {
     const [password, setPassword] = useState('');
     const [isPasswordVisible, setIsPasswordVisible] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [isSendingReset, setIsSendingReset] = useState(false);
     const passwordInputRef = useRef<RNTextInput>(null);
 
     const handleLogin = async () => {
@@ -47,6 +50,25 @@ const Login: React.FC = () => {
         setLoading(false);
     };
 
+    // A-01: recuperar contraseña. El mensaje es SIEMPRE el mismo, exista o
+    // no esa cuenta — confirmar que existe sería filtrar justo lo que la
+    // protección de enumeración de correos intenta esconder (ver 'Correo o
+    // contraseña incorrectos' arriba, mismo criterio).
+    const handleForgotPassword = async () => {
+        const trimmedEmail = email.trim();
+        if (!trimmedEmail) {
+            return Toast.show({ type: 'error', text1: 'Error', text2: 'Escribe tu correo para poder enviarte el enlace.' });
+        }
+        setIsSendingReset(true);
+        try {
+            await sendPasswordResetEmail(auth, trimmedEmail);
+        } catch (error) {
+            console.error(error);
+        }
+        setIsSendingReset(false);
+        Toast.show({ type: 'success', text1: 'Revisa tu correo', text2: 'Si esa cuenta existe, te enviamos un enlace para restablecer tu contraseña.' });
+    };
+
     return (
         <SafeAreaView style={{flex: 1, backgroundColor: theme.background}}>
             <View style={styles.container}>
@@ -60,7 +82,11 @@ const Login: React.FC = () => {
                         <Feather name={isPasswordVisible ? "eye-off" : "eye"} size={22} color={theme.placeholder} />
                     </TouchableOpacity>
                 </View>
-                
+
+                <TouchableOpacity style={styles.forgotPassword} onPress={handleForgotPassword} disabled={isSendingReset}>
+                    <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
+                </TouchableOpacity>
+
                 {loading ? (
                     <ActivityIndicator size="large" color={theme.primary} />
                 ) : (

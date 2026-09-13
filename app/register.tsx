@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput as RNTextInput, Button, useColorScheme, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter, Link } from 'expo-router';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendEmailVerification, User } from 'firebase/auth';
 import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../src/config/firebaseConfig';
 import { themes } from '../src/config/theme';
@@ -82,11 +82,14 @@ const Register: React.FC = () => {
     const handleRegister = async () => {
         if (password !== confirmPassword) return Toast.show({ type: 'error', text1: 'Error', text2: 'Las contraseñas no coinciden.' });
         if (!email || !password || !displayName) return Toast.show({ type: 'error', text1: 'Error', text2: 'Por favor, completa todos los campos.' });
-        
+
         setLoading(true);
+        // Se guarda apenas se crea la cuenta de Auth, para poder revertirla
+        // en el catch si algo después falla (ver A-06 más abajo).
+        let createdUser: User | null = null;
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-            const user = userCredential.user;
+            createdUser = userCredential.user;
 
             const invitationCode = await generateUniqueInvitationCode();
 
@@ -94,8 +97,8 @@ const Register: React.FC = () => {
             // si uno fallara, no queda un código huérfano sin dueño ni un
             // perfil sin código para emparejar.
             const batch = writeBatch(db);
-            batch.set(doc(db, "users", user.uid), {
-                email: user.email,
+            batch.set(doc(db, "users", createdUser.uid), {
+                email: createdUser.email,
                 displayName: displayName.trim(),
                 createdAt: serverTimestamp(),
                 partnerId: null,
@@ -108,12 +111,35 @@ const Register: React.FC = () => {
                 plan: 'free',
                 premiumSince: null
             });
-            batch.set(doc(db, "invitationCodes", invitationCode), buildInvitationCodeDoc(user.uid));
+            batch.set(doc(db, "invitationCodes", invitationCode), buildInvitationCodeDoc(createdUser.uid));
             await batch.commit();
+
+            // A-02: mandar la verificación de correo. No bloquea el uso de
+            // la app — si falla (red, límite de envíos de Firebase), la
+            // persona igual entra y puede reenviarla después desde Inicio.
+            try {
+                await sendEmailVerification(createdUser);
+            } catch (verificationError) {
+                console.error('No se pudo enviar el correo de verificación:', verificationError);
+            }
 
             router.replace('/(tabs)/home');
         } catch (error: any) {
             console.error(error);
+
+            // A-06: si la cuenta de Auth llegó a crearse pero algo después
+            // falló (generar el código, escribir el perfil), no dejarla a
+            // medio camino. Antes, esa cuenta quedaba en un limbo: el
+            // correo ya estaba tomado pero sin perfil, así que la persona
+            // no podía ni entrar ni volver a registrarse.
+            if (createdUser) {
+                try {
+                    await createdUser.delete();
+                } catch (deleteError) {
+                    console.error('No se pudo revertir la cuenta a medio crear:', deleteError);
+                }
+            }
+
             if (error.code === 'auth/email-already-in-use') Toast.show({ type: 'error', text1: 'Error', text2: 'Este correo ya está en uso.' });
             else if (error.code === 'auth/weak-password') Toast.show({ type: 'error', text1: 'Error', text2: 'La contraseña debe tener al menos 6 caracteres.' });
             else Toast.show({ type: 'error', text1: 'Error', text2: 'Ocurrió un problema al crear la cuenta.' });

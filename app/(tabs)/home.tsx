@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { db, functions } from '../../src/config/firebaseConfig';
 import { httpsCallable } from 'firebase/functions';
+import { sendEmailVerification } from 'firebase/auth';
 import { themes } from '../../src/config/theme'; // Importamos la definición base de 'themes'
 import * as Clipboard from 'expo-clipboard';
 import { Feather, Ionicons } from '@expo/vector-icons';
@@ -93,6 +94,13 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
     subtitle: { fontSize: 18, color: theme.text, textAlign: 'center', marginBottom: 20, fontFamily: fontFamily },
     codeBox: { backgroundColor: theme.inputBackground, paddingVertical: 15, paddingHorizontal: 20, borderRadius: 8, borderWidth: 1, borderColor: theme.borderColor, width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     codeText: { fontSize: 16, color: theme.primary, fontWeight: 'bold', textAlign: 'center' },
+    // A-02: aviso de correo sin verificar (bloquea el emparejamiento en el
+    // servidor, ver functions/src/pairing.ts). Colores fijos de advertencia,
+    // no del tema, para que se distinga del resto de la pantalla en claro y oscuro.
+    verifyBanner: { backgroundColor: 'rgba(255, 193, 7, 0.15)', borderColor: '#FFC107', borderWidth: 1, borderRadius: 8, padding: 12, width: '100%', gap: 8 },
+    verifyBannerText: { color: theme.text, fontSize: 14, fontFamily: fontFamily },
+    verifyBannerActions: { flexDirection: 'row', justifyContent: 'space-between' },
+    verifyBannerLink: { color: theme.primary, fontWeight: 'bold', fontSize: 13, fontFamily: fontFamily },
     input: { height: 50, width: '100%', borderColor: theme.borderColor, borderWidth: 1, borderRadius: 8, paddingHorizontal: 15, fontSize: 16, color: theme.text, backgroundColor: theme.inputBackground, textAlign: 'center' },
     infoText: { fontSize: 16, color: theme.text, fontFamily: fontFamily },
     moodsRow: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginVertical: 20 },
@@ -238,7 +246,45 @@ const Home: React.FC = () => {
     const [selectedMood, setSelectedMood] = useState<{ emoji: string, name: string } | null>(null);
     const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
     const [relationshipDuration, setRelationshipDuration] = useState<string | null>(null);
+    const [isEmailVerified, setIsEmailVerified] = useState(true);
+    const [isResendingVerification, setIsResendingVerification] = useState(false);
     const pulseAnim = useRef(new Animated.Value(1)).current;
+
+    // A-02: 'user.emailVerified' puede estar desactualizado si la persona
+    // verificó el correo en otra pestaña o dispositivo — Firebase Auth no lo
+    // refresca solo. Se pide una vez al entrar a Inicio.
+    useEffect(() => {
+        if (!user) return;
+        user.reload()
+            .then(() => setIsEmailVerified(user.emailVerified))
+            .catch(() => setIsEmailVerified(user.emailVerified));
+    }, [user]);
+
+    const handleResendVerification = useCallback(async () => {
+        if (!user) return;
+        setIsResendingVerification(true);
+        try {
+            await sendEmailVerification(user);
+            Toast.show({ type: 'success', text1: 'Correo enviado', text2: 'Revisa tu bandeja de entrada.' });
+        } catch (error) {
+            console.error(error);
+            Toast.show({ type: 'error', text1: 'No se pudo enviar el correo' });
+        }
+        setIsResendingVerification(false);
+    }, [user]);
+
+    const handleCheckVerification = useCallback(async () => {
+        if (!user) return;
+        try {
+            await user.reload();
+            setIsEmailVerified(user.emailVerified);
+            if (!user.emailVerified) {
+                Toast.show({ type: 'info', text1: 'Todavía no', text2: 'No encontramos la verificación. Revisa tu correo.' });
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    }, [user]);
 
     // Registrar el token de push apenas hay pareja conectada, si todavía no
     // hay uno guardado (primera conexión, reinstalación, u otro
@@ -463,6 +509,23 @@ const Home: React.FC = () => {
                 <View style={styles.container}>
                     <Text style={styles.title}>¡Hola, {userData.displayName}!</Text>
                     <Text style={styles.subtitle}>Para empezar, conecta con tu pareja.</Text>
+
+                    {!isEmailVerified && (
+                        <View style={styles.verifyBanner}>
+                            <Text style={styles.verifyBannerText}>
+                                Verifica tu correo antes de conectar con tu pareja.
+                            </Text>
+                            <View style={styles.verifyBannerActions}>
+                                <TouchableOpacity onPress={handleResendVerification} disabled={isResendingVerification}>
+                                    <Text style={styles.verifyBannerLink}>Reenviar correo</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={handleCheckVerification}>
+                                    <Text style={styles.verifyBannerLink}>Ya lo verifiqué</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    )}
+
                     <Text style={styles.infoText}>Tu código de conexión:</Text>
                     <View style={styles.codeBox}>
                         <Text style={styles.codeText}>{userData?.invitationCode ?? '——————'}</Text>

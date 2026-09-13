@@ -31,6 +31,16 @@ export const pairWithCode = onCall<PairWithCodeData>(async (request) => {
     throw new HttpsError('unauthenticated', 'Necesitas iniciar sesión para emparejarte.');
   }
 
+  // A-02: emparejarse es el momento en que alguien entrega acceso a su
+  // intimidad — es el punto correcto para exigir un correo confirmado.
+  // Se valida acá, en el servidor, no en el cliente.
+  if (auth.token.email_verified !== true) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Verifica tu correo antes de emparejarte con tu pareja.'
+    );
+  }
+
   const rawCode = request.data?.code;
   if (typeof rawCode !== 'string' || !rawCode.trim()) {
     throw new HttpsError('invalid-argument', 'Falta el código de invitación.');
