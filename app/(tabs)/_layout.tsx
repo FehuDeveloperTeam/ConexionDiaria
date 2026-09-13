@@ -1,12 +1,54 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { radii, spacing } from '../../src/config/theme';
 import { useTheme } from '../../src/contexts/themeContext';
 import { usePlan } from '../../src/contexts/planContext';
 import { useResponsive, SIDEBAR_WIDTH } from '../../src/hooks/useResponsive';
+
+// Sprint 8.9: hover sutil en escritorio para cada fila del riel (handoff,
+// "Detalles de PC"). onHoverIn/onHoverOut de Pressable solo disparan en
+// react-native-web; en nativo nunca se llaman.
+function RailRow({
+    icon, label, isFocused, activeBg, onPress,
+}: {
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    isFocused: boolean;
+    activeBg: string;
+    onPress: () => void;
+}) {
+    const { theme, fontFamilies } = useTheme();
+    const [isHovered, setIsHovered] = useState(false);
+
+    return (
+        <Pressable
+            onPress={onPress}
+            onHoverIn={() => setIsHovered(true)}
+            onHoverOut={() => setIsHovered(false)}
+            style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: spacing.s12,
+                paddingVertical: spacing.s12,
+                paddingHorizontal: spacing.s14,
+                borderRadius: radii.field,
+                backgroundColor: isFocused ? activeBg : (isHovered ? theme.surfaceAlt : 'transparent'),
+            }}
+        >
+            <Ionicons name={icon} size={21} color={isFocused ? theme.primary : theme.textFaint} />
+            <Text style={{
+                fontFamily: fontFamilies.action,
+                fontSize: 16,
+                color: isFocused ? theme.primary : theme.textMuted,
+            }}>
+                {label}
+            </Text>
+        </Pressable>
+    );
+}
 
 // Sprint 7.1: ícono con el pill de fondo detrás cuando el tab está activo
 // (ver README del bundle de diseño, sección "Navegación"). Un solo
@@ -74,35 +116,17 @@ function DesktopTabRail({ state, descriptors, navigation }: BottomTabBarProps) {
                     const label = typeof options.title === 'string' ? options.title : route.name;
 
                     return (
-                        <TouchableOpacity
+                        <RailRow
                             key={route.key}
+                            icon={RAIL_ICONS[route.name] || 'ellipse-outline'}
+                            label={label}
+                            isFocused={isFocused}
+                            activeBg={activeBg}
                             onPress={() => {
                                 const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
                                 if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name);
                             }}
-                            style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                gap: spacing.s12,
-                                paddingVertical: spacing.s12,
-                                paddingHorizontal: spacing.s14,
-                                borderRadius: radii.field,
-                                backgroundColor: isFocused ? activeBg : 'transparent',
-                            }}
-                        >
-                            <Ionicons
-                                name={RAIL_ICONS[route.name] || 'ellipse-outline'}
-                                size={21}
-                                color={isFocused ? theme.primary : theme.textFaint}
-                            />
-                            <Text style={{
-                                fontFamily: fontFamilies.action,
-                                fontSize: 16,
-                                color: isFocused ? theme.primary : theme.textMuted,
-                            }}>
-                                {label}
-                            </Text>
-                        </TouchableOpacity>
+                        />
                     );
                 })}
             </View>

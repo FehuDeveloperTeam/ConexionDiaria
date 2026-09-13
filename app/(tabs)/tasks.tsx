@@ -22,6 +22,7 @@ import { EmptyState } from '../../src/components/EmptyState';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
+import { ContextMenuRow } from '../../src/components/ContextMenuRow';
 import { useRouter } from 'expo-router';
 
 interface EditingTask { id: string; text: string; authorId: string; }
@@ -340,27 +341,24 @@ const TasksScreen: React.FC = () => {
                             shadowColor: '#1E1E3C', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.16, shadowRadius: 22, elevation: 10,
                         }),
                     }}>
-                        <TouchableOpacity
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, paddingVertical: spacing.s12, paddingHorizontal: spacing.s16 }}
+                        <ContextMenuRow
+                            icon="create-outline"
+                            label="Editar"
                             onPress={() => {
                                 if (contextMenuTask) openEditModal(contextMenuTask);
                                 setContextMenuTask(null);
                             }}
-                        >
-                            <Ionicons name="create-outline" size={18} color={theme.text} />
-                            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.text }}>Editar</Text>
-                        </TouchableOpacity>
+                        />
                         {contextMenuTask?.authorId === user.uid && (
-                            <TouchableOpacity
-                                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, paddingVertical: spacing.s12, paddingHorizontal: spacing.s16 }}
+                            <ContextMenuRow
+                                icon="trash-outline"
+                                label="Eliminar"
+                                color={theme.danger}
                                 onPress={() => {
                                     setDeletingTask(contextMenuTask);
                                     setContextMenuTask(null);
                                 }}
-                            >
-                                <Ionicons name="trash-outline" size={18} color={theme.danger} />
-                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.danger }}>Eliminar</Text>
-                            </TouchableOpacity>
+                            />
                         )}
                     </View>
                 </TouchableOpacity>

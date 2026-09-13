@@ -5,8 +5,8 @@
 // emotivos y Manrope para el contenido — Poppins es deliberadamente
 // exclusivo de esto y de las etiquetas de la tab bar, para no diluir a
 // Manrope como fuente de UI general.
-import React from 'react';
-import { ActivityIndicator, Text, TouchableOpacity, ViewStyle } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, Pressable, Text, ViewStyle } from 'react-native';
 import { useTheme } from '../contexts/themeContext';
 import { radii, shadows, spacing } from '../config/theme';
 
@@ -23,6 +23,11 @@ export const Button: React.FC<{
 }> = ({ title, onPress, variant = 'primary', disabled = false, loading = false, loadingText, style }) => {
     const { theme, isDarkMode, fontFamilies } = useTheme();
     const isDisabled = disabled || loading;
+    // Sprint 8.9: hover sutil en escritorio (handoff, "Detalles de PC" —
+    // "hover en tarjetas y filas"). onHoverIn/onHoverOut de Pressable solo
+    // disparan en react-native-web; en nativo (iOS/Android) nunca se llaman,
+    // así que 'isHovered' se queda en false y no cambia nada ahí.
+    const [isHovered, setIsHovered] = useState(false);
 
     const backgroundColor =
         variant === 'primary' ? (isDisabled ? theme.borderSoft : theme.primary) : 'transparent';
@@ -35,11 +40,12 @@ export const Button: React.FC<{
                 : theme.primary;
 
     return (
-        <TouchableOpacity
+        <Pressable
             onPress={onPress}
             disabled={isDisabled}
-            activeOpacity={0.85}
-            style={[
+            onHoverIn={() => setIsHovered(true)}
+            onHoverOut={() => setIsHovered(false)}
+            style={({ pressed }) => [
                 {
                     backgroundColor,
                     borderRadius: radii.field + 1, // 17px, entre 'field' (16) y 'card'
@@ -57,6 +63,8 @@ export const Button: React.FC<{
                 variant === 'primary' && !isDisabled
                     ? (isDarkMode ? { borderWidth: 1, borderColor: theme.border } : shadows.ctaCard)
                     : null,
+                !isDisabled && isHovered ? { opacity: 0.9 } : null,
+                !isDisabled && pressed ? { opacity: 0.8 } : null,
                 style,
             ]}
         >
@@ -64,6 +72,6 @@ export const Button: React.FC<{
             <Text style={{ fontFamily: fontFamilies.actionBold, fontSize: 16, color: textColor }}>
                 {loading && loadingText ? loadingText : title}
             </Text>
-        </TouchableOpacity>
+        </Pressable>
     );
 };

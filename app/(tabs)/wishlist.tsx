@@ -25,6 +25,7 @@ import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructive
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
+import { ContextMenuRow } from '../../src/components/ContextMenuRow';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
 const WISH_TYPES = ['Aniversario', 'Cumpleaños', 'Navidad', 'San Valentín', 'Solo porque sí', 'Otro'];
@@ -447,27 +448,24 @@ const WishlistScreen: React.FC = () => {
                     onPress={() => setContextMenuItem(null)}
                 >
                     <View style={{ backgroundColor: theme.surface, borderRadius: 14, paddingVertical: spacing.s8, minWidth: 190, ...contextMenuDepth }}>
-                        <TouchableOpacity
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, paddingVertical: spacing.s12, paddingHorizontal: spacing.s16 }}
+                        <ContextMenuRow
+                            icon="create-outline"
+                            label="Editar"
                             onPress={() => {
                                 if (contextMenuItem) openEditItemModal(contextMenuItem);
                                 setContextMenuItem(null);
                             }}
-                        >
-                            <Ionicons name="create-outline" size={18} color={theme.text} />
-                            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.text }}>Editar</Text>
-                        </TouchableOpacity>
+                        />
                         {contextMenuItem?.authorId === user?.uid && (
-                            <TouchableOpacity
-                                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, paddingVertical: spacing.s12, paddingHorizontal: spacing.s16 }}
+                            <ContextMenuRow
+                                icon="trash-outline"
+                                label="Eliminar"
+                                color={theme.danger}
                                 onPress={() => {
                                     setDeletingItem(contextMenuItem);
                                     setContextMenuItem(null);
                                 }}
-                            >
-                                <Ionicons name="trash-outline" size={18} color={theme.danger} />
-                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.danger }}>Eliminar</Text>
-                            </TouchableOpacity>
+                            />
                         )}
                     </View>
                 </TouchableOpacity>

@@ -19,6 +19,7 @@ import { EmptyState } from '../../src/components/EmptyState';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
+import { ContextMenuRow } from '../../src/components/ContextMenuRow';
 import { useRouter } from 'expo-router';
 
 interface EditingNote { id: string; text: string; }
@@ -257,27 +258,24 @@ const NotesScreen: React.FC = () => {
                         minWidth: 190,
                         ...(isDark ? { borderWidth: 1, borderColor: theme.border } : shadows.contextMenu),
                     }}>
-                        <TouchableOpacity
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, paddingVertical: spacing.s12, paddingHorizontal: spacing.s16 }}
+                        <ContextMenuRow
+                            icon="create-outline"
+                            label="Editar"
                             onPress={() => {
                                 if (contextMenuNote) openEditModal(contextMenuNote);
                                 setContextMenuNote(null);
                             }}
-                        >
-                            <Ionicons name="create-outline" size={18} color={theme.text} />
-                            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.text }}>Editar</Text>
-                        </TouchableOpacity>
+                        />
                         {contextMenuNote?.authorId === user.uid && (
-                            <TouchableOpacity
-                                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, paddingVertical: spacing.s12, paddingHorizontal: spacing.s16 }}
+                            <ContextMenuRow
+                                icon="trash-outline"
+                                label="Eliminar"
+                                color={theme.danger}
                                 onPress={() => {
                                     setDeletingNoteId(contextMenuNote?.id ?? null);
                                     setContextMenuNote(null);
                                 }}
-                            >
-                                <Ionicons name="trash-outline" size={18} color={theme.danger} />
-                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.danger }}>Eliminar</Text>
-                            </TouchableOpacity>
+                            />
                         )}
                     </View>
                 </TouchableOpacity>
