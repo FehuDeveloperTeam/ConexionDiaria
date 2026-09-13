@@ -2,6 +2,16 @@ import React, { useEffect } from 'react';
 import { ActivityIndicator, View, useColorScheme } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
+import { useFonts } from 'expo-font';
+import { Newsreader_400Regular } from '@expo-google-fonts/newsreader';
+import {
+    Manrope_500Medium,
+    Manrope_600SemiBold,
+    Manrope_700Bold,
+    Manrope_800ExtraBold,
+} from '@expo-google-fonts/manrope';
+import { Poppins_600SemiBold, Poppins_700Bold } from '@expo-google-fonts/poppins';
 import 'react-native-reanimated';
 import Toast from 'react-native-toast-message';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -11,6 +21,12 @@ import { themes } from '../src/config/theme';
 import { PlanProvider, usePlan } from '../src/contexts/planContext';
 import { ThemeProvider } from '../src/contexts/themeContext'; // Importamos el nuevo ThemeProvider
 import Purchases from 'react-native-purchases';
+
+// Sprint 7.0: mantener la splash nativa visible hasta que las tres
+// familias tipográficas del sistema de diseño terminen de cargar — evita
+// un parpadeo inicial con la fuente del sistema antes de que aparezca
+// Newsreader/Manrope/Poppins.
+SplashScreen.preventAutoHideAsync();
 
 // 3. Este componente se encarga de la carga y la redirección
 // Se ejecutará *después* de que PlanProvider esté disponible
@@ -59,13 +75,38 @@ const RootLayout: React.FC = () => {
     // 7. El hook 'useAuth' se ha eliminado.
     // El 'colorScheme' y 'theme' se usarán para las pantallas del Stack (login/register)
     const colorScheme = useColorScheme() || 'light';
-    const theme = themes[colorScheme]; 
+    const theme = themes[colorScheme];
 
     // Configuración de RevenueCat (ver .env.example para la variable requerida)
     useEffect(() => {
         Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
         Purchases.configure({ apiKey: process.env.EXPO_PUBLIC_REVENUECAT_API_KEY! });
     }, []);
+
+    // Sprint 7.0: fuentes del sistema de diseño. 'fontError' también libera
+    // la splash — mejor una app con la fuente del sistema que una pantalla
+    // de carga que nunca termina si algo falla al descargar/registrar una
+    // fuente.
+    const [fontsLoaded, fontError] = useFonts({
+        Newsreader_400Regular,
+        Manrope_500Medium,
+        Manrope_600SemiBold,
+        Manrope_700Bold,
+        Manrope_800ExtraBold,
+        Poppins_600SemiBold,
+        Poppins_700Bold,
+    });
+
+    useEffect(() => {
+        if (fontsLoaded || fontError) {
+            if (fontError) console.error('Error cargando fuentes del sistema de diseño:', fontError);
+            SplashScreen.hideAsync();
+        }
+    }, [fontsLoaded, fontError]);
+
+    if (!fontsLoaded && !fontError) {
+        return null;
+    }
 
     // 8. El 'if (loading)' se ha movido a 'AuthRedirect'
 

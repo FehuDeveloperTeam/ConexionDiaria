@@ -12,6 +12,9 @@
     "test:rules": "firebase emulators:exec --project demo-conexiondiaria --only firestore,storage \"node tests/rules.test.mjs\""
   },
   "dependencies": {
+    "@expo-google-fonts/manrope": "^0.4.2",
+    "@expo-google-fonts/newsreader": "^0.4.1",
+    "@expo-google-fonts/poppins": "^0.4.1",
     "@expo/react-native-action-sheet": "^4.1.1",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "^2.2.0",
@@ -35,6 +38,7 @@
     "expo-image": "~3.0.10",
     "expo-image-manipulator": "~14.0.7",
     "expo-image-picker": "~17.0.8",
+    "expo-linear-gradient": "~15.0.7",
     "expo-linking": "~8.0.8",
     "expo-location": "~19.0.7",
     "expo-media-library": "~18.2.0",
