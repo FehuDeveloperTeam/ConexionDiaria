@@ -106,7 +106,7 @@ const PremiumBadge: React.FC = () => {
 
 const ConfigScreen: React.FC = () => {
     const router = useRouter();
-    const { theme, isDarkMode, setDarkMode, fontFamilies } = useTheme();
+    const { theme, isDarkMode, setDarkMode, fontFamilies, borderStyle } = useTheme();
     const { plan, user, userData, relationshipData, isLoading } = usePlan();
 
     const [displayName, setDisplayName] = useState('');
@@ -389,7 +389,18 @@ const ConfigScreen: React.FC = () => {
                 <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 0.9, color: theme.textFaint, marginBottom: spacing.s10 }}>
                     PREFERENCIAS
                 </Text>
-                <View style={{ backgroundColor: theme.surface, borderRadius: radii.field + 2, marginBottom: spacing.s22 }}>
+                <View style={{
+                    backgroundColor: theme.surface,
+                    borderRadius: radii.field + 2,
+                    marginBottom: spacing.s22,
+                    // Sprint 8.6: estilo de borde de la pareja (probador de tema) —
+                    // solo el borde, nunca el radio (el contenedor ya tiene el suyo).
+                    ...(borderStyle.key !== 'default' ? {
+                        borderWidth: borderStyle.borderWidth,
+                        borderColor: borderStyle.borderColor,
+                        borderStyle: borderStyle.dashed ? 'dashed' : 'solid',
+                    } : null),
+                }}>
                     <PrefRow
                         icon="moon"
                         label="Modo oscuro"

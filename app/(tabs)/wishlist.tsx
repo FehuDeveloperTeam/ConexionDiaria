@@ -47,7 +47,7 @@ interface WishItem {
 const WishlistScreen: React.FC = () => {
     const router = useRouter();
     const { plan, user, userData, partnerData, isLoading } = usePlan();
-    const { theme, isDarkMode: isDark, fontFamilies } = useTheme();
+    const { theme, isDarkMode: isDark, fontFamilies, borderStyle } = useTheme();
     const { isDesktop } = useResponsive();
 
     const [allItems, setAllItems] = useState<WishItem[]>([]);
@@ -322,6 +322,13 @@ const WishlistScreen: React.FC = () => {
                             padding: 15,
                             marginBottom: spacing.s10,
                             opacity: item.isCompleted ? 0.7 : 1,
+                            // Sprint 8.6: estilo de borde de la pareja (probador de tema) —
+                            // solo el borde, nunca el radio (la fila ya tiene el suyo propio).
+                            ...(borderStyle.key !== 'default' ? {
+                                borderWidth: borderStyle.borderWidth,
+                                borderColor: borderStyle.borderColor,
+                                borderStyle: borderStyle.dashed ? 'dashed' : 'solid',
+                            } : null),
                         }}
                     >
                         <View style={{ flex: 1, gap: spacing.s6 }}>

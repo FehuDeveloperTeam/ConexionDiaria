@@ -27,7 +27,7 @@ import { useRouter } from 'expo-router';
 interface EditingTask { id: string; text: string; authorId: string; }
 
 const TasksScreen: React.FC = () => {
-    const { theme, isDarkMode: isDark, fontFamilies } = useTheme();
+    const { theme, isDarkMode: isDark, fontFamilies, borderStyle } = useTheme();
     const router = useRouter();
 
     const { user, userData } = usePlan();
@@ -234,6 +234,13 @@ const TasksScreen: React.FC = () => {
                                     borderRadius: 18,
                                     padding: 15,
                                     marginBottom: spacing.s12,
+                                    // Sprint 8.6: estilo de borde de la pareja (probador de tema) —
+                                    // solo el borde, nunca el radio (la fila ya tiene el suyo propio).
+                                    ...(borderStyle.key !== 'default' ? {
+                                        borderWidth: borderStyle.borderWidth,
+                                        borderColor: borderStyle.borderColor,
+                                        borderStyle: borderStyle.dashed ? 'dashed' : 'solid',
+                                    } : null),
                                 }}
                             >
                                 <View style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: -9, marginTop: -9, marginBottom: -9 }}>
