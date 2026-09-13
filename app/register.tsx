@@ -1,68 +1,24 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput as RNTextInput, Button, useColorScheme, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, useColorScheme, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { createUserWithEmailAndPassword, sendEmailVerification, User } from 'firebase/auth';
 import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../src/config/firebaseConfig';
-import { themes } from '../src/config/theme';
-import { Feather } from '@expo/vector-icons';
+import { themes, fontFamilies, spacing } from '../src/config/theme';
+import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { generateUniqueInvitationCode, buildInvitationCodeDoc } from '../src/services/invitationCode';
+import { TextField } from '../src/components/TextField';
+import { Button } from '../src/components/Button';
 
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
-    container: {
-        flexGrow: 1,
-        justifyContent: 'center',
-        padding: 20,
-        backgroundColor: theme.background,
-    },
-    title: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        textAlign: 'center',
-        marginBottom: 40,
-        color: theme.text,
-    },
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        width: '100%',
-        borderColor: theme.borderColor,
-        borderWidth: 1,
-        borderRadius: 8,
-        marginBottom: 20,
-        backgroundColor: theme.inputBackground,
-    },
-    input: {
-        flex: 1,
-        height: 50,
-        paddingHorizontal: 15,
-        fontSize: 16,
-        color: theme.text,
-    },
-    icon: {
-        padding: 10,
-    },
-    footer: {
-        marginTop: 30,
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: 5,
-    },
-    footerText: {
-        color: theme.text,
-    },
-    link: {
-        color: theme.link,
-        fontWeight: 'bold',
-    },
-    loadingContainer: {
-        paddingVertical: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-    }
+    container: { flexGrow: 1, padding: spacing.s20, backgroundColor: theme.bg },
+    backButton: { paddingVertical: spacing.s10, marginBottom: spacing.s10 },
+    title: { fontFamily: fontFamilies.display, fontSize: 34, lineHeight: 36, color: theme.text, marginBottom: spacing.s26 },
+    footer: { marginTop: spacing.s26, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.s4 },
+    footerText: { fontFamily: fontFamilies.body, color: theme.textMuted, fontSize: 13.5 },
+    link: { fontFamily: fontFamilies.bodyBold, color: theme.primary, fontSize: 13.5 },
 });
 
 const Register: React.FC = () => {
@@ -75,9 +31,12 @@ const Register: React.FC = () => {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [displayName, setDisplayName] = useState('');
-    const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-    const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    // Validación en vivo: apenas hay algo escrito en "confirmar", si no
+    // coincide se marca de inmediato (borde + mensaje + CTA bloqueado) en
+    // vez de esperar al submit.
+    const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
 
     const handleRegister = async () => {
         if (password !== confirmPassword) return Toast.show({ type: 'error', text1: 'Error', text2: 'Las contraseñas no coinciden.' });
@@ -148,76 +107,55 @@ const Register: React.FC = () => {
     };
 
     return (
-        <SafeAreaView style={{flex: 1, backgroundColor: theme.background}}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
             <ScrollView contentContainerStyle={styles.container}>
+                <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+                    <Ionicons name="arrow-back" size={26} color={theme.text} />
+                </TouchableOpacity>
+
                 <Text style={styles.title}>Crea tu Cuenta</Text>
 
-                <View style={styles.inputContainer}>
-                    <RNTextInput
-                        style={styles.input}
-                        placeholder="Tu Nombre"
-                        placeholderTextColor={theme.placeholder}
-                        value={displayName}
-                        onChangeText={setDisplayName}
-                        returnKeyType="next"
-                    />
-                </View>
-                <View style={styles.inputContainer}>
-                    <RNTextInput
-                        style={styles.input}
-                        placeholder="Correo Electrónico"
-                        placeholderTextColor={theme.placeholder}
-                        value={email}
-                        onChangeText={setEmail}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        returnKeyType="next"
-                    />
-                </View>
-                
-                <View style={styles.inputContainer}>
-                    <RNTextInput
-                        style={styles.input}
-                        placeholder="Contraseña (mín. 6 caracteres)"
-                        placeholderTextColor={theme.placeholder}
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry={!isPasswordVisible}
-                        returnKeyType="next"
-                    />
-                    <TouchableOpacity style={styles.icon} onPress={() => setIsPasswordVisible(!isPasswordVisible)}>
-                        <Feather name={isPasswordVisible ? "eye-off" : "eye"} size={22} color={theme.placeholder} />
-                    </TouchableOpacity>
-                </View>
+                <TextField label="Nombre" value={displayName} onChangeText={setDisplayName} placeholder="Tu nombre" returnKeyType="next" />
+                <TextField
+                    label="Email"
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="tu@correo.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    returnKeyType="next"
+                />
+                <TextField
+                    label="Contraseña"
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Mín. 6 caracteres"
+                    isPassword
+                    returnKeyType="next"
+                />
+                <TextField
+                    label="Confirmar contraseña"
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    placeholder="Repite tu contraseña"
+                    isPassword
+                    error={passwordsMismatch ? 'Las contraseñas no coinciden' : undefined}
+                    returnKeyType="go"
+                    onSubmitEditing={handleRegister}
+                />
 
-                <View style={styles.inputContainer}>
-                    <RNTextInput
-                        style={styles.input}
-                        placeholder="Confirmar Contraseña"
-                        placeholderTextColor={theme.placeholder}
-                        value={confirmPassword}
-                        onChangeText={setConfirmPassword}
-                        secureTextEntry={!isConfirmPasswordVisible}
-                        returnKeyType="go"
-                        onSubmitEditing={handleRegister}
-                    />
-                    <TouchableOpacity style={styles.icon} onPress={() => setIsConfirmPasswordVisible(!isConfirmPasswordVisible)}>
-                        <Feather name={isConfirmPasswordVisible ? "eye-off" : "eye"} size={22} color={theme.placeholder} />
-                    </TouchableOpacity>
-                </View>
-
-                {loading ? (
-                    <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="large" color={theme.primary} />
-                    </View>
-                ) : (
-                    <Button title="Registrarme" onPress={handleRegister} color={theme.primary} />
-                )}
+                <Button
+                    title="Registrarme"
+                    onPress={handleRegister}
+                    loading={loading}
+                    loadingText="Creando cuenta…"
+                    disabled={passwordsMismatch}
+                />
 
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>¿Ya tienes una cuenta?</Text>
                     <Link href="/login" style={styles.link}>
-                        Inicia sesión aquí
+                        Inicia sesión
                     </Link>
                 </View>
             </ScrollView>

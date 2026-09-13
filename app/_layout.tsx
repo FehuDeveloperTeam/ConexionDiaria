@@ -118,20 +118,14 @@ const RootLayout: React.FC = () => {
                 <SafeAreaProvider>
                     
                     {/* Este Stack SÍEMPRE se renderiza */}
+                    {/* Sprint 7.2: login y register ya traen su propio back
+                        arrow y título (Newsreader) dentro del contenido, per
+                        el sistema de diseño — el header nativo se apaga para
+                        no duplicar el botón de volver. */}
                     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background } }}>
                         <Stack.Screen name="index" />
-                        <Stack.Screen name="login" options={{ 
-                            title: 'Iniciar Sesión', 
-                            headerShown: true,
-                            headerStyle: { backgroundColor: theme.background },
-                            headerTintColor: theme.text,
-                        }} />
-                        <Stack.Screen name="register" options={{ 
-                            title: 'Crear Cuenta', 
-                            headerShown: true,
-                            headerStyle: { backgroundColor: theme.background },
-                            headerTintColor: theme.text,
-                        }} />
+                        <Stack.Screen name="login" />
+                        <Stack.Screen name="register" />
                         <Stack.Screen name="(tabs)" />
                     </Stack>
                     

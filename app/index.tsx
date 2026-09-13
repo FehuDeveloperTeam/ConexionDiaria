@@ -1,104 +1,67 @@
 import React from 'react';
-import { View, Text, StyleSheet, useColorScheme, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
-import { themes } from '../src/config/theme'; // Asegúrate que la ruta sea correcta
 import { Ionicons } from '@expo/vector-icons';
+import { themes, fontFamilies, spacing } from '../src/config/theme';
+import { Button } from '../src/components/Button';
 
-const getStyles = (theme: typeof themes.light) => StyleSheet.create({
-    safeArea: {
-        flex: 1,
-        backgroundColor: theme.background,
-    },
-    container: {
-        flex: 1,
-        padding: 30,
-        justifyContent: 'space-between',
+const getStyles = (theme: typeof themes.light, isLight: boolean) => StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: theme.bg },
+    container: { flex: 1, paddingHorizontal: 34, justifyContent: 'space-between', alignItems: 'center' },
+    header: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.s20 },
+    iconBox: {
+        width: 112,
+        height: 112,
+        borderRadius: 36,
+        backgroundColor: theme.surface,
+        borderWidth: 1,
+        borderColor: isLight ? '#E4E4F0' : theme.borderSoft,
         alignItems: 'center',
-    },
-    header: {
-        flex: 1,
         justifyContent: 'center',
-        alignItems: 'center',
-        gap: 20,
+        ...(isLight
+            ? { shadowColor: theme.primary, shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.14, shadowRadius: 30, elevation: 8 }
+            : {}),
     },
-    title: {
-        fontSize: 40,
-        fontWeight: 'bold',
-        color: theme.text,
-    },
+    title: { fontFamily: fontFamilies.display, fontSize: 40, lineHeight: 40, color: theme.text },
     subtitle: {
-        fontSize: 18,
-        color: theme.placeholder,
+        fontFamily: fontFamilies.body,
+        fontSize: 16,
+        lineHeight: 24,
+        color: isLight ? '#5C5C68' : theme.textMuted,
         textAlign: 'center',
-        paddingHorizontal: 20,
+        maxWidth: 280,
     },
-    footer: {
-        width: '100%',
-        gap: 15,
-    },
-    
-    // --- ESTILOS CORREGIDOS ---
-    
-    // 1. Estilo para el botón Sólido (Iniciar Sesión)
-    buttonSolid: {
-        backgroundColor: theme.primary,
-        paddingVertical: 18,
-        borderRadius: 100,
-        alignItems: 'center',
-        borderWidth: 2, // Añadimos borde para mantener la misma altura
-        borderColor: theme.primary,
-    },
-    buttonSolidText: {
-        color: theme.white,
-        fontSize: 18,
-        fontWeight: 'bold',
-    },
-    // 2. Estilo para el botón Contorno (Crear Cuenta)
-    buttonOutline: {
-        backgroundColor: 'transparent',
-        borderWidth: 2,
-        borderColor: theme.primary,
-        paddingVertical: 18,
-        borderRadius: 100,
-        alignItems: 'center',
-    },
-    buttonOutlineText: {
-        color: theme.primary,
-        fontSize: 18,
-        fontWeight: 'bold',
-    },
+    footer: { width: '100%', paddingBottom: 48, gap: spacing.s12 },
+    footNote: { fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint, textAlign: 'center', marginTop: spacing.s10 },
 });
 
 const LandingScreen: React.FC = () => {
     const colorScheme = useColorScheme() || 'light';
     const theme = themes[colorScheme];
-    const styles = getStyles(theme);
+    const styles = getStyles(theme, colorScheme === 'light');
 
     return (
         <SafeAreaView style={styles.safeArea}>
             <View style={styles.container}>
                 <View style={styles.header}>
-                    <Ionicons name="heart-circle" size={100} color={theme.primary} />
+                    <View style={styles.iconBox}>
+                        <Ionicons name="heart" size={58} color={theme.affection} />
+                    </View>
                     <Text style={styles.title}>Conexión Diaria</Text>
                     <Text style={styles.subtitle}>
                         Tu espacio privado para conectar, compartir y crecer juntos.
                     </Text>
                 </View>
-                
+
                 <View style={styles.footer}>
-                    {/* 3. AHORA PASAMOS UN ÚNICO OBJETO DE ESTILO */}
                     <Link href="/login" asChild>
-                        <TouchableOpacity style={styles.buttonSolid}>
-                            <Text style={styles.buttonSolidText}>Iniciar Sesión</Text>
-                        </TouchableOpacity>
+                        <Button title="Iniciar Sesión" onPress={() => {}} />
                     </Link>
-                    {/* 4. AHORA PASAMOS UN ÚNICO OBJETO DE ESTILO */}
                     <Link href="/register" asChild>
-                        <TouchableOpacity style={styles.buttonOutline}>
-                            <Text style={styles.buttonOutlineText}>Crear Cuenta</Text>
-                        </TouchableOpacity>
+                        <Button title="Crear Cuenta" onPress={() => {}} variant="outline" />
                     </Link>
+                    <Text style={styles.footNote}>Una cuenta por persona · una relación compartida</Text>
                 </View>
             </View>
         </SafeAreaView>

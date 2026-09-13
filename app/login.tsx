@@ -1,24 +1,25 @@
-import { Link, useRouter } from 'expo-router';
+import { useRouter, Link } from 'expo-router';
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Button, TextInput as RNTextInput, useColorScheme, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput as RNTextInput, useColorScheme, TouchableOpacity } from 'react-native';
 import { auth } from '../src/config/firebaseConfig'; // Ruta corregida
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { themes } from '../src/config/theme'; // Ruta corregida
-import { Feather } from '@expo/vector-icons';
+import { themes, fontFamilies, spacing } from '../src/config/theme'; // Ruta corregida
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
+import { TextField } from '../src/components/TextField';
+import { Button } from '../src/components/Button';
 
 const getStyles = (theme: typeof themes.light) => StyleSheet.create({
-    container: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: theme.background },
-    title: { fontSize: 28, color: theme.text, fontWeight: 'bold', textAlign: 'center', marginBottom: 40 },
-    inputContainer: { flexDirection: 'row', alignItems: 'center', width: '100%', borderColor: theme.borderColor, borderWidth: 1, borderRadius: 8, marginBottom: 20, backgroundColor: theme.inputBackground },
-    input: { flex: 1, height: 50, paddingHorizontal: 15, fontSize: 16, color: theme.text },
-    icon: { padding: 10 },
-    footer: { marginTop: 30, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5 },
-    footerText: { color: theme.text },
-    link: { color: theme.link, fontWeight: 'bold' },
-    forgotPassword: { alignSelf: 'flex-end', marginBottom: 20 },
-    forgotPasswordText: { color: theme.link, fontSize: 14 },
+    container: { flex: 1, padding: spacing.s20, backgroundColor: theme.bg },
+    backButton: { paddingVertical: spacing.s10, marginBottom: spacing.s10 },
+    title: { fontFamily: fontFamilies.display, fontSize: 34, lineHeight: 36, color: theme.text, marginBottom: spacing.s6 },
+    subcopy: { fontFamily: fontFamilies.body, fontSize: 14, color: theme.textMuted, marginBottom: spacing.s26 },
+    forgotPassword: { alignSelf: 'flex-end', marginBottom: spacing.s20, marginTop: -spacing.s10 },
+    forgotPasswordText: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13, color: theme.primary },
+    footer: { marginTop: spacing.s26, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.s4 },
+    footerText: { fontFamily: fontFamilies.body, color: theme.textMuted, fontSize: 13.5 },
+    link: { fontFamily: fontFamilies.bodyBold, color: theme.primary, fontSize: 13.5 },
 });
 
 const Login: React.FC = () => {
@@ -26,10 +27,9 @@ const Login: React.FC = () => {
     const theme = themes[colorScheme];
     const styles = getStyles(theme);
     const router = useRouter();
-    
+
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [isPasswordVisible, setIsPasswordVisible] = useState(false);
     const [loading, setLoading] = useState(false);
     const [isSendingReset, setIsSendingReset] = useState(false);
     const passwordInputRef = useRef<RNTextInput>(null);
@@ -70,34 +70,51 @@ const Login: React.FC = () => {
     };
 
     return (
-        <SafeAreaView style={{flex: 1, backgroundColor: theme.background}}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
             <View style={styles.container}>
-                <Text style={styles.title}>Iniciar Sesión</Text>
-                <View style={styles.inputContainer}>
-                    <RNTextInput style={styles.input} placeholder="Correo Electrónico" placeholderTextColor={theme.placeholder} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" returnKeyType="next" onSubmitEditing={() => passwordInputRef.current?.focus()} />
-                </View>
-                <View style={styles.inputContainer}>
-                    <RNTextInput ref={passwordInputRef} style={styles.input} placeholder="Contraseña" placeholderTextColor={theme.placeholder} value={password} onChangeText={setPassword} secureTextEntry={!isPasswordVisible} returnKeyType="go" onSubmitEditing={handleLogin} />
-                    <TouchableOpacity style={styles.icon} onPress={() => setIsPasswordVisible(!isPasswordVisible)}>
-                        <Feather name={isPasswordVisible ? "eye-off" : "eye"} size={22} color={theme.placeholder} />
-                    </TouchableOpacity>
-                </View>
+                <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+                    <Ionicons name="arrow-back" size={26} color={theme.text} />
+                </TouchableOpacity>
+
+                <Text style={styles.title}>Hola de nuevo</Text>
+                <Text style={styles.subcopy}>Tu pareja te está esperando.</Text>
+
+                <TextField
+                    label="Email"
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="tu@correo.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    returnKeyType="next"
+                    onSubmitEditing={() => passwordInputRef.current?.focus()}
+                />
+                <TextField
+                    label="Contraseña"
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="••••••••"
+                    isPassword
+                    inputRef={passwordInputRef}
+                    returnKeyType="go"
+                    onSubmitEditing={handleLogin}
+                />
 
                 <TouchableOpacity style={styles.forgotPassword} onPress={handleForgotPassword} disabled={isSendingReset}>
                     <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
                 </TouchableOpacity>
 
-                {loading ? (
-                    <ActivityIndicator size="large" color={theme.primary} />
-                ) : (
-                    <Button title="Iniciar Sesión" onPress={handleLogin} color={theme.primary} />
-                )}
+                <Button
+                    title="Iniciar Sesión"
+                    onPress={handleLogin}
+                    loading={loading}
+                    loadingText="Entrando…"
+                />
 
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>¿No tienes una cuenta?</Text>
-                    {/* Link corregido (ya no está dentro de tabs) */}
                     <Link href="/register" style={styles.link}>
-                        Regístrate aquí
+                        Crear cuenta
                     </Link>
                 </View>
             </View>
