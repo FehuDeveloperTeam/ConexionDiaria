@@ -449,6 +449,24 @@ const ChatScreen = () => {
         </View>
     );
 
+    // Sprint 8.4: "Enter envía" en escritorio (handoff, "Detalles de PC").
+    // react-native-web reenvía el evento de teclado completo a onKeyPress
+    // (no solo nativeEvent.key como en nativo), así que Enter sin Shift se
+    // puede interceptar acá mismo — Shift+Enter sigue insertando salto de
+    // línea. 'onSend' de useChatMessages solo lee 'message.text' del
+    // primer elemento del array (ver ese hook): no hace falta reconstruir
+    // _id/user/createdAt como hace GiftedChat internamente, esos campos
+    // los pone Firestore al guardar.
+    const handleComposerKeyPress = (e: any) => {
+        if (Platform.OS !== 'web') return;
+        if (e.key !== 'Enter' || e.shiftKey) return;
+        e.preventDefault?.();
+        const text = inputText.trim();
+        if (text.length === 0) return;
+        onSend([{ text } as any]);
+        setInputText('');
+    };
+
     // Loading state
     if (loading || planLoading) {
         return (
@@ -791,6 +809,7 @@ const ChatScreen = () => {
                                                 multiline: true,
                                                 returnKeyType: 'default',
                                                 blurOnSubmit: false,
+                                                onKeyPress: handleComposerKeyPress,
                                             }}
                                         />
                                     )}
