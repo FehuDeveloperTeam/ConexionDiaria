@@ -1,8 +1,9 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { View, useColorScheme } from 'react-native';
-import { themes, fontFamilies } from '../../src/config/theme'; // Asegúrate que la ruta sea correcta
+import { View } from 'react-native';
+import { fontFamilies } from '../../src/config/theme';
+import { useTheme } from '../../src/contexts/themeContext';
 
 // Sprint 7.1: ícono con el pill de fondo detrás cuando el tab está activo
 // (ver README del bundle de diseño, sección "Navegación"). Un solo
@@ -26,8 +27,10 @@ const makeTabIcon = (name: keyof typeof Ionicons.glyphMap, pillColor: string) =>
 };
 
 const TabLayout: React.FC = () => {
-    const colorScheme = useColorScheme() || 'light';
-    const theme = themes[colorScheme];
+    const { theme, borderStyle } = useTheme();
+    // Sprint 7.8b: la tab bar hereda el estilo de borde de la pareja
+    // (probador de tema) — mismo criterio que el hero de Inicio.
+    const activePillColor = borderStyle.key !== 'default' ? borderStyle.background : theme.primarySoft;
 
     return (
         <Tabs
@@ -37,7 +40,7 @@ const TabLayout: React.FC = () => {
                 tabBarLabelStyle: { fontFamily: fontFamilies.action, fontSize: 8.5 },
                 tabBarStyle: {
                     backgroundColor: theme.surface,
-                    borderTopColor: theme.borderSoft,
+                    borderTopColor: borderStyle.key !== 'default' ? borderStyle.borderColor : theme.borderSoft,
                 },
                 headerStyle: {
                     backgroundColor: theme.background,
@@ -49,7 +52,7 @@ const TabLayout: React.FC = () => {
                 name="home"
                 options={{
                     title: 'Inicio',
-                    tabBarIcon: makeTabIcon('home-outline', theme.primarySoft),
+                    tabBarIcon: makeTabIcon('home-outline', activePillColor),
                     headerShown: false,
                 }}
             />
@@ -57,7 +60,7 @@ const TabLayout: React.FC = () => {
                 name="chat"
                 options={{
                     title: 'Chat',
-                    tabBarIcon: makeTabIcon('chatbubbles-outline', theme.primarySoft),
+                    tabBarIcon: makeTabIcon('chatbubbles-outline', activePillColor),
                     headerShown: false, // Para usar nuestro header personalizado
                 }}
             />
@@ -65,7 +68,7 @@ const TabLayout: React.FC = () => {
                 name="notes"
                 options={{
                     title: 'Notas',
-                    tabBarIcon: makeTabIcon('document-text-outline', theme.primarySoft),
+                    tabBarIcon: makeTabIcon('document-text-outline', activePillColor),
                     headerShown: false,
                 }}
             />
@@ -75,7 +78,7 @@ const TabLayout: React.FC = () => {
                 name="tasks"
                 options={{
                     title: 'Tareas',
-                    tabBarIcon: makeTabIcon('checkmark-done-outline', theme.primarySoft),
+                    tabBarIcon: makeTabIcon('checkmark-done-outline', activePillColor),
                     headerShown: false,
                 }}
             />
@@ -84,7 +87,7 @@ const TabLayout: React.FC = () => {
                 name="wishlist"
                 options={{
                     title: 'Deseos',
-                    tabBarIcon: makeTabIcon('star-outline', theme.primarySoft),
+                    tabBarIcon: makeTabIcon('star-outline', activePillColor),
                     headerShown: false,
                 }}
             />
@@ -93,7 +96,7 @@ const TabLayout: React.FC = () => {
                 name="album"
                 options={{
                     title: 'Álbum',
-                    tabBarIcon: makeTabIcon('images-outline', theme.primarySoft),
+                    tabBarIcon: makeTabIcon('images-outline', activePillColor),
                     headerShown: false,
                 }}
             />
@@ -101,7 +104,7 @@ const TabLayout: React.FC = () => {
                 name="calendar"
                 options={{
                     title: 'Calendario',
-                    tabBarIcon: makeTabIcon('calendar-outline', theme.primarySoft),
+                    tabBarIcon: makeTabIcon('calendar-outline', activePillColor),
                     headerShown: false,
                 }}
             />
@@ -109,7 +112,7 @@ const TabLayout: React.FC = () => {
                 name="config"
                 options={{
                     title: 'Ajustes',
-                    tabBarIcon: makeTabIcon('settings-outline', theme.primarySoft),
+                    tabBarIcon: makeTabIcon('settings-outline', activePillColor),
                     headerShown: false,
                 }}
             />

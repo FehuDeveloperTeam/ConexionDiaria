@@ -412,7 +412,7 @@ const ConfigScreen: React.FC = () => {
                         label="Personalizar tema"
                         subcopy={plan === 'premium' ? `${activeThemeName} · ${activeFontName}` : undefined}
                         isLast
-                        onPress={() => plan === 'premium' ? router.push('/theme-editor' as any) : setIsPaywallVisible(true)}
+                        onPress={() => plan === 'premium' ? router.push('/theme-editor') : setIsPaywallVisible(true)}
                         right={plan === 'free' ? <PremiumBadge /> : <Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
                     />
                 </View>

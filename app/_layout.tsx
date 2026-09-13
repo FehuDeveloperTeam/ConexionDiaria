@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { ActivityIndicator, View, useColorScheme } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -16,11 +16,10 @@ import 'react-native-reanimated';
 import Toast from 'react-native-toast-message';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 // 1. Ya no necesitamos 'auth' ni 'onAuthStateChanged' aquí
-import { themes } from '../src/config/theme';
 import { toastConfig } from '../src/components/toastConfig';
 // 2. Importamos AMBOS providers y el hook 'usePlan'
 import { PlanProvider, usePlan } from '../src/contexts/planContext';
-import { ThemeProvider } from '../src/contexts/themeContext'; // Importamos el nuevo ThemeProvider
+import { ThemeProvider, useTheme } from '../src/contexts/themeContext'; // Importamos el nuevo ThemeProvider
 import Purchases from 'react-native-purchases';
 
 // Sprint 7.0: mantener la splash nativa visible hasta que las tres
@@ -36,10 +35,10 @@ function AuthRedirect() {
     const { user, isLoading } = usePlan();
     const router = useRouter();
     const segments = useSegments();
-    
-    // Obtenemos el tema para la pantalla de carga
-    const colorScheme = useColorScheme() || 'light';
-    const theme = themes[colorScheme];
+
+    // Obtenemos el tema para la pantalla de carga (Sprint 7.8b: vía
+    // useTheme(), para heredar el override de modo oscuro de Ajustes).
+    const { theme } = useTheme();
 
     useEffect(() => {
         if (isLoading) return; // Esperar a que el PlanProvider termine de cargar
@@ -72,12 +71,38 @@ function AuthRedirect() {
     return null;
 }
 
-const RootLayout: React.FC = () => {
-    // 7. El hook 'useAuth' se ha eliminado.
-    // El 'colorScheme' y 'theme' se usarán para las pantallas del Stack (login/register)
-    const colorScheme = useColorScheme() || 'light';
-    const theme = themes[colorScheme];
+// Sprint 7.8b: envoltorio interno al Stack/StatusBar/Toast, para poder
+// llamar useTheme() (necesita estar DENTRO de ThemeProvider) y así el
+// fondo del Stack y el estilo de la barra de estado también respeten el
+// override de modo oscuro y la personalización premium.
+function AppShell() {
+    const { theme, isDarkMode } = useTheme();
 
+    return (
+        <SafeAreaProvider>
+            {/* Este Stack SÍEMPRE se renderiza */}
+            {/* Sprint 7.2: login y register ya traen su propio back
+                arrow y título (Newsreader) dentro del contenido, per
+                el sistema de diseño — el header nativo se apaga para
+                no duplicar el botón de volver. */}
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background } }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="login" />
+                <Stack.Screen name="register" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="theme-editor" />
+            </Stack>
+
+            {/* Este componente decide si mostrar la carga o redirigir */}
+            <AuthRedirect />
+
+            <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+            <Toast config={toastConfig} />
+        </SafeAreaProvider>
+    );
+}
+
+const RootLayout: React.FC = () => {
     // Configuración de RevenueCat (ver .env.example para la variable requerida)
     useEffect(() => {
         Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
@@ -115,26 +140,7 @@ const RootLayout: React.FC = () => {
     return (
         <PlanProvider>
             <ThemeProvider> {/* <-- Añadimos el ThemeProvider aquí */}
-                <SafeAreaProvider>
-                    
-                    {/* Este Stack SÍEMPRE se renderiza */}
-                    {/* Sprint 7.2: login y register ya traen su propio back
-                        arrow y título (Newsreader) dentro del contenido, per
-                        el sistema de diseño — el header nativo se apaga para
-                        no duplicar el botón de volver. */}
-                    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background } }}>
-                        <Stack.Screen name="index" />
-                        <Stack.Screen name="login" />
-                        <Stack.Screen name="register" />
-                        <Stack.Screen name="(tabs)" />
-                    </Stack>
-                    
-                    {/* Este componente decide si mostrar la carga o redirigir */}
-                    <AuthRedirect />
-
-                    <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-                    <Toast config={toastConfig} />
-                </SafeAreaProvider>
+                <AppShell />
             </ThemeProvider>
         </PlanProvider>
     );

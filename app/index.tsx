@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { themes, fontFamilies, spacing } from '../src/config/theme';
+import { useTheme } from '../src/contexts/themeContext';
 import { Button } from '../src/components/Button';
 
 const getStyles = (theme: typeof themes.light, isLight: boolean) => StyleSheet.create({
@@ -37,9 +38,8 @@ const getStyles = (theme: typeof themes.light, isLight: boolean) => StyleSheet.c
 });
 
 const LandingScreen: React.FC = () => {
-    const colorScheme = useColorScheme() || 'light';
-    const theme = themes[colorScheme];
-    const styles = getStyles(theme, colorScheme === 'light');
+    const { theme, isDarkMode } = useTheme();
+    const styles = getStyles(theme, !isDarkMode);
 
     return (
         <SafeAreaView style={styles.safeArea}>

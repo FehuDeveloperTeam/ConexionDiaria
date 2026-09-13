@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import {
-    View, useColorScheme, Platform, KeyboardAvoidingView, StyleSheet,
+    View, Platform, KeyboardAvoidingView, StyleSheet,
     ActivityIndicator, Text, TouchableOpacity, Image, UIManager,
     Keyboard, Alert, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GiftedChat, InputToolbar, Composer, Send, Actions, Bubble } from 'react-native-gifted-chat';
 import { useRouter } from 'expo-router';
-import { themes, fontFamilies, spacing, radii } from '../../src/config/theme';
+import { fontFamilies, spacing, radii } from '../../src/config/theme';
+import { useTheme } from '../../src/contexts/themeContext';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { usePlan } from '../../src/contexts/planContext';
@@ -33,8 +34,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 // Componente Principal del Chat
 const ChatScreen = () => {
-    const colorScheme = useColorScheme();
-    const theme = colorScheme === 'dark' ? themes.dark : themes.light;
+    const { theme, isDarkMode } = useTheme();
     const router = useRouter();
 
     // Context de Plan
@@ -158,7 +158,7 @@ const ChatScreen = () => {
     }, []);
 
     // Render de burbujas personalizadas — Sprint 7.4a (sistema de diseño).
-    const isDark = colorScheme === 'dark';
+    const isDark = isDarkMode;
     const formatMessageTime = (date: Date | number) =>
         new Date(date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     // Burbuja propia: primary en claro, violeta oscuro propio en oscuro

@@ -1,9 +1,10 @@
 import { useRouter, Link } from 'expo-router';
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput as RNTextInput, useColorScheme, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TextInput as RNTextInput, TouchableOpacity } from 'react-native';
 import { auth } from '../src/config/firebaseConfig'; // Ruta corregida
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { themes, fontFamilies, spacing } from '../src/config/theme'; // Ruta corregida
+import { useTheme } from '../src/contexts/themeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
@@ -23,8 +24,7 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
 });
 
 const Login: React.FC = () => {
-    const colorScheme = useColorScheme() || 'light';
-    const theme = themes[colorScheme];
+    const { theme } = useTheme();
     const styles = getStyles(theme);
     const router = useRouter();
 

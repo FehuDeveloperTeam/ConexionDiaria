@@ -717,7 +717,20 @@ const Home: React.FC = () => {
                         colors={theme.heroGradient}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
-                        style={[styles.heroCard, { borderWidth: theme.heroBorder === 'transparent' ? 0 : 1, borderColor: theme.heroBorder }]}
+                        style={[
+                            styles.heroCard,
+                            // Sprint 7.8b: el estilo de borde de la pareja (probador de
+                            // tema) se ve acá — el gradiente en sí no cambia, es la
+                            // pieza de mayor jerarquía de la pantalla.
+                            borderStyle.key !== 'default'
+                                ? {
+                                    borderWidth: borderStyle.borderWidth,
+                                    borderColor: borderStyle.borderColor,
+                                    borderRadius: borderStyle.borderRadius,
+                                    borderStyle: borderStyle.dashed ? 'dashed' : 'solid',
+                                }
+                                : { borderWidth: theme.heroBorder === 'transparent' ? 0 : 1, borderColor: theme.heroBorder },
+                        ]}
                     >
                         <TouchableOpacity
                             onPress={relationshipDuration ? showDatePicker : undefined}

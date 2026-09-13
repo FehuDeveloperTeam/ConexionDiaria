@@ -12,42 +12,67 @@ import { usePlan } from './planContext'; // Usamos el hook que ya creamos
 // es una preferencia de aparato, no de la relación).
 const DARK_MODE_OVERRIDE_KEY = 'colorSchemeOverride';
 
-// Define la estructura de los settings guardados en Firestore
-// (Asumimos que los guardas en 'relationshipData.settings')
+// Define la estructura de los settings guardados en Firestore, en
+// 'relationships/{id}.settings' — es de la pareja, no de un usuario
+// individual (ver probador de tema, sesión 7.8b).
 interface PremiumSettings {
     backgroundColor?: string;
-    fontFamily?: string;
+    fontFamily?: 'Newsreader_400Regular' | 'Manrope_500Medium' | 'monospace';
     fontColor?: string;
-    borderColor?: string;
-    borderStyle?: string; // (Ej. 'heartBorder1')
+    borderStyle?: string; // key de PREMIUM_BORDER_OPTIONS (ej. 'heartBorder1')
 }
+
+export interface PremiumBorderOption {
+    key: string;
+    name: string;
+    background: string;
+    borderColor: string;
+    borderWidth: number;
+    borderRadius: number;
+    dashed?: boolean;
+    textColor: string;
+    icon?: 'heart' | 'none';
+    iconColor?: string;
+    shadow?: boolean;
+}
+
+// --- Los 10 estilos de borde premium (ver README del bundle de diseño,
+// sección "13. Probador de tema") — cada uno agrupa fondo/borde/radio/
+// texto por defecto; los swatches de FONDO y TEXTO del probador permiten
+// pisar el fondo/texto de estos valores sin cambiar la forma del borde.
+export const PREMIUM_BORDER_OPTIONS: PremiumBorderOption[] = [
+    { key: 'heartBorder1', name: 'Corazón rosado', background: '#FFF4F7', borderColor: '#F5A6C0', borderWidth: 2, borderRadius: 18, textColor: '#7A2E48', icon: 'heart', iconColor: '#E0628D' },
+    { key: 'heartBorder2', name: 'Corazón fucsia punteado', background: '#FFF0FA', borderColor: '#E85BC0', borderWidth: 2, borderRadius: 16, dashed: true, textColor: '#7A1660', icon: 'heart', iconColor: '#D22FA0' },
+    { key: 'heartBorder3', name: 'Circular', background: '#FFFFFF', borderColor: '#D3D3D3', borderWidth: 2, borderRadius: 999, textColor: '#3A3A44' },
+    { key: 'heartBorder4', name: 'Sombra rosa', background: '#FFFFFF', borderColor: '#F3D7E0', borderWidth: 1, borderRadius: 18, textColor: '#3A3A44', shadow: true },
+    { key: 'heartBorder5', name: 'Lavanda pastel', background: '#F3EFFF', borderColor: '#C9B8F0', borderWidth: 2, borderRadius: 18, textColor: '#453076' },
+    { key: 'heartBorder6', name: 'Azul pastel', background: '#ECF3FF', borderColor: '#A8C6F0', borderWidth: 2, borderRadius: 18, textColor: '#22467A' },
+    { key: 'heartBorder7', name: 'Menta pastel', background: '#EAF7F0', borderColor: '#A0D8BC', borderWidth: 2, borderRadius: 18, textColor: '#1E5138' },
+    { key: 'heartBorder8', name: 'Limón pastel', background: '#FBF8E0', borderColor: '#DDD180', borderWidth: 2, borderRadius: 18, textColor: '#5C5210' },
+    { key: 'heartBorder9', name: 'Durazno pastel', background: '#FFF1E6', borderColor: '#F0BE96', borderWidth: 2, borderRadius: 18, textColor: '#7A4315' },
+    { key: 'heartBorder10', name: 'Coral pastel', background: '#FFEFEC', borderColor: '#F5A99A', borderWidth: 2, borderRadius: 18, textColor: '#7C2E1D' },
+];
+
+const DEFAULT_BORDER_OPTION = (baseBorderColor: string): PremiumBorderOption => ({
+    key: 'default',
+    name: 'Predeterminado',
+    background: 'transparent',
+    borderColor: baseBorderColor,
+    borderWidth: 1,
+    borderRadius: 10,
+    textColor: '',
+});
 
 // Define lo que proveerá nuestro hook 'useTheme'
 interface ThemeContextType {
-    theme: ThemeColors; // Los colores finales
-    fontFamily: string | undefined; // La fuente final
-    borderStyle: any; // El estilo de borde final
+    theme: ThemeColors; // Los colores finales (fondo/texto de página con la personalización aplicada)
+    fontFamily: string | undefined; // Tipografía de cuerpo elegida (premium), o undefined = la del sistema
+    borderStyle: PremiumBorderOption; // El estilo de tarjeta elegido (premium), o el neutro por defecto
     isDarkMode: boolean; // Modo oscuro efectivo (override manual o del sistema)
     setDarkMode: (value: boolean) => void; // Forzar el modo desde Ajustes
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
-
-// --- Los 10 Diseños de Borde (Premium) ---
-// (Definidos aquí para que el Context los pueda proveer)
-const PREMIUM_BORDERS = {
-    heartBorder1: { borderWidth: 2, borderColor: '#FFB6C1', borderRadius: 20 },
-    heartBorder2: { borderWidth: 3, borderColor: '#FF69B4', borderRadius: 15, borderStyle: 'dotted' },
-    heartBorder3: { borderWidth: 1, borderColor: '#FFC0CB', borderRadius: 50 }, // Círculo
-    heartBorder4: { borderWidth: 2, borderColor: '#DB7093', borderRadius: 10, shadowColor: '#DB7093', shadowOpacity: 0.5, shadowRadius: 5, elevation: 5 }, // Sombra
-    heartBorder5: { borderWidth: 2, borderColor: '#E6E6FA', borderRadius: 15 }, // Pastel Lavanda
-    heartBorder6: { borderWidth: 2, borderColor: '#B0E0E6', borderRadius: 15 }, // Pastel Azul
-    heartBorder7: { borderWidth: 2, borderColor: '#98FB98', borderRadius: 15 }, // Pastel Menta
-    heartBorder8: { borderWidth: 2, borderColor: '#FFFACD', borderRadius: 15 }, // Pastel Limón
-    heartBorder9: { borderWidth: 2, borderColor: '#FFDAB9', borderRadius: 15 }, // Pastel Durazno
-    heartBorder10: { borderWidth: 2, borderColor: '#F08080', borderRadius: 15 }, // Pastel Coral
-    default: (baseBorderColor: string) => ({ borderWidth: 1, borderColor: baseBorderColor, borderRadius: 10 }),
-};
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     const systemColorScheme = useColorScheme() || 'light';
@@ -69,41 +94,35 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     const colorScheme = darkModeOverride ?? systemColorScheme;
 
     // 1. Obtenemos los settings premium guardados en Firestore
-    const settings: PremiumSettings = relationshipData?.settings || {};
-
-    // 2. Determinamos los estilos finales basados en el plan
-    const theme = useMemo(() => {
-        const baseTheme = themes[colorScheme];
-        if (plan === 'premium') {
-            return {
-                ...baseTheme,
-                background: settings.backgroundColor || baseTheme.background,
-                text: settings.fontColor || baseTheme.text,
-            };
-        }
-        return baseTheme; // Plan gratuito usa el tema estándar
-    }, [plan, settings, colorScheme]);
-
-    const fontFamily = useMemo(() => {
-        if (plan === 'premium' && settings.fontFamily) {
-            return settings.fontFamily; // (Ej. 'Roboto', 'Lato', etc.)
-        }
-        return undefined; // Fuente por defecto
-    }, [plan, settings]);
+    const settings: PremiumSettings = useMemo(() => relationshipData?.settings || {}, [relationshipData]);
 
     const borderStyle = useMemo(() => {
         const baseTheme = themes[colorScheme];
-        const borderKey = settings.borderStyle as Exclude<keyof typeof PREMIUM_BORDERS, 'default'> | undefined;
-        if (plan === 'premium' && borderKey && PREMIUM_BORDERS[borderKey]) {
-            return PREMIUM_BORDERS[borderKey];
-        }
-        // Color de borde personalizado (si no hay estilo 'heart')
-        if (plan === 'premium' && settings.borderColor) {
-            return { borderWidth: 2, borderColor: settings.borderColor, borderRadius: 10 };
-        }
-        // Borde por defecto
-        return PREMIUM_BORDERS.default(baseTheme.borderColor);
+        if (plan !== 'premium') return DEFAULT_BORDER_OPTION(baseTheme.border);
+        const option = settings.borderStyle ? PREMIUM_BORDER_OPTIONS.find(o => o.key === settings.borderStyle) : undefined;
+        return option || DEFAULT_BORDER_OPTION(baseTheme.border);
     }, [plan, settings, colorScheme]);
+
+    // 2. Determinamos los estilos finales basados en el plan. El fondo/texto
+    // de página ('bg'/'background', el token viejo y el nuevo — hay
+    // pantallas que todavía leen uno u otro) heredan primero el swatch
+    // explícito de la pareja y, si no hay, el del estilo de borde elegido.
+    const theme = useMemo(() => {
+        const baseTheme = themes[colorScheme];
+        if (plan !== 'premium') return baseTheme;
+
+        const bg = settings.backgroundColor || (borderStyle.key !== 'default' ? borderStyle.background : undefined) || baseTheme.bg;
+        const text = settings.fontColor || (borderStyle.key !== 'default' ? borderStyle.textColor : undefined) || baseTheme.text;
+
+        return { ...baseTheme, bg, background: bg, text };
+    }, [plan, settings, colorScheme, borderStyle]);
+
+    const fontFamily = useMemo(() => {
+        if (plan === 'premium' && settings.fontFamily) {
+            return settings.fontFamily;
+        }
+        return undefined;
+    }, [plan, settings]);
 
     return (
         <ThemeContext.Provider value={{ theme, fontFamily, borderStyle, isDarkMode: colorScheme === 'dark', setDarkMode }}>
