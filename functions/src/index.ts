@@ -41,6 +41,10 @@ export { onNewChatMessage, onNewMissYouPing } from './pushNotifications';
 // functions/src/pairing.ts.
 export { pairWithCode } from './pairing';
 
+// Contabilidad de almacenamiento del plan gratuito (F-04, F-05) — ver
+// functions/src/storageAccounting.ts.
+export { onStorageObjectFinalized, onStorageObjectDeleted } from './storageAccounting';
+
 const REVENUECAT_WEBHOOK_SECRET = defineSecret('REVENUECAT_WEBHOOK_SECRET');
 
 // Debe coincidir con el identificador de Entitlement en el dashboard de

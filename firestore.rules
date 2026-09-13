@@ -90,6 +90,17 @@ service cloud.firestore {
       return request.resource.data.plan == 'free' && request.resource.data.premiumSince == null;
     }
 
+    // ¿La escritura toca 'usedStorage' del documento de relación? Ese campo
+    // es de solo lectura para cualquier cliente — lo escribe exclusivamente
+    // la Cloud Function de contabilidad de Storage, a partir de los propios
+    // eventos de subida/borrado (F-04, F-05, ver
+    // functions/src/storageAccounting.ts). Antes, el cliente lo incrementaba
+    // él mismo tras cada subida, así que también podía ponerlo en 0 para
+    // saltarse el tope del plan gratuito.
+    function touchesUsedStorage() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['usedStorage']);
+    }
+
     // --- REGLAS PARA LA COLECCIÓN 'users' ---
     match /users/{userId} {
 
@@ -147,8 +158,17 @@ service cloud.firestore {
     // (Contiene todos los datos compartidos)
     match /relationships/{relationshipId} {
 
-      // SOLO los 2 usuarios de la relación pueden leer o escribir el documento principal
-      allow read, write: if isInRelationship(relationshipId);
+      // SOLO los 2 usuarios de la relación pueden leer el documento principal.
+      allow read: if isInRelationship(relationshipId);
+
+      // Crear y actualizar: de los dos miembros, pero 'usedStorage' queda
+      // fuera de su alcance en ambos casos (ver touchesUsedStorage() arriba).
+      allow create: if isInRelationship(relationshipId)
+        && !('usedStorage' in request.resource.data);
+      allow update: if isInRelationship(relationshipId) && !touchesUsedStorage();
+
+      // Nada en la app borra este documento.
+      allow delete: if false;
 
       // --- SUB-COLECCIÓN: Chat ('messages') ---
       match /messages/{messageId} {

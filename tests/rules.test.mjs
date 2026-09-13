@@ -69,6 +69,10 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(db, 'users', EVE), { partnerId: null });
     await setDoc(doc(db, 'users', SOLO), { partnerId: null });
 
+    // Documento de relación con 'usedStorage' ya calculado, como lo dejaría
+    // la Cloud Function de contabilidad de Storage (F-04, F-05).
+    await setDoc(doc(db, 'relationships', REL), { usedStorage: 1000 });
+
     const st = ctx.storage();
     await uploadBytes(ref(st, `relationships/${REL}/images/foto.jpg`), new Uint8Array([1, 2, 3]));
     await uploadBytes(ref(st, `relationships/${REL}/audios/nota.m4a`), new Uint8Array([1, 2, 3]));
@@ -105,6 +109,25 @@ await check(
 await check(
     'LEGÍTIMO: Alice sí puede liberar a Bob, que hoy la tiene como pareja',
     assertSucceeds(updateDoc(doc(alice.firestore(), 'users', BOB), { partnerId: null }))
+);
+
+console.log('\nContabilidad de almacenamiento (Firestore) — F-04, F-05');
+
+await check(
+    'ATAQUE: Alice NO puede bajar usedStorage a 0 para saltarse el tope',
+    assertFails(updateDoc(doc(alice.firestore(), 'relationships', REL), { usedStorage: 0 }))
+);
+await check(
+    'ATAQUE: Alice NO puede subir usedStorage a mano tampoco',
+    assertFails(updateDoc(doc(alice.firestore(), 'relationships', REL), { usedStorage: 999999 }))
+);
+await check(
+    'ATAQUE: Eve NO puede crear el documento de su relación con usedStorage ya puesto',
+    assertFails(setDoc(doc(eve.firestore(), 'relationships', [EVE, SOLO].sort().join('_')), { usedStorage: 0 }))
+);
+await check(
+    'LEGÍTIMO: Alice sí puede seguir escribiendo el resto del documento de relación',
+    assertSucceeds(updateDoc(doc(alice.firestore(), 'relationships', REL), { lastResetDate: '2024-01-01' }))
 );
 
 console.log('\nCódigos de invitación (Firestore)');

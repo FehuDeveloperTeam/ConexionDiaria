@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { User as FirebaseUser } from 'firebase/auth';
-import { addDoc, collection, doc, updateDoc, Timestamp, DocumentData, increment } from 'firebase/firestore';
+import { addDoc, collection, Timestamp, DocumentData } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -122,15 +122,11 @@ export function useChatUploads({
                         sentAt: Timestamp.now(),
                     });
 
-                    // Actualizar almacenamiento usado: incremento atómico en el
-                    // servidor, no lectura-modificación-escritura con el valor
-                    // que este hook tenía en el momento de renderizar (podía
-                    // perder incrementos si dos subidas terminaban a la vez).
-                    const relationshipRef = doc(db, 'relationships', relationshipId);
-                    await updateDoc(relationshipRef, {
-                        usedStorage: increment(fileSize)
-                    });
-
+                    // 'usedStorage' ya no se toca desde acá: lo cuenta la Cloud
+                    // Function de contabilidad de Storage a partir del propio
+                    // evento de subida (F-04, F-05, ver
+                    // functions/src/storageAccounting.ts) — las reglas ya no
+                    // dejan escribirlo desde el cliente.
                     setIsUploading(false);
                     setUploadProgress(0);
 
@@ -212,15 +208,11 @@ export function useChatUploads({
                         sentAt: Timestamp.now(),
                     });
 
-                    // Actualizar almacenamiento usado: incremento atómico en el
-                    // servidor, no lectura-modificación-escritura con el valor
-                    // que este hook tenía en el momento de renderizar (podía
-                    // perder incrementos si dos subidas terminaban a la vez).
-                    const relationshipRef = doc(db, 'relationships', relationshipId);
-                    await updateDoc(relationshipRef, {
-                        usedStorage: increment(fileSize)
-                    });
-
+                    // 'usedStorage' ya no se toca desde acá: lo cuenta la Cloud
+                    // Function de contabilidad de Storage a partir del propio
+                    // evento de subida (F-04, F-05, ver
+                    // functions/src/storageAccounting.ts) — las reglas ya no
+                    // dejan escribirlo desde el cliente.
                     setIsUploading(false);
                     setUploadProgress(0);
 
@@ -297,15 +289,11 @@ export function useChatUploads({
                         sentAt: Timestamp.now(),
                     });
 
-                    // Actualizar almacenamiento usado: incremento atómico en el
-                    // servidor, no lectura-modificación-escritura con el valor
-                    // que este hook tenía en el momento de renderizar (podía
-                    // perder incrementos si dos subidas terminaban a la vez).
-                    const relationshipRef = doc(db, 'relationships', relationshipId);
-                    await updateDoc(relationshipRef, {
-                        usedStorage: increment(fileSize)
-                    });
-
+                    // 'usedStorage' ya no se toca desde acá: lo cuenta la Cloud
+                    // Function de contabilidad de Storage a partir del propio
+                    // evento de subida (F-04, F-05, ver
+                    // functions/src/storageAccounting.ts) — las reglas ya no
+                    // dejan escribirlo desde el cliente.
                     setIsUploading(false);
                     setUploadProgress(0);
 
