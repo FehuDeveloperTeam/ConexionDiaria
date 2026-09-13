@@ -111,6 +111,20 @@ export const themes = {
 
 export type ThemeColors = typeof lightColors;
 
+// --- Paleta de nota adhesiva (Notas, sesión 7.5) ---
+// Cada nota rota entre estos 4 colores (por índice). En claro hay contraste
+// propio de texto/autor por color de papel; en oscuro el handoff solo define
+// fondo + borde y deja el texto en los tokens generales (theme.text /
+// theme.textFaint), así que 'dark' no lleva 'text'/'author' propios.
+export const noteColors = [
+  { light: { bg: '#FFF3C4', text: '#3A2F05', author: '#7A6A22' }, dark: { bg: '#3A3322', border: '#55492C' } },
+  { light: { bg: '#FFE0E9', text: '#3E1622', author: '#8A4159' }, dark: { bg: '#3A2029', border: '#57303B' } },
+  { light: { bg: '#DDEFE4', text: '#16301F', author: '#3E6B50' }, dark: { bg: '#1E3328', border: '#2F4C3B' } },
+  { light: { bg: '#E3E7FB', text: '#1B1F3E', author: '#4A5080' }, dark: { bg: '#22243D', border: '#353859' } },
+];
+// Rotación alterna de inclinación por índice (handoff: -1.1/.9/-.6/1.3deg).
+export const noteRotations = ['-1.1deg', '0.9deg', '-0.6deg', '1.3deg'];
+
 // --- Tipografía ---
 //
 // Tres familias, cada una con un rol fijo (ver README del bundle de

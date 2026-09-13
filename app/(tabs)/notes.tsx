@@ -1,62 +1,42 @@
+// Sprint 7.5 — re-skin de Notas según el sistema de diseño: notas adhesivas
+// rotadas con paleta propia, menú contextual flotante y modal de edición
+// compartiendo el lenguaje visual del resto de la app.
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, useColorScheme,
-    TextInput, Button, FlatList,
-    KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Alert, TouchableOpacity
+    View, Text, TextInput, FlatList,
+    KeyboardAvoidingView, Platform, Modal, TouchableOpacity, useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../../src/config/firebaseConfig'; // Verifica tu ruta
-import { themes } from '../../src/config/theme'; // Verifica tu ruta
+import { Ionicons } from '@expo/vector-icons';
+import { db } from '../../src/config/firebaseConfig';
+import { fontFamilies, noteColors, noteRotations, radii, shadows, spacing } from '../../src/config/theme';
 import { collection, addDoc, onSnapshot, query, orderBy, doc, limit, DocumentData, serverTimestamp, deleteDoc, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 import { usePlan } from '../../src/contexts/planContext';
+import { useTheme } from '../../src/contexts/themeContext';
+import { Button } from '../../src/components/Button';
+import { EmptyState } from '../../src/components/EmptyState';
+import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
+import { FullScreenLoader } from '../../src/components/FullScreenLoader';
+import { useRouter } from 'expo-router';
 
-// --- Estilos ---
-const getStyles = (theme: typeof themes.light) => StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: theme.background },
-    container: { flex: 1, padding: 15 },
-    title: { fontSize: 28, fontWeight: 'bold', color: theme.text, textAlign: 'center', marginBottom: 20 },
-    inputContainer: { padding: 10, backgroundColor: theme.inputBackground, borderRadius: 12, marginBottom: 20, borderColor: theme.borderColor, borderWidth: 1 },
-    input: { color: theme.text, fontSize: 16, minHeight: 60, maxHeight: 120, textAlignVertical: 'top' },
-    notesList: { flex: 1 },
-    noteItemTouchable: { // Contenedor clickeable
-        marginBottom: 15,
-    },
-    noteItem: { backgroundColor: '#FFFACD', borderRadius: 8, padding: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 2 },
-    noteText: { fontSize: 16, color: '#333' },
-    noteFooter: { marginTop: 10, alignItems: 'flex-end' },
-    noteAuthor: { fontSize: 12, fontStyle: 'italic', color: '#555' },
-    placeholderText: { fontSize: 16, color: theme.placeholder, textAlign: 'center', marginTop: 50 },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background },
-    modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.5)' },
-    modalContainer: { width: '90%', backgroundColor: theme.background, borderRadius: 20, padding: 20, alignItems: 'center' },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 20 },
-    modalInput: { height: 100, width: '100%', borderColor: theme.borderColor, borderWidth: 1, borderRadius: 8, padding: 10, color: theme.text, backgroundColor: theme.inputBackground, marginBottom: 20, textAlignVertical: 'top' },
-    modalButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '100%' },
-});
-
-// Interface para la nota en edición
 interface EditingNote { id: string; text: string; }
 
 const NotesScreen: React.FC = () => {
-    // --- Hooks ---
-    const colorScheme = useColorScheme() || 'light';
-    const theme = themes[colorScheme];
-    const styles = getStyles(theme);
+    const { theme } = useTheme();
+    const isDark = useColorScheme() === 'dark';
+    const router = useRouter();
 
-    // --- Estados ---
-    // 'user' y 'userData' vienen del contexto, no de un listener propio.
     const { user, userData } = usePlan();
-    const [notes, setNotes] = useState<DocumentData[]>([]); // Lista de notas
-    const [newNote, setNewNote] = useState(''); // Texto de la nueva nota
-    const [loading, setLoading] = useState(true); // Estado general de carga
-    const [isEditModalVisible, setIsEditModalVisible] = useState(false); // Visibilidad del modal de edición
-    const [editingNote, setEditingNote] = useState<EditingNote | null>(null); // Nota actual en edición
-    const [editedText, setEditedText] = useState(''); // Texto editado en el modal
+    const [notes, setNotes] = useState<DocumentData[]>([]);
+    const [newNote, setNewNote] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+    const [editingNote, setEditingNote] = useState<EditingNote | null>(null);
+    const [editedText, setEditedText] = useState('');
+    const [contextMenuNote, setContextMenuNote] = useState<DocumentData | null>(null);
+    const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
 
-    // --- Efecto para cargar notas ---
-    // Depende del uid de la pareja (string plano), no de 'userData' completo,
-    // para no resuscribirse de más ante cambios ajenos (ánimo, isOnline, etc.).
     const partnerId = userData?.partnerId as string | undefined;
 
     useEffect(() => {
@@ -79,9 +59,6 @@ const NotesScreen: React.FC = () => {
         return () => unsubscribeNotes();
     }, [user, partnerId]);
 
-    // --- Funciones de Manejo ---
-
-    // Añadir una nueva nota
     const handleAddNote = useCallback(async () => {
         const noteText = newNote.trim();
         if (noteText === '' || !userData || !userData.partnerId || !user) return;
@@ -94,30 +71,23 @@ const NotesScreen: React.FC = () => {
         } catch { Toast.show({ type: 'error', text1: 'Error al guardar la nota' }); }
     }, [newNote, userData, user]);
 
-    // Eliminar una nota (confirmación incluida)
-    const handleDeleteNote = (noteId: string) => {
-        Alert.alert("Confirmar Eliminación", "¿Estás seguro?",
-            [ { text: "Cancelar", style: "cancel" }, {
-                text: "Eliminar", style: "destructive",
-                onPress: async () => {
-                    if (!userData || !userData.partnerId || !user) return;
-                    const chatId = [user.uid, userData.partnerId].sort().join('_');
-                    const noteDocRef = doc(db, 'relationships', chatId, 'notes', noteId);
-                    try { await deleteDoc(noteDocRef); Toast.show({ type: 'success', text1: 'Nota eliminada' }); }
-                    catch { Toast.show({ type: 'error', text1: 'Error al eliminar' }); }
-                }
-            }]
-        );
+    const confirmDeleteNote = async () => {
+        if (!deletingNoteId || !userData || !userData.partnerId || !user) return;
+        const chatId = [user.uid, userData.partnerId].sort().join('_');
+        const noteDocRef = doc(db, 'relationships', chatId, 'notes', deletingNoteId);
+        try {
+            await deleteDoc(noteDocRef);
+            Toast.show({ type: 'success', text1: 'Nota eliminada' });
+        } catch { Toast.show({ type: 'error', text1: 'Error al eliminar' }); }
+        setDeletingNoteId(null);
     };
 
-    // Abrir el modal de edición
     const openEditModal = (note: DocumentData) => {
         setEditingNote({ id: note.id, text: note.text });
         setEditedText(note.text);
         setIsEditModalVisible(true);
     };
 
-    // Guardar los cambios de la edición
     const handleUpdateNote = async () => {
         if (!editingNote || editedText.trim() === '' || !userData || !userData.partnerId || !user) return;
         const chatId = [user.uid, userData.partnerId].sort().join('_');
@@ -129,102 +99,229 @@ const NotesScreen: React.FC = () => {
         } catch { Toast.show({ type: 'error', text1: 'Error al actualizar' }); }
     };
 
-    // Función para manejar la pulsación larga en una nota
-    const handleNoteLongPress = (item: DocumentData) => {
-        // Verificar si el usuario actual (del estado) es el autor
-        if (user?.uid === item.authorId) {
-            Alert.alert( "Opciones de Nota", item.text.substring(0, 50) + (item.text.length > 50 ? '...' : ''),
-                [
-                    { text: "Editar", onPress: () => openEditModal(item) },
-                    { text: "Eliminar", onPress: () => handleDeleteNote(item.id), style: "destructive" },
-                    { text: "Cancelar", style: "cancel" },
-                ],
-                { cancelable: true }
-            );
-        }
-        // Si no es el autor, no hacer nada
-    };
-
     // --- Renderizado ---
     if (loading) {
-        return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={theme.primary} /></View>;
+        return <FullScreenLoader />;
     }
-    
-    // Vista "No conectado"
+
     if (userData && !userData.partnerId) {
-         return (
-             <SafeAreaView style={styles.safeArea}>
-                <View style={styles.container}>
-                     <Text style={styles.title}>Muro de Notas</Text>
-                     <Text style={styles.placeholderText}>Conéctate con tu pareja para empezar a dejar notas.</Text>
-                </View>
-             </SafeAreaView>
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+                <EmptyState
+                    icon="document-text-outline"
+                    title="Aún no hay a quién escribirle"
+                    message="Conéctate con tu pareja para empezar a dejar notas en su muro."
+                    onConnectPress={() => router.push('/(tabs)/home')}
+                />
+            </SafeAreaView>
         );
     }
 
-    // Fallback si algo falló y falta información crucial
-     if (!user || !userData) {
-         return <View style={styles.loadingContainer}><Text style={{color: theme.placeholder}}>Cargando...</Text></View>;
-     }
+    if (!user || !userData) {
+        return <FullScreenLoader />;
+    }
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-                <View style={styles.container}>
-                    <Text style={styles.title}>Muro de Notas</Text>
-                    {/* Input y Botón Añadir */}
-                    <View style={styles.inputContainer}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
+            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'baseline',
+                    justifyContent: 'space-between',
+                    paddingHorizontal: spacing.s22,
+                    paddingTop: spacing.s16,
+                    paddingBottom: spacing.s10,
+                }}>
+                    <Text style={{ fontFamily: fontFamilies.display, fontSize: 30, color: theme.text }}>Notas</Text>
+                    <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 12, color: theme.textMuted }}>
+                        {notes.length} notas
+                    </Text>
+                </View>
+
+                <FlatList
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ paddingTop: spacing.s4, paddingBottom: spacing.s22 }}
+                    data={notes}
+                    keyExtractor={item => item.id}
+                    extraData={user}
+                    renderItem={({ item, index }) => {
+                        const palette = noteColors[index % noteColors.length];
+                        const rotation = noteRotations[index % noteRotations.length];
+                        const bg = isDark ? palette.dark.bg : palette.light.bg;
+                        const textColor = isDark ? theme.text : palette.light.text;
+                        const authorColor = isDark ? theme.textFaint : palette.light.author;
+                        const depthProps = isDark
+                            ? { borderWidth: 1, borderColor: palette.dark.border }
+                            : shadows.stickyNote;
+
+                        return (
+                            <TouchableOpacity
+                                activeOpacity={0.9}
+                                onLongPress={() => setContextMenuNote(item)}
+                                delayLongPress={400}
+                                style={{
+                                    marginHorizontal: spacing.s22,
+                                    marginBottom: spacing.s14,
+                                    transform: [{ rotate: rotation }],
+                                }}
+                            >
+                                <View style={{ backgroundColor: bg, borderRadius: 14, padding: spacing.s16, ...depthProps }}>
+                                    <Text style={{ fontFamily: fontFamilies.body, fontSize: 15, lineHeight: 22.5, color: textColor }}>
+                                        {item.text}
+                                    </Text>
+                                    <Text style={{
+                                        fontFamily: fontFamilies.body,
+                                        fontStyle: 'italic',
+                                        fontSize: 11.5,
+                                        color: authorColor,
+                                        textAlign: 'right',
+                                        marginTop: spacing.s10,
+                                    }}>
+                                        — {item.authorName}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    }}
+                    showsVerticalScrollIndicator={false}
+                    ListEmptyComponent={
+                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 14, color: theme.textFaint, textAlign: 'center', marginTop: spacing.s26 * 2 }}>
+                            Aún no hay notas...
+                        </Text>
+                    }
+                />
+
+                {/* Input fijo abajo */}
+                <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'flex-end',
+                    gap: spacing.s10,
+                    paddingHorizontal: spacing.s22,
+                    paddingVertical: spacing.s12,
+                    borderTopWidth: 1,
+                    borderTopColor: theme.borderSoft,
+                    backgroundColor: theme.bg,
+                }}>
+                    <TextInput
+                        style={{
+                            flex: 1,
+                            minHeight: 44,
+                            maxHeight: 100,
+                            borderWidth: 1,
+                            borderColor: theme.borderSoft,
+                            borderRadius: radii.field,
+                            paddingHorizontal: spacing.s14,
+                            paddingVertical: spacing.s10,
+                            color: theme.text,
+                            fontFamily: fontFamilies.body,
+                            fontSize: 15,
+                            backgroundColor: theme.inputBackground,
+                        }}
+                        placeholder="Escribe una nota…"
+                        placeholderTextColor={theme.textFaint}
+                        value={newNote}
+                        onChangeText={setNewNote}
+                        multiline
+                        maxLength={200}
+                    />
+                    <TouchableOpacity
+                        onPress={handleAddNote}
+                        disabled={newNote.trim() === ''}
+                        style={{
+                            width: 42,
+                            height: 42,
+                            borderRadius: 14,
+                            backgroundColor: newNote.trim() === '' ? theme.borderSoft : theme.primary,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                    >
+                        <Ionicons name="add" size={24} color={theme.white} />
+                    </TouchableOpacity>
+                </View>
+            </KeyboardAvoidingView>
+
+            {/* Menú contextual flotante — Editar (ambos) / Eliminar (solo autor) */}
+            <Modal visible={!!contextMenuNote} transparent animationType="fade" onRequestClose={() => setContextMenuNote(null)}>
+                <TouchableOpacity
+                    style={{ flex: 1, backgroundColor: 'rgba(24,22,46,0.35)', justifyContent: 'center', alignItems: 'center' }}
+                    activeOpacity={1}
+                    onPress={() => setContextMenuNote(null)}
+                >
+                    <View style={{
+                        backgroundColor: theme.surface,
+                        borderRadius: 14,
+                        paddingVertical: spacing.s8,
+                        minWidth: 190,
+                        ...(isDark ? { borderWidth: 1, borderColor: theme.border } : shadows.contextMenu),
+                    }}>
+                        <TouchableOpacity
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, paddingVertical: spacing.s12, paddingHorizontal: spacing.s16 }}
+                            onPress={() => {
+                                if (contextMenuNote) openEditModal(contextMenuNote);
+                                setContextMenuNote(null);
+                            }}
+                        >
+                            <Ionicons name="create-outline" size={18} color={theme.text} />
+                            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.text }}>Editar</Text>
+                        </TouchableOpacity>
+                        {contextMenuNote?.authorId === user.uid && (
+                            <TouchableOpacity
+                                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, paddingVertical: spacing.s12, paddingHorizontal: spacing.s16 }}
+                                onPress={() => {
+                                    setDeletingNoteId(contextMenuNote?.id ?? null);
+                                    setContextMenuNote(null);
+                                }}
+                            >
+                                <Ionicons name="trash-outline" size={18} color={theme.danger} />
+                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.danger }}>Eliminar</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
+            {/* Modal de edición */}
+            <Modal visible={isEditModalVisible} transparent animationType="fade" onRequestClose={() => setIsEditModalVisible(false)}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(24,22,46,0.5)', justifyContent: 'center', alignItems: 'center', padding: spacing.s20 }}>
+                    <View style={{ backgroundColor: theme.surface, borderRadius: radii.cardLg, padding: spacing.s22, width: '100%', maxWidth: 380, gap: spacing.s14 }}>
+                        <Text style={{ fontFamily: fontFamilies.display, fontSize: 23, color: theme.text }}>Editar nota</Text>
                         <TextInput
-                            style={styles.input}
-                            placeholder="Escribe una nota para tu amor..."
-                            placeholderTextColor={theme.placeholder}
-                            value={newNote}
-                            onChangeText={setNewNote}
+                            style={{
+                                minHeight: 82,
+                                borderWidth: 1.5,
+                                borderColor: theme.primary,
+                                borderRadius: radii.field,
+                                padding: spacing.s12,
+                                color: theme.text,
+                                fontFamily: fontFamilies.body,
+                                fontSize: 15,
+                                textAlignVertical: 'top',
+                            }}
+                            value={editedText}
+                            onChangeText={setEditedText}
                             multiline
                             maxLength={200}
                         />
-                        <Button title="Dejar Nota" onPress={handleAddNote} color={theme.primary} disabled={newNote.trim() === ''} />
-                    </View>
-                    {/* Lista de Notas */}
-                    <FlatList
-                        style={styles.notesList}
-                        data={notes}
-                        keyExtractor={item => item.id}
-                        // Pasamos 'user' a extraData para asegurar re-renderizado si cambia
-                        extraData={user}
-                        renderItem={({ item }) => (
-                            <TouchableOpacity
-                                style={styles.noteItemTouchable}
-                                onLongPress={() => handleNoteLongPress(item)} // Llama a la función de pulsación larga
-                                delayLongPress={500}
-                            >
-                                <View style={styles.noteItem}>
-                                    {/* Ya no hay botones inline aquí */}
-                                    <Text style={styles.noteText}>{item.text}</Text>
-                                    <View style={styles.noteFooter}>
-                                        <Text style={styles.noteAuthor}>- {item.authorName}</Text>
-                                    </View>
-                                </View>
-                            </TouchableOpacity>
-                        )}
-                        showsVerticalScrollIndicator={false}
-                        ListEmptyComponent={<Text style={styles.placeholderText}>Aún no hay notas...</Text>}
-                    />
-                </View>
-            </KeyboardAvoidingView>
-            {/* --- Modal para Editar Nota --- */}
-            <Modal animationType="fade" transparent={true} visible={isEditModalVisible} onRequestClose={() => setIsEditModalVisible(false)}>
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContainer}>
-                        <Text style={styles.modalTitle}>Editar Nota</Text>
-                        <TextInput style={styles.modalInput} value={editedText} onChangeText={setEditedText} multiline maxLength={200} />
-                        <View style={styles.modalButtons}>
-                            <Button title="Cancelar" onPress={() => setIsEditModalVisible(false)} color="grey" />
-                            <Button title="Guardar Cambios" onPress={handleUpdateNote} color={theme.primary} />
+                        <View style={{ flexDirection: 'row', gap: spacing.s10 }}>
+                            <View style={{ flex: 1 }}>
+                                <Button title="Cancelar" variant="outline" onPress={() => setIsEditModalVisible(false)} />
+                            </View>
+                            <View style={{ flex: 1.3 }}>
+                                <Button title="Guardar" onPress={handleUpdateNote} disabled={editedText.trim() === ''} />
+                            </View>
                         </View>
                     </View>
                 </View>
             </Modal>
+
+            <ConfirmDestructiveModal
+                visible={!!deletingNoteId}
+                title="Eliminar nota"
+                message="Se borrará para los dos y no se puede deshacer."
+                onConfirm={confirmDeleteNote}
+                onCancel={() => setDeletingNoteId(null)}
+            />
         </SafeAreaView>
     );
 };

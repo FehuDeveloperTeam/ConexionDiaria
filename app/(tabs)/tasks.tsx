@@ -1,116 +1,46 @@
+// Sprint 7.5 — re-skin de Tareas según el sistema de diseño: secciones
+// Pendientes/Completadas, casilla propia y modal de edición compartiendo
+// el lenguaje visual del resto de la app.
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, useColorScheme,
-    TextInput, Button, FlatList,
-    KeyboardAvoidingView, Platform, ActivityIndicator, TouchableOpacity,
-    Modal, // 1. Añadimos Modal
-    Alert  // 2. Añadimos Alert
+    View, Text, TextInput, SectionList,
+    KeyboardAvoidingView, Platform, TouchableOpacity, Modal, useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../src/config/firebaseConfig';
-import { themes } from '../../src/config/theme';
+import { fontFamilies, radii, spacing } from '../../src/config/theme';
 import {
     collection, addDoc, onSnapshot, query, orderBy, doc, limit,
-    DocumentData, serverTimestamp, updateDoc, deleteDoc // 3. Añadimos deleteDoc
+    DocumentData, serverTimestamp, updateDoc, deleteDoc,
 } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlan } from '../../src/contexts/planContext';
+import { useTheme } from '../../src/contexts/themeContext';
+import { Button } from '../../src/components/Button';
+import { EmptyState } from '../../src/components/EmptyState';
+import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
+import { FullScreenLoader } from '../../src/components/FullScreenLoader';
+import { useRouter } from 'expo-router';
 
-// --- Estilos (Añadimos estilos para el modal y detalles de la tarea) ---
-const getStyles = (theme: typeof themes.light) => StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: theme.background },
-    container: { flex: 1, padding: 15 },
-    title: { fontSize: 28, fontWeight: 'bold', color: theme.text, textAlign: 'center', marginBottom: 20 },
-    inputContainer: { 
-        padding: 10, 
-        backgroundColor: theme.inputBackground, 
-        borderRadius: 12, 
-        marginBottom: 20, 
-        borderColor: theme.borderColor, 
-        borderWidth: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    input: { 
-        flex: 1, 
-        color: theme.text, 
-        fontSize: 16, 
-        paddingVertical: 10,
-    },
-    listContainer: { flex: 1 },
-    
-    // --- Estilos de Tarea Mejorados ---
-    taskItemTouchable: { // Contenedor para onLongPress
-        marginBottom: 10,
-    },
-    taskItem: {
-        backgroundColor: theme.inputBackground,
-        borderRadius: 8,
-        padding: 15,
-        borderColor: theme.borderColor,
-        borderWidth: 1,
-    },
-    taskMainRow: { // Fila para el checkbox y el texto
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    taskTextContainer: {
-        flex: 1, // Para que el texto ocupe el espacio
-        marginLeft: 15,
-    },
-    taskText: {
-        fontSize: 16,
-        color: theme.text,
-    },
-    taskTextCompleted: {
-        fontSize: 16,
-        color: theme.placeholder,
-        textDecorationLine: 'line-through',
-    },
-    taskMeta: { // Texto de metadatos (quién y cuándo)
-        fontSize: 12,
-        color: theme.placeholder,
-        fontStyle: 'italic',
-        marginTop: 8,
-        marginLeft: 39, // Alineado con el inicio del texto (24 + 15)
-    },
-    // --- Fin Estilos de Tarea Mejorados ---
-
-    placeholderText: { fontSize: 16, color: theme.placeholder, textAlign: 'center', marginTop: 50 },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background },
-    
-    // --- Estilos de Modal (Inspirados en notes.tsx) ---
-    modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.5)' },
-    modalContainer: { width: '90%', backgroundColor: theme.background, borderRadius: 20, padding: 20, alignItems: 'center' },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 20 },
-    modalInput: { height: 60, width: '100%', borderColor: theme.borderColor, borderWidth: 1, borderRadius: 8, padding: 10, color: theme.text, backgroundColor: theme.inputBackground, marginBottom: 20, textAlignVertical: 'top' },
-    modalButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '100%' },
-});
-
-// Interface para la tarea en edición
 interface EditingTask { id: string; text: string; authorId: string; }
 
 const TasksScreen: React.FC = () => {
-    const colorScheme = useColorScheme() || 'light';
-    const theme = themes[colorScheme];
-    const styles = getStyles(theme);
+    const { theme } = useTheme();
+    const isDark = useColorScheme() === 'dark';
+    const router = useRouter();
 
-    // 'user' y 'userData' vienen del contexto: nada de esto necesita su
-    // propio listener de auth ni de users/{uid} — ya existen en PlanContext.
     const { user, userData } = usePlan();
     const [tasks, setTasks] = useState<DocumentData[]>([]);
     const [newTask, setNewTask] = useState('');
     const [loading, setLoading] = useState(true);
 
-    // --- 4. Estados para el Modal de Edición ---
     const [isEditModalVisible, setIsEditModalVisible] = useState(false);
     const [editingTask, setEditingTask] = useState<EditingTask | null>(null);
     const [editedText, setEditedText] = useState('');
+    const [contextMenuTask, setContextMenuTask] = useState<DocumentData | null>(null);
+    const [deletingTask, setDeletingTask] = useState<DocumentData | null>(null);
 
-    // Listener de la colección de tareas. Depende del uid de la pareja (un
-    // string plano), no del objeto 'userData' completo, para no resuscribirse
-    // de más cuando cambian campos ajenos (ánimo, isOnline, etc.).
     const partnerId = userData?.partnerId as string | undefined;
 
     useEffect(() => {
@@ -133,14 +63,13 @@ const TasksScreen: React.FC = () => {
         return () => unsubscribeTasks();
     }, [user, partnerId]);
 
-    // 3. Función para añadir una nueva tarea (Añadimos más metadatos)
     const handleAddTask = useCallback(async () => {
         const taskText = newTask.trim();
         if (taskText === '' || !userData || !userData.partnerId || !user) return;
-        
+
         const chatId = [user.uid, userData.partnerId].sort().join('_');
         const tasksCollectionRef = collection(db, 'relationships', chatId, 'tasks');
-        
+
         try {
             await addDoc(tasksCollectionRef, {
                 text: taskText,
@@ -148,11 +77,11 @@ const TasksScreen: React.FC = () => {
                 authorId: user.uid,
                 authorName: userData.displayName,
                 createdAt: serverTimestamp(),
-                completedBy: null, // Quién la completó
+                completedBy: null,
                 completedByName: null,
-                completedAt: null, // Cuándo se completó
+                completedAt: null,
             });
-            setNewTask(''); 
+            setNewTask('');
             Toast.show({ type: 'success', text1: 'Tarea añadida' });
         } catch (error) {
             console.error("Error al añadir la tarea:", error);
@@ -160,28 +89,25 @@ const TasksScreen: React.FC = () => {
         }
     }, [newTask, userData, user]);
 
-    // 4. Función para marcar/desmarcar (¡Ahora guarda quién y cuándo!)
     const handleToggleTask = async (taskId: string, currentStatus: boolean) => {
         if (!userData || !userData.partnerId || !user) return;
         const chatId = [user.uid, userData.partnerId].sort().join('_');
         const taskDocRef = doc(db, 'relationships', chatId, 'tasks', taskId);
-        
+
         try {
             if (!currentStatus) {
-                // Marcando como COMPLETA
                 await updateDoc(taskDocRef, {
                     isCompleted: true,
                     completedBy: user.uid,
                     completedByName: userData.displayName,
-                    completedAt: serverTimestamp()
+                    completedAt: serverTimestamp(),
                 });
             } else {
-                // Marcando como INCOMPLETA
-                 await updateDoc(taskDocRef, {
+                await updateDoc(taskDocRef, {
                     isCompleted: false,
                     completedBy: null,
                     completedByName: null,
-                    completedAt: null
+                    completedAt: null,
                 });
             }
         } catch (error) {
@@ -190,22 +116,18 @@ const TasksScreen: React.FC = () => {
         }
     };
 
-    // --- 5. NUEVAS FUNCIONES DE EDICIÓN Y BORRADO ---
-
-    // Abrir el modal de edición
     const openEditModal = (task: DocumentData) => {
         setEditingTask({ id: task.id, text: task.text, authorId: task.authorId });
         setEditedText(task.text);
         setIsEditModalVisible(true);
     };
 
-    // Guardar la edición
     const handleUpdateTask = async () => {
         if (!editingTask || editedText.trim() === '' || !userData || !userData.partnerId || !user) return;
-        
+
         const chatId = [user.uid, userData.partnerId].sort().join('_');
         const taskDocRef = doc(db, 'relationships', chatId, 'tasks', editingTask.id);
-        
+
         try {
             await updateDoc(taskDocRef, { text: editedText.trim() });
             setIsEditModalVisible(false); setEditingTask(null);
@@ -213,145 +135,269 @@ const TasksScreen: React.FC = () => {
         } catch { Toast.show({ type: 'error', text1: 'Error al actualizar' }); }
     };
 
-    // Eliminar la tarea
-    const handleDeleteTask = async (taskId: string, authorId: string) => {
-        // Verificación de permisos
-        if (user?.uid !== authorId) {
-            Toast.show({ type: 'error', text1: 'Solo el autor puede eliminar la tarea' });
-            return;
-        }
-        
-        // Confirmación
-        Alert.alert("Confirmar Eliminación", "¿Seguro que quieres borrar esta tarea?",
-            [ { text: "Cancelar", style: "cancel" }, {
-                text: "Eliminar", style: "destructive",
-                onPress: async () => {
-                    if (!userData || !userData.partnerId || !user) return;
-                    const chatId = [user.uid, userData.partnerId].sort().join('_');
-                    const taskDocRef = doc(db, 'relationships', chatId, 'tasks', taskId);
-                    try { 
-                        await deleteDoc(taskDocRef); 
-                        Toast.show({ type: 'success', text1: 'Tarea eliminada' }); 
-                    }
-                    catch { Toast.show({ type: 'error', text1: 'Error al eliminar' }); }
-                }
-            }]
-        );
-    };
-
-    // Menú de pulsación larga (Long Press). Ambos pueden editar cualquier
-    // tarea de la relación; borrar sigue siendo solo del autor.
-    const handleTaskLongPress = (item: DocumentData) => {
-        const options: { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }[] = [
-            { text: "Editar", onPress: () => openEditModal(item) },
-        ];
-        if (user?.uid === item.authorId) {
-            options.push({ text: "Eliminar", onPress: () => handleDeleteTask(item.id, item.authorId), style: "destructive" });
-        }
-        options.push({ text: "Cancelar", style: "cancel" });
-
-        Alert.alert("Opciones de Tarea", item.text.substring(0, 50) + '...', options, { cancelable: true });
+    const confirmDeleteTask = async () => {
+        if (!deletingTask || !userData || !userData.partnerId || !user) return;
+        const chatId = [user.uid, userData.partnerId].sort().join('_');
+        const taskDocRef = doc(db, 'relationships', chatId, 'tasks', deletingTask.id);
+        try {
+            await deleteDoc(taskDocRef);
+            Toast.show({ type: 'success', text1: 'Tarea eliminada' });
+        } catch { Toast.show({ type: 'error', text1: 'Error al eliminar' }); }
+        setDeletingTask(null);
     };
 
     // --- Renderizado ---
     if (loading) {
-        return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={theme.primary} /></View>;
+        return <FullScreenLoader />;
     }
-    
+
     if (userData && !userData.partnerId) {
-         return (
-             <SafeAreaView style={styles.safeArea}>
-                <View style={styles.container}>
-                     <Text style={styles.title}>Lista de Tareas</Text>
-                     <Text style={styles.placeholderText}>Conéctate con tu pareja para crear tareas compartidas.</Text>
-                </View>
-             </SafeAreaView>
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+                <EmptyState
+                    icon="checkmark-circle-outline"
+                    title="Nada que hacer... todavía"
+                    message="Conéctate con tu pareja para crear tareas compartidas."
+                    onConnectPress={() => router.push('/(tabs)/home')}
+                />
+            </SafeAreaView>
         );
     }
 
-     if (!user || !userData) {
-         return <View style={styles.loadingContainer}><Text style={{color: theme.placeholder}}>Cargando...</Text></View>;
-     }
+    if (!user || !userData) {
+        return <FullScreenLoader />;
+    }
+
+    const pendingTasks = tasks.filter(t => !t.isCompleted);
+    const completedTasks = tasks.filter(t => t.isCompleted);
+    const todayStr = new Date().toDateString();
+    const completedTodayCount = completedTasks.filter(
+        t => t.completedAt?.toDate && t.completedAt.toDate().toDateString() === todayStr
+    ).length;
+
+    const sections = [
+        { title: 'PENDIENTES', data: pendingTasks },
+        { title: 'COMPLETADAS', data: completedTasks },
+    ].filter(s => s.data.length > 0);
+
+    const checkboxBorderColor = isDark ? '#4A4458' : '#C9C4EC';
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-                <View style={styles.container}>
-                    <Text style={styles.title}>Lista de Tareas</Text>
-                    
-                    <View style={styles.inputContainer}>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Nueva tarea (ej. Comprar pan)"
-                            placeholderTextColor={theme.placeholder}
-                            value={newTask}
-                            onChangeText={setNewTask}
-                            onSubmitEditing={handleAddTask} 
-                        />
-                        <Button title="Añadir" onPress={handleAddTask} color={theme.primary} disabled={newTask.trim() === ''} />
-                    </View>
-                    
-                    <FlatList
-                        style={styles.listContainer}
-                        data={tasks}
-                        keyExtractor={item => item.id}
-                        renderItem={({ item }) => {
-                            // Construir el texto de metadatos
-                            let metaText = `Añadida por: ${item.authorName}`;
-                            if (item.isCompleted && item.completedByName) {
-                                metaText += ` · Completada por: ${item.completedByName}`;
-                            }
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
+            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                <View style={{ paddingHorizontal: spacing.s22, paddingTop: spacing.s16, paddingBottom: spacing.s10 }}>
+                    <Text style={{ fontFamily: fontFamilies.display, fontSize: 30, color: theme.text }}>Tareas</Text>
+                    <Text style={{ fontFamily: fontFamilies.body, fontSize: 13, color: theme.textMuted, marginTop: spacing.s4 }}>
+                        {pendingTasks.length} pendientes · {completedTodayCount} hechas hoy
+                    </Text>
+                </View>
 
-                            return (
-                                <TouchableOpacity 
-                                    style={styles.taskItemTouchable}
-                                    // 6. Añadimos el menú de pulsación larga
-                                    onLongPress={() => handleTaskLongPress(item)} 
-                                    delayLongPress={500}
-                                    // 7. Y mantenemos el toggle en la pulsación simple
-                                    onPress={() => handleToggleTask(item.id, item.isCompleted)}
-                                >
-                                    <View style={styles.taskItem}>
-                                        <View style={styles.taskMainRow}>
-                                            <Ionicons 
-                                                name={item.isCompleted ? "checkbox" : "square-outline"} 
-                                                size={24} 
-                                                color={item.isCompleted ? theme.placeholder : theme.primary} 
-                                            />
-                                            <View style={styles.taskTextContainer}>
-                                                <Text style={item.isCompleted ? styles.taskTextCompleted : styles.taskText}>
-                                                    {item.text}
-                                                </Text>
-                                            </View>
+                <SectionList
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ paddingHorizontal: spacing.s22, paddingBottom: spacing.s22 }}
+                    sections={sections}
+                    keyExtractor={item => item.id}
+                    extraData={user}
+                    stickySectionHeadersEnabled={false}
+                    renderSectionHeader={({ section }) => (
+                        <Text style={{
+                            fontFamily: fontFamilies.bodyBold,
+                            fontSize: 11,
+                            letterSpacing: 0.9,
+                            textTransform: 'uppercase',
+                            color: theme.textFaint,
+                            marginTop: spacing.s16,
+                            marginBottom: spacing.s10,
+                        }}>
+                            {section.title}
+                        </Text>
+                    )}
+                    renderItem={({ item }) => {
+                        let metaText = `agregó ${item.authorName}`;
+                        if (item.isCompleted && item.completedByName) {
+                            metaText += ` · completó ${item.completedByName}`;
+                        }
+
+                        return (
+                            <TouchableOpacity
+                                onPress={() => handleToggleTask(item.id, item.isCompleted)}
+                                onLongPress={() => setContextMenuTask(item)}
+                                delayLongPress={400}
+                                activeOpacity={0.85}
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'flex-start',
+                                    gap: spacing.s12,
+                                    backgroundColor: item.isCompleted ? theme.surfaceAlt : theme.surface,
+                                    opacity: item.isCompleted ? 0.72 : 1,
+                                    borderRadius: 18,
+                                    padding: 15,
+                                    marginBottom: spacing.s12,
+                                }}
+                            >
+                                <View style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: -9, marginTop: -9, marginBottom: -9 }}>
+                                    {item.isCompleted ? (
+                                        <View style={{ width: 26, height: 26, borderRadius: 9, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
+                                            <Ionicons name="checkmark" size={17} color={theme.white} />
                                         </View>
-                                        {/* 8. Mostramos los metadatos */}
-                                        <Text style={styles.taskMeta}>
-                                            {metaText}
-                                        </Text>
-                                    </View>
-                                </TouchableOpacity>
-                            )
+                                    ) : (
+                                        <View style={{ width: 26, height: 26, borderRadius: 9, borderWidth: 2, borderColor: checkboxBorderColor }} />
+                                    )}
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        fontFamily: fontFamilies.bodySemiBold,
+                                        fontSize: 15,
+                                        color: item.isCompleted ? theme.textMuted : theme.text,
+                                        textDecorationLine: item.isCompleted ? 'line-through' : 'none',
+                                    }}>
+                                        {item.text}
+                                    </Text>
+                                    <Text style={{ fontFamily: fontFamilies.body, fontSize: 11.5, color: theme.textFaint, marginTop: spacing.s4 }}>
+                                        {metaText}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    }}
+                    showsVerticalScrollIndicator={false}
+                    ListEmptyComponent={
+                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 14, color: theme.textFaint, textAlign: 'center', marginTop: spacing.s26 * 2 }}>
+                            ¡Empiecen añadiendo una tarea!
+                        </Text>
+                    }
+                />
+
+                {/* Input fijo abajo */}
+                <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: spacing.s10,
+                    paddingHorizontal: spacing.s22,
+                    paddingVertical: spacing.s12,
+                    borderTopWidth: 1,
+                    borderTopColor: theme.borderSoft,
+                    backgroundColor: theme.bg,
+                }}>
+                    <TextInput
+                        style={{
+                            flex: 1,
+                            height: 44,
+                            borderWidth: 1,
+                            borderColor: theme.borderSoft,
+                            borderRadius: radii.field,
+                            paddingHorizontal: spacing.s14,
+                            color: theme.text,
+                            fontFamily: fontFamilies.body,
+                            fontSize: 15,
+                            backgroundColor: theme.inputBackground,
                         }}
-                        showsVerticalScrollIndicator={false}
-                        ListEmptyComponent={<Text style={styles.placeholderText}>¡Empiecen añadiendo una tarea!</Text>}
+                        placeholder="Nueva tarea (ej. Comprar pan)"
+                        placeholderTextColor={theme.textFaint}
+                        value={newTask}
+                        onChangeText={setNewTask}
+                        onSubmitEditing={handleAddTask}
                     />
+                    <TouchableOpacity
+                        onPress={handleAddTask}
+                        disabled={newTask.trim() === ''}
+                        style={{
+                            width: 42,
+                            height: 42,
+                            borderRadius: 14,
+                            backgroundColor: newTask.trim() === '' ? theme.borderSoft : theme.primary,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                    >
+                        <Ionicons name="add" size={24} color={theme.white} />
+                    </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
 
-            {/* --- 9. MODAL PARA EDITAR TAREA --- */}
-            <Modal animationType="fade" transparent={true} visible={isEditModalVisible} onRequestClose={() => setIsEditModalVisible(false)}>
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContainer}>
-                        <Text style={styles.modalTitle}>Editar Tarea</Text>
-                        <TextInput style={styles.modalInput} value={editedText} onChangeText={setEditedText} multiline maxLength={100} />
-                        <View style={styles.modalButtons}>
-                            <Button title="Cancelar" onPress={() => setIsEditModalVisible(false)} color="grey" />
-                            <Button title="Guardar Cambios" onPress={handleUpdateTask} color={theme.primary} />
+            {/* Menú contextual flotante — Editar (ambos) / Eliminar (solo autor) */}
+            <Modal visible={!!contextMenuTask} transparent animationType="fade" onRequestClose={() => setContextMenuTask(null)}>
+                <TouchableOpacity
+                    style={{ flex: 1, backgroundColor: 'rgba(24,22,46,0.35)', justifyContent: 'center', alignItems: 'center' }}
+                    activeOpacity={1}
+                    onPress={() => setContextMenuTask(null)}
+                >
+                    <View style={{
+                        backgroundColor: theme.surface,
+                        borderRadius: 14,
+                        paddingVertical: spacing.s8,
+                        minWidth: 190,
+                        ...(isDark ? { borderWidth: 1, borderColor: theme.border } : {
+                            shadowColor: '#1E1E3C', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.16, shadowRadius: 22, elevation: 10,
+                        }),
+                    }}>
+                        <TouchableOpacity
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, paddingVertical: spacing.s12, paddingHorizontal: spacing.s16 }}
+                            onPress={() => {
+                                if (contextMenuTask) openEditModal(contextMenuTask);
+                                setContextMenuTask(null);
+                            }}
+                        >
+                            <Ionicons name="create-outline" size={18} color={theme.text} />
+                            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.text }}>Editar</Text>
+                        </TouchableOpacity>
+                        {contextMenuTask?.authorId === user.uid && (
+                            <TouchableOpacity
+                                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, paddingVertical: spacing.s12, paddingHorizontal: spacing.s16 }}
+                                onPress={() => {
+                                    setDeletingTask(contextMenuTask);
+                                    setContextMenuTask(null);
+                                }}
+                            >
+                                <Ionicons name="trash-outline" size={18} color={theme.danger} />
+                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.danger }}>Eliminar</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
+            {/* Modal de edición */}
+            <Modal visible={isEditModalVisible} transparent animationType="fade" onRequestClose={() => setIsEditModalVisible(false)}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(24,22,46,0.5)', justifyContent: 'center', alignItems: 'center', padding: spacing.s20 }}>
+                    <View style={{ backgroundColor: theme.surface, borderRadius: radii.cardLg, padding: spacing.s22, width: '100%', maxWidth: 380, gap: spacing.s14 }}>
+                        <Text style={{ fontFamily: fontFamilies.display, fontSize: 23, color: theme.text }}>Editar tarea</Text>
+                        <TextInput
+                            style={{
+                                minHeight: 82,
+                                borderWidth: 1.5,
+                                borderColor: theme.primary,
+                                borderRadius: radii.field,
+                                padding: spacing.s12,
+                                color: theme.text,
+                                fontFamily: fontFamilies.body,
+                                fontSize: 15,
+                                textAlignVertical: 'top',
+                            }}
+                            value={editedText}
+                            onChangeText={setEditedText}
+                            multiline
+                            maxLength={100}
+                        />
+                        <View style={{ flexDirection: 'row', gap: spacing.s10 }}>
+                            <View style={{ flex: 1 }}>
+                                <Button title="Cancelar" variant="outline" onPress={() => setIsEditModalVisible(false)} />
+                            </View>
+                            <View style={{ flex: 1.3 }}>
+                                <Button title="Guardar" onPress={handleUpdateTask} disabled={editedText.trim() === ''} />
+                            </View>
                         </View>
                     </View>
                 </View>
             </Modal>
 
+            <ConfirmDestructiveModal
+                visible={!!deletingTask}
+                title="Eliminar tarea"
+                message="Se borrará para los dos y no se puede deshacer."
+                onConfirm={confirmDeleteTask}
+                onCancel={() => setDeletingTask(null)}
+            />
         </SafeAreaView>
     );
 };
