@@ -1,8 +1,29 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useColorScheme } from 'react-native';
-import { themes } from '../../src/config/theme'; // Asegúrate que la ruta sea correcta
+import { View, useColorScheme } from 'react-native';
+import { themes, fontFamilies } from '../../src/config/theme'; // Asegúrate que la ruta sea correcta
+
+// Sprint 7.1: ícono con el pill de fondo detrás cuando el tab está activo
+// (ver README del bundle de diseño, sección "Navegación"). Un solo
+// renderer parametrizado por nombre en vez de repetirlo en las 8 pestañas.
+const makeTabIcon = (name: keyof typeof Ionicons.glyphMap, pillColor: string) => {
+    function TabIcon({ focused, color }: { focused: boolean; color: string }) {
+        return (
+            <View
+                style={{
+                    paddingHorizontal: 13,
+                    paddingVertical: 4,
+                    borderRadius: 11,
+                    backgroundColor: focused ? pillColor : 'transparent',
+                }}
+            >
+                <Ionicons name={name} size={21} color={color} />
+            </View>
+        );
+    }
+    return TabIcon;
+};
 
 const TabLayout: React.FC = () => {
     const colorScheme = useColorScheme() || 'light';
@@ -12,10 +33,11 @@ const TabLayout: React.FC = () => {
         <Tabs
             screenOptions={{
                 tabBarActiveTintColor: theme.primary,
-                tabBarInactiveTintColor: theme.placeholder,
+                tabBarInactiveTintColor: theme.textFaint,
+                tabBarLabelStyle: { fontFamily: fontFamilies.action, fontSize: 8.5 },
                 tabBarStyle: {
-                    backgroundColor: theme.background,
-                    borderTopColor: theme.borderColor,
+                    backgroundColor: theme.surface,
+                    borderTopColor: theme.borderSoft,
                 },
                 headerStyle: {
                     backgroundColor: theme.background,
@@ -27,7 +49,7 @@ const TabLayout: React.FC = () => {
                 name="home"
                 options={{
                     title: 'Inicio',
-                    tabBarIcon: ({ color }) => <Ionicons name="home-outline" size={24} color={color} />,
+                    tabBarIcon: makeTabIcon('home-outline', theme.primarySoft),
                     headerShown: false,
                 }}
             />
@@ -35,7 +57,7 @@ const TabLayout: React.FC = () => {
                 name="chat"
                 options={{
                     title: 'Chat',
-                    tabBarIcon: ({ color }) => <Ionicons name="chatbubbles-outline" size={24} color={color} />,
+                    tabBarIcon: makeTabIcon('chatbubbles-outline', theme.primarySoft),
                     headerShown: false, // Para usar nuestro header personalizado
                 }}
             />
@@ -43,17 +65,17 @@ const TabLayout: React.FC = () => {
                 name="notes"
                 options={{
                     title: 'Notas',
-                    tabBarIcon: ({ color }) => <Ionicons name="document-text-outline" size={24} color={color} />,
+                    tabBarIcon: makeTabIcon('document-text-outline', theme.primarySoft),
                     headerShown: false,
                 }}
             />
-            
+
             {/* --- ¡NUEVA PESTAÑA DE TAREAS AÑADIDA AQUÍ! --- */}
             <Tabs.Screen
                 name="tasks"
                 options={{
                     title: 'Tareas',
-                    tabBarIcon: ({ color }) => <Ionicons name="checkmark-done-outline" size={24} color={color} />,
+                    tabBarIcon: makeTabIcon('checkmark-done-outline', theme.primarySoft),
                     headerShown: false,
                 }}
             />
@@ -62,7 +84,7 @@ const TabLayout: React.FC = () => {
                 name="wishlist"
                 options={{
                     title: 'Deseos',
-                    tabBarIcon: ({ color }) => <Ionicons name="star-outline" size={24} color={color} />,
+                    tabBarIcon: makeTabIcon('star-outline', theme.primarySoft),
                     headerShown: false,
                 }}
             />
@@ -71,7 +93,7 @@ const TabLayout: React.FC = () => {
                 name="album"
                 options={{
                     title: 'Álbum',
-                    tabBarIcon: ({ color }) => <Ionicons name="images-outline" size={24} color={color} />,
+                    tabBarIcon: makeTabIcon('images-outline', theme.primarySoft),
                     headerShown: false,
                 }}
             />
@@ -79,7 +101,7 @@ const TabLayout: React.FC = () => {
                 name="calendar"
                 options={{
                     title: 'Calendario',
-                    tabBarIcon: ({ color }) => <Ionicons name="calendar-outline" size={24} color={color} />,
+                    tabBarIcon: makeTabIcon('calendar-outline', theme.primarySoft),
                     headerShown: false,
                 }}
             />
@@ -87,14 +109,14 @@ const TabLayout: React.FC = () => {
                 name="config"
                 options={{
                     title: 'Ajustes',
-                    tabBarIcon: ({ color }) => <Ionicons name="settings-outline" size={24} color={color} />,
+                    tabBarIcon: makeTabIcon('settings-outline', theme.primarySoft),
                     headerShown: false,
                 }}
             />
-            
+
             {/* Ocultamos las pantallas que no son pestañas (como login, register, etc.) */}
             {/* Expo Router lo maneja automáticamente si no están en esta lista */}
-            
+
         </Tabs>
     );
 };

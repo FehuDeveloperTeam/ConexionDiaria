@@ -1,0 +1,113 @@
+// Paywall premium — Sprint 7.1 (componentes transversales).
+//
+// Patrón único y reutilizable (ver README del bundle de diseño, sección
+// "C. Paywall premium"): un solo componente para los cinco disparadores
+// (emojis premium, historial del extrañómetro, recordatorios, límite de
+// deseos, personalización de tema, límite de almacenamiento). Reemplaza a
+// UpgradeModal.tsx (src/screens/chat/components/), que se retira cuando el
+// chat se re-skinee (sesión 7.4b) — acá solo se construye la pieza.
+import React from 'react';
+import { Modal, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '../contexts/themeContext';
+import { fontFamilies, radii, spacing } from '../config/theme';
+
+export const PaywallSheet: React.FC<{
+    visible: boolean;
+    onClose: () => void;
+    onUpgradePress: () => void;
+    icon: keyof typeof Ionicons.glyphMap;
+    title: string;
+    description: string;
+    benefits: string[];
+    proofSlot?: React.ReactNode;
+    listPrice?: string;
+    offerPrice?: string;
+    offerBadge?: string;
+}> = ({
+    visible,
+    onClose,
+    onUpgradePress,
+    icon,
+    title,
+    description,
+    benefits,
+    proofSlot,
+    listPrice = 'US$9.99',
+    offerPrice = 'US$2.99',
+    offerBadge = '-70% HOY',
+}) => {
+    const { theme } = useTheme();
+
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+            <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(24,22,46,0.5)' }}>
+                <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
+                <View
+                    style={{
+                        backgroundColor: theme.surface,
+                        borderTopLeftRadius: radii.sheetTop,
+                        borderTopRightRadius: radii.sheetTop,
+                        borderBottomLeftRadius: radii.sheetBottom,
+                        borderBottomRightRadius: radii.sheetBottom,
+                        padding: spacing.s22,
+                        paddingBottom: spacing.s26 + spacing.s4,
+                        gap: spacing.s12,
+                    }}
+                >
+                    <View style={{ alignSelf: 'center', width: 44, height: 4, borderRadius: 2, backgroundColor: theme.borderSoft, marginBottom: spacing.s8 }} />
+
+                    <LinearGradient
+                        colors={theme.premiumGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={{ width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                        <Ionicons name={icon} size={22} color={theme.premiumTextOnFill} />
+                    </LinearGradient>
+
+                    <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 1.1, textTransform: 'uppercase', color: theme.premium }}>
+                        CONEXIÓN TOTAL
+                    </Text>
+                    <Text style={{ fontFamily: fontFamilies.display, fontSize: 23, lineHeight: 27, color: theme.text }}>{title}</Text>
+                    <Text style={{ fontFamily: fontFamilies.body, fontSize: 13.5, lineHeight: 21, color: theme.textMuted }}>
+                        {description} <Text style={{ fontFamily: fontFamilies.bodyBold, color: theme.text }}>Uno paga, ambos disfrutan.</Text>
+                    </Text>
+
+                    {proofSlot}
+
+                    <View style={{ gap: spacing.s8 }}>
+                        {benefits.map((benefit) => (
+                            <View key={benefit} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10 }}>
+                                <Ionicons name="checkmark-circle" size={17} color={theme.success} />
+                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 13.5, color: theme.text, flexShrink: 1 }}>{benefit}</Text>
+                            </View>
+                        ))}
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: spacing.s8, marginTop: spacing.s4 }}>
+                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 15, color: theme.textMuted, textDecorationLine: 'line-through' }}>
+                            {listPrice}
+                        </Text>
+                        <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 26, color: theme.text }}>{offerPrice}</Text>
+                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 13, color: theme.textMuted }}>/ mes</Text>
+                        <View style={{ backgroundColor: theme.warnBg, borderRadius: 6, paddingHorizontal: spacing.s8, paddingVertical: 3, marginLeft: spacing.s4 }}>
+                            <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 10, color: theme.warnText }}>{offerBadge}</Text>
+                        </View>
+                    </View>
+
+                    <TouchableOpacity
+                        onPress={onUpgradePress}
+                        style={{ backgroundColor: theme.primary, borderRadius: radii.field + 1, paddingVertical: spacing.s16 + 1, alignItems: 'center', marginTop: spacing.s8 }}
+                    >
+                        <Text style={{ fontFamily: fontFamilies.actionBold, fontSize: 16, color: theme.white }}>Actualizar a Conexión Total</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={onClose} style={{ alignItems: 'center', paddingVertical: spacing.s8 }}>
+                        <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: theme.textMuted }}>Ahora no</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
+};

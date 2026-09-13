@@ -17,6 +17,7 @@ import Toast from 'react-native-toast-message';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 // 1. Ya no necesitamos 'auth' ni 'onAuthStateChanged' aquí
 import { themes } from '../src/config/theme';
+import { toastConfig } from '../src/components/toastConfig';
 // 2. Importamos AMBOS providers y el hook 'usePlan'
 import { PlanProvider, usePlan } from '../src/contexts/planContext';
 import { ThemeProvider } from '../src/contexts/themeContext'; // Importamos el nuevo ThemeProvider
@@ -138,7 +139,7 @@ const RootLayout: React.FC = () => {
                     <AuthRedirect />
 
                     <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-                    <Toast />
+                    <Toast config={toastConfig} />
                 </SafeAreaProvider>
             </ThemeProvider>
         </PlanProvider>
