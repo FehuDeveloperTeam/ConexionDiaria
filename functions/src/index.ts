@@ -30,6 +30,7 @@ import { defineSecret } from 'firebase-functions/params';
 import * as logger from 'firebase-functions/logger';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { timingSafeEqual } from 'crypto';
 
 initializeApp();
 const db = getFirestore();
@@ -76,6 +77,22 @@ interface RevenueCatEvent {
   entitlement_ids?: string[];
 }
 
+// F-07: comparar el header contra el secreto con '!==' corta en el primer
+// byte distinto, lo que en teoría filtra información por tiempo de
+// respuesta. timingSafeEqual() compara siempre el mismo número de bytes —
+// pero exige que ambos buffers midan lo mismo, así que ese chequeo va
+// primero (con longitudes distintas, timingSafeEqual lanza en vez de
+// devolver false).
+function isAuthorizedWebhookRequest(receivedHeader: string | undefined, expectedSecret: string): boolean {
+  if (!receivedHeader) return false;
+
+  const received = Buffer.from(receivedHeader);
+  const expected = Buffer.from(expectedSecret);
+  if (received.length !== expected.length) return false;
+
+  return timingSafeEqual(received, expected);
+}
+
 export const revenuecatWebhook = onRequest(
   { secrets: [REVENUECAT_WEBHOOK_SECRET] },
   async (req, res) => {
@@ -84,8 +101,7 @@ export const revenuecatWebhook = onRequest(
       return;
     }
 
-    const authHeader = req.get('Authorization');
-    if (!authHeader || authHeader !== REVENUECAT_WEBHOOK_SECRET.value()) {
+    if (!isAuthorizedWebhookRequest(req.get('Authorization'), REVENUECAT_WEBHOOK_SECRET.value())) {
       logger.warn('revenuecatWebhook: Authorization ausente o inválido');
       res.status(401).send('Unauthorized');
       return;

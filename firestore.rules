@@ -127,6 +127,16 @@ service cloud.firestore {
 
       // Nadie puede borrar perfiles
       allow delete: if false;
+
+      // --- SUBCOLECCIÓN PRIVADA: users/{userId}/private/{doc} ---
+      // Datos que ni siquiera la pareja debe poder leer. Hoy solo el token
+      // de push (F-06, 'private/push'): antes vivía en el perfil, legible
+      // por la pareja, y la API de push de Expo acepta cualquier token
+      // válido sin autenticación — quien lo tuviera podía mandar
+      // notificaciones que parecían de la app.
+      match /private/{docId} {
+        allow read, write: if isUser(userId);
+      }
     }
 
     // --- REGLAS PARA LA COLECCIÓN 'invitationCodes' ---

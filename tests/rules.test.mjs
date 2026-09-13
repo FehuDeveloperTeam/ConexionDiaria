@@ -73,6 +73,9 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
     // la Cloud Function de contabilidad de Storage (F-04, F-05).
     await setDoc(doc(db, 'relationships', REL), { usedStorage: 1000 });
 
+    // Token de push de Alice en su subcolección privada (F-06).
+    await setDoc(doc(db, 'users', ALICE, 'private', 'push'), { expoPushToken: 'tok-alice' });
+
     const st = ctx.storage();
     await uploadBytes(ref(st, `relationships/${REL}/images/foto.jpg`), new Uint8Array([1, 2, 3]));
     await uploadBytes(ref(st, `relationships/${REL}/audios/nota.m4a`), new Uint8Array([1, 2, 3]));
@@ -81,6 +84,7 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
 });
 
 const alice = testEnv.authenticatedContext(ALICE);
+const bob = testEnv.authenticatedContext(BOB);
 const eve = testEnv.authenticatedContext(EVE);
 const solo = testEnv.authenticatedContext(SOLO);
 
@@ -128,6 +132,17 @@ await check(
 await check(
     'LEGÍTIMO: Alice sí puede seguir escribiendo el resto del documento de relación',
     assertSucceeds(updateDoc(doc(alice.firestore(), 'relationships', REL), { lastResetDate: '2024-01-01' }))
+);
+
+console.log('\nToken de push (Firestore) — F-06');
+
+await check(
+    'ATAQUE: Bob NO puede leer el token de push de Alice, aunque sea su pareja',
+    assertFails(getDoc(doc(bob.firestore(), 'users', ALICE, 'private', 'push')))
+);
+await check(
+    'LEGÍTIMO: Alice sí puede leer su propio token de push',
+    assertSucceeds(getDoc(doc(alice.firestore(), 'users', ALICE, 'private', 'push')))
 );
 
 console.log('\nCódigos de invitación (Firestore)');

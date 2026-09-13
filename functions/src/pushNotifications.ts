@@ -56,17 +56,26 @@ const partnerUidFromRelationshipId = (relationshipId: string, authorUid: string)
 /**
  * Busca el token de push de un usuario, respetando su preferencia para
  * este tipo de aviso (default: recibirlo, si nunca la configuró).
+ *
+ * F-06: el token vive en users/{uid}/private/push, no en el perfil — el
+ * Admin SDK lo lee igual, porque no pasa por las reglas de seguridad.
+ * Las preferencias (notificationPrefs) sí siguen en el perfil: que la
+ * pareja sepa si querés avisos no tiene ningún riesgo.
  */
 const getPushTargetIfAllowed = async (
   uid: string,
   prefKey: 'newMessages' | 'missYou'
 ): Promise<string | null> => {
-  const snap = await getFirestore().collection('users').doc(uid).get();
-  const data = snap.data();
-  const token = data?.expoPushToken as string | undefined;
+  const db = getFirestore();
+  const [userSnap, privateSnap] = await Promise.all([
+    db.collection('users').doc(uid).get(),
+    db.collection('users').doc(uid).collection('private').doc('push').get(),
+  ]);
+
+  const token = privateSnap.data()?.expoPushToken as string | undefined;
   if (!token) return null;
 
-  const allowed = data?.notificationPrefs?.[prefKey] !== false;
+  const allowed = userSnap.data()?.notificationPrefs?.[prefKey] !== false;
   if (!allowed) return null;
 
   return token;

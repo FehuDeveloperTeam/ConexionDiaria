@@ -286,13 +286,19 @@ const Home: React.FC = () => {
         }
     }, [user]);
 
-    // Registrar el token de push apenas hay pareja conectada, si todavía no
-    // hay uno guardado (primera conexión, reinstalación, u otro
-    // dispositivo). No pide permiso de nuevo si ya estaba concedido.
+    // Registrar el token de push apenas hay pareja conectada. No pide
+    // permiso de nuevo si ya estaba concedido.
+    //
+    // F-06: el token ya no vive en 'userData' (se movió a una subcolección
+    // privada, ver src/services/notifications.ts), así que este efecto no
+    // puede usarlo como guarda de "ya está registrado". En su lugar, una
+    // bandera en useRef evita registrar más de una vez por sesión.
+    const hasRegisteredPushRef = useRef(false);
     useEffect(() => {
-        if (!user || !userData?.partnerId || userData?.expoPushToken) return;
+        if (!user || !userData?.partnerId || hasRegisteredPushRef.current) return;
+        hasRegisteredPushRef.current = true;
         registerPushToken(user.uid);
-    }, [user, userData?.partnerId, userData?.expoPushToken]);
+    }, [user, userData?.partnerId]);
 
     // Función para resetear contadores
     const checkAndResetMissYouCounter = useCallback(async (relationshipId: string, currentData: DocumentData) => {

@@ -22,7 +22,7 @@
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../config/firebaseConfig';
 
 /**
@@ -88,10 +88,16 @@ export const cancelEventReminder = async (notificationId?: string | null): Promi
 
 /**
  * Pide permiso, obtiene el token de Expo Push de este dispositivo y lo
- * guarda en users/{uid}.expoPushToken para que la Cloud Function pueda
+ * guarda en users/{uid}/private/push para que la Cloud Function pueda
  * avisarle a la pareja. Sin permiso concedido, o sin un projectId de EAS
  * configurado (app.json -> extra.eas.projectId, vía 'eas init'), no hace
  * nada — no rompe la app, solo deja el push remoto sin activar.
+ *
+ * F-06: el token vive en una subcolección privada, no en el perfil — ni
+ * siquiera la pareja puede leerla (ver firestore.rules). Antes vivía en
+ * users/{uid}.expoPushToken, legible por la pareja, y la API de push de
+ * Expo acepta cualquier token válido sin autenticación: quien lo tuviera
+ * podía mandar notificaciones que parecían de la app.
  */
 export const registerPushToken = async (uid: string): Promise<void> => {
     const granted = await ensureNotificationPermissions();
@@ -105,7 +111,7 @@ export const registerPushToken = async (uid: string): Promise<void> => {
 
     try {
         const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
-        await updateDoc(doc(db, 'users', uid), { expoPushToken: token });
+        await setDoc(doc(db, 'users', uid, 'private', 'push'), { expoPushToken: token }, { merge: true });
     } catch (error) {
         console.error('Error registrando el token de push:', error);
     }
