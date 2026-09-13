@@ -18,6 +18,7 @@ import { Button } from '../../src/components/Button';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
+import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 import { useRouter } from 'expo-router';
 
 interface EditingNote { id: string; text: string; }
@@ -122,6 +123,7 @@ const NotesScreen: React.FC = () => {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
+            <DesktopContentWrap>
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                 <View style={{
                     flexDirection: 'row',
@@ -239,6 +241,7 @@ const NotesScreen: React.FC = () => {
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
+            </DesktopContentWrap>
 
             {/* Menú contextual flotante — Editar (ambos) / Eliminar (solo autor) */}
             <Modal visible={!!contextMenuNote} transparent animationType="fade" onRequestClose={() => setContextMenuNote(null)}>

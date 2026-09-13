@@ -21,6 +21,7 @@ import { Button } from '../../src/components/Button';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
+import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 import { useRouter } from 'expo-router';
 
 interface EditingTask { id: string; text: string; authorId: string; }
@@ -183,6 +184,7 @@ const TasksScreen: React.FC = () => {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
+            <DesktopContentWrap>
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                 <View style={{ paddingHorizontal: spacing.s22, paddingTop: spacing.s16, paddingBottom: spacing.s10 }}>
                     <Text style={{ fontFamily: fontFamilies.display, fontSize: 30, color: theme.text }}>Tareas</Text>
@@ -313,6 +315,7 @@ const TasksScreen: React.FC = () => {
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
+            </DesktopContentWrap>
 
             {/* Menú contextual flotante — Editar (ambos) / Eliminar (solo autor) */}
             <Modal visible={!!contextMenuTask} transparent animationType="fade" onRequestClose={() => setContextMenuTask(null)}>

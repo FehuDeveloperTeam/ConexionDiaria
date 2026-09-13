@@ -26,6 +26,7 @@ import { Button } from '../../src/components/Button';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
+import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 
 // Nombres de los 10 estilos de borde premium (ver ThemeContext), en el
 // mismo orden que el catálogo del handoff — se reutiliza para mostrar el
@@ -261,6 +262,7 @@ const ConfigScreen: React.FC = () => {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
+            <DesktopContentWrap>
             <ScrollView contentContainerStyle={{ padding: spacing.s22, paddingBottom: spacing.s26 }}>
                 <Text style={{ fontFamily: fontFamilies.display, fontSize: 30, color: theme.text, marginBottom: spacing.s20 }}>
                     Ajustes
@@ -441,6 +443,7 @@ const ConfigScreen: React.FC = () => {
 
                 <Button title="Cerrar sesión" variant="ghost" onPress={handleLogout} />
             </ScrollView>
+            </DesktopContentWrap>
 
             {/* Bottom sheet de notificaciones */}
             <Modal visible={isNotificationsSheetVisible} transparent animationType="slide" onRequestClose={() => setIsNotificationsSheetVisible(false)}>
