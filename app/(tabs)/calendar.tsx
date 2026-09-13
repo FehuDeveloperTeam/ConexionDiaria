@@ -4,7 +4,7 @@
 // en las listas, y modal de nuevo evento como bottom sheet.
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-    View, Text, useColorScheme, TextInput,
+    View, Text, TextInput,
     Modal, TouchableOpacity, ScrollView, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -70,8 +70,7 @@ const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', '
 const MESES_ABREV = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
 
 const CalendarScreen: React.FC = () => {
-    const { theme } = useTheme();
-    const isDark = useColorScheme() === 'dark';
+    const { theme, isDarkMode: isDark } = useTheme();
 
     const { user, userData, plan, isLoading: planLoading } = usePlan();
     const [loading, setLoading] = useState(true);

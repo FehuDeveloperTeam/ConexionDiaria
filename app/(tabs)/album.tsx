@@ -3,7 +3,7 @@
 // con navegación por miniaturas y acciones (descargar/compartir/borrar).
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-    View, Text, useColorScheme, ScrollView, Dimensions,
+    View, Text, ScrollView, Dimensions,
     ActivityIndicator, Image, TouchableOpacity, Alert,
     Modal,
 } from 'react-native';
@@ -56,8 +56,7 @@ const monthKeyOf = (date: Date) =>
     date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase();
 
 const AlbumScreen: React.FC = () => {
-    const { theme } = useTheme();
-    const isDark = useColorScheme() === 'dark';
+    const { theme, isDarkMode: isDark } = useTheme();
     const router = useRouter();
 
     const { user, userData } = usePlan();

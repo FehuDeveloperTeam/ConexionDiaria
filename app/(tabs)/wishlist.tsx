@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     View, Text, SectionList, ScrollView,
-    TouchableOpacity, Modal, TextInput, Linking, useColorScheme,
+    TouchableOpacity, Modal, TextInput, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -45,8 +45,7 @@ interface WishItem {
 const WishlistScreen: React.FC = () => {
     const router = useRouter();
     const { plan, user, userData, partnerData, isLoading } = usePlan();
-    const { theme } = useTheme();
-    const isDark = useColorScheme() === 'dark';
+    const { theme, isDarkMode: isDark } = useTheme();
 
     const [allItems, setAllItems] = useState<WishItem[]>([]);
     const [filterType, setFilterType] = useState<string>('Todos');

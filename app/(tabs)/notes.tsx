@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, TextInput, FlatList,
-    KeyboardAvoidingView, Platform, Modal, TouchableOpacity, useColorScheme,
+    KeyboardAvoidingView, Platform, Modal, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,8 +23,7 @@ import { useRouter } from 'expo-router';
 interface EditingNote { id: string; text: string; }
 
 const NotesScreen: React.FC = () => {
-    const { theme } = useTheme();
-    const isDark = useColorScheme() === 'dark';
+    const { theme, isDarkMode: isDark } = useTheme();
     const router = useRouter();
 
     const { user, userData } = usePlan();

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Modal, View, Text, TouchableOpacity, Image, useColorScheme, Dimensions } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, Image, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { themes } from '../../../config/theme';
+import { useTheme } from '../../../contexts/themeContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -14,8 +14,7 @@ export const ProfilePhotoModal: React.FC<{
     onClose: () => void;
     onExpand: () => void;
 }> = ({ visible, photoURL, name, size, onClose, onExpand }) => {
-    const colorScheme = useColorScheme();
-    const theme = colorScheme === 'dark' ? themes.dark : themes.light;
+    const { theme } = useTheme();
 
     if (!visible) return null;
 

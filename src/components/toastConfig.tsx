@@ -6,10 +6,13 @@ import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToastConfigParams } from 'react-native-toast-message';
 import { fontFamilies } from '../config/theme';
+import { useTheme } from '../contexts/themeContext';
 
 const PillToast: React.FC<
     ToastConfigParams<unknown> & { icon: keyof typeof Ionicons.glyphMap; iconColor: string }
-> = ({ text1, text2, icon, iconColor }) => (
+> = ({ text1, text2, icon, iconColor }) => {
+    const { theme, isDarkMode } = useTheme();
+    return (
     <View
         style={{
             flexDirection: 'row',
@@ -21,11 +24,12 @@ const PillToast: React.FC<
             paddingHorizontal: 15,
             marginHorizontal: 20,
             maxWidth: '100%',
-            shadowColor: '#0A0A19',
-            shadowOffset: { width: 0, height: 14 },
-            shadowOpacity: 0.3,
-            shadowRadius: 30,
-            elevation: 14,
+            // Handoff: en oscuro la sombra se sustituye por un borde 1px
+            // 'border' — el pill ya es oscuro de por sí, así que la sombra
+            // apenas se distingue sobre un fondo de página también oscuro.
+            ...(isDarkMode
+                ? { borderWidth: 1, borderColor: theme.border }
+                : { shadowColor: '#0A0A19', shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.3, shadowRadius: 30, elevation: 14 }),
         }}
     >
         <Ionicons name={icon} size={19} color={iconColor} />
@@ -42,7 +46,8 @@ const PillToast: React.FC<
             )}
         </View>
     </View>
-);
+    );
+};
 
 export const toastConfig = {
     success: (props: ToastConfigParams<unknown>) => (

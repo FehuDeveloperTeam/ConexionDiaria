@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, TextInput, SectionList,
-    KeyboardAvoidingView, Platform, TouchableOpacity, Modal, useColorScheme,
+    KeyboardAvoidingView, Platform, TouchableOpacity, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../src/config/firebaseConfig';
@@ -26,8 +26,7 @@ import { useRouter } from 'expo-router';
 interface EditingTask { id: string; text: string; authorId: string; }
 
 const TasksScreen: React.FC = () => {
-    const { theme } = useTheme();
-    const isDark = useColorScheme() === 'dark';
+    const { theme, isDarkMode: isDark } = useTheme();
     const router = useRouter();
 
     const { user, userData } = usePlan();

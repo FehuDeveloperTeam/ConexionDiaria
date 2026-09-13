@@ -14,7 +14,7 @@ import Toast from 'react-native-toast-message';
 import { usePlan } from '../../src/contexts/planContext';
 import { ExtendedMessage } from '../../src/screens/chat/types';
 import { MessageStatus } from '../../src/screens/chat/components/MessageStatus';
-import { UpgradeModal } from '../../src/screens/chat/components/UpgradeModal';
+import { PaywallSheet } from '../../src/components/PaywallSheet';
 import { ImageViewerModal } from '../../src/screens/chat/components/ImageViewerModal';
 import { VideoViewerModal } from '../../src/screens/chat/components/VideoViewerModal';
 import { FileViewerModal } from '../../src/screens/chat/components/FileViewerModal';
@@ -434,11 +434,14 @@ const ChatScreen = () => {
         );
     };
 
-    // Separador de día — pill centrado (spec del handoff).
+    // Separador de día — pill centrado (spec del handoff). El handoff da
+    // '#EFEFF7'/'#5C5C68' como valores de claro; en oscuro se reemplazan
+    // por los tokens de superficie/texto atenuado (Sprint 7.9, auditoría
+    // de modo oscuro — antes quedaba fijo en claro sin importar el tema).
     const renderDay = (props: any) => (
         <View style={{ alignItems: 'center', marginVertical: 10 }}>
-            <View style={{ backgroundColor: '#EFEFF7', borderRadius: 999, paddingVertical: 4, paddingHorizontal: 12 }}>
-                <Text style={{ fontSize: 10.5, fontWeight: '600', color: '#5C5C68' }}>
+            <View style={{ backgroundColor: isDark ? theme.surfaceAlt : '#EFEFF7', borderRadius: 999, paddingVertical: 4, paddingHorizontal: 12 }}>
+                <Text style={{ fontSize: 10.5, fontWeight: '600', color: isDark ? theme.textMuted : '#5C5C68' }}>
                     {new Date(props.currentMessage.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}
                 </Text>
             </View>
@@ -976,12 +979,17 @@ const ChatScreen = () => {
                 />
             )}
 
-            {/* Upgrade Modal */}
-            <UpgradeModal
+            {/* Upgrade Modal — Sprint 7.9: reemplaza el UpgradeModal propio del
+                chat (hardcoded en claro, sin conectar a la compra real) por
+                el PaywallSheet compartido, igual que el resto de la app. */}
+            <PaywallSheet
                 visible={showUpgradeModal}
                 onClose={() => setShowUpgradeModal(false)}
-                usedStorage={usedStorage}
-                maxStorage={maxStorage}
+                onUpgradePress={() => { setShowUpgradeModal(false); router.push('/(tabs)/config'); }}
+                icon="cloud-upload"
+                title="Almacenamiento lleno"
+                description={`Usaron ${Math.round(usedStorage / (1024 * 1024))} MB de ${Math.round(maxStorage / (1024 * 1024))} MB disponibles.`}
+                benefits={['25 GB de almacenamiento compartido', 'Envío ilimitado de fotos, audios y archivos', 'Calidad original sin compresión']}
             />
 
             {/* Hoja de adjuntar — Sprint 7.4b: reemplaza el action sheet nativo */}

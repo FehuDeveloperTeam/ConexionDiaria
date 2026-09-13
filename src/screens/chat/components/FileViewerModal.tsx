@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, ActivityIndicator, useColorScheme, Linking, Dimensions } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ActivityIndicator, Linking, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import Toast from 'react-native-toast-message';
-import { themes } from '../../../config/theme';
+import { useTheme } from '../../../contexts/themeContext';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -16,8 +16,7 @@ export const FileViewerModal: React.FC<{
     fileSize?: number;
     onClose: () => void;
 }> = ({ visible, fileUri, fileName, fileSize, onClose }) => {
-    const colorScheme = useColorScheme();
-    const theme = colorScheme === 'dark' ? themes.dark : themes.light;
+    const { theme, isDarkMode } = useTheme();
     const [isDownloading, setIsDownloading] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState(0);
 
@@ -254,7 +253,7 @@ export const FileViewerModal: React.FC<{
 
                         <TouchableOpacity
                             style={{
-                                backgroundColor: colorScheme === 'dark' ? '#2C2C2E' : '#E8E8E8',
+                                backgroundColor: isDarkMode ? '#2C2C2E' : '#E8E8E8',
                                 padding: 16,
                                 borderRadius: 12,
                                 flexDirection: 'row',

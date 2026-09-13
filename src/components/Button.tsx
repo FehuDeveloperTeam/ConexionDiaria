@@ -21,7 +21,7 @@ export const Button: React.FC<{
     loadingText?: string;
     style?: ViewStyle;
 }> = ({ title, onPress, variant = 'primary', disabled = false, loading = false, loadingText, style }) => {
-    const { theme } = useTheme();
+    const { theme, isDarkMode } = useTheme();
     const isDisabled = disabled || loading;
 
     const backgroundColor =
@@ -51,7 +51,12 @@ export const Button: React.FC<{
                     flexDirection: 'row',
                     gap: spacing.s8,
                 },
-                variant === 'primary' && !isDisabled ? shadows.ctaCard : null,
+                // Handoff: en oscuro las sombras se sustituyen por un borde
+                // 1px 'border' — no hay sombra cálida visible sobre fondos
+                // oscuros.
+                variant === 'primary' && !isDisabled
+                    ? (isDarkMode ? { borderWidth: 1, borderColor: theme.border } : shadows.ctaCard)
+                    : null,
                 style,
             ]}
         >
