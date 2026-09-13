@@ -149,7 +149,15 @@ const ChatScreen = () => {
         };
     }, []);
 
-    // Render de burbujas personalizadas
+    // Render de burbujas personalizadas — Sprint 7.4a (sistema de diseño).
+    const isDark = colorScheme === 'dark';
+    const formatMessageTime = (date: Date | number) =>
+        new Date(date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    // Burbuja propia: primary en claro, violeta oscuro propio en oscuro
+    // (spec del handoff: no es simplemente 'primary' a menor luminosidad).
+    const ownBubbleBg = isDark ? '#3A2D55' : theme.primary;
+    const ownBubbleTextColor = isDark ? theme.text : theme.white;
+
     const renderBubble = (props: any) => {
         const isOwn = props.currentMessage.user._id === currentUser?.uid;
         const message: ExtendedMessage = props.currentMessage;
@@ -157,18 +165,26 @@ const ChatScreen = () => {
         if (message.deleted) {
             return (
                 <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
                     padding: 12,
                     marginVertical: 4,
                     marginHorizontal: 8,
-                    backgroundColor: colorScheme === 'dark' ? '#2A2A2A' : '#F0F0F0',
-                    borderRadius: 12,
+                    alignSelf: isOwn ? 'flex-end' : 'flex-start',
+                    backgroundColor: theme.divider,
+                    borderWidth: 1,
+                    borderStyle: 'dashed',
+                    borderColor: theme.borderStrong,
+                    borderRadius: 16,
                 }}>
+                    <Ionicons name="ban-outline" size={16} color={theme.textFaint} />
                     <Text style={{
-                        color: theme.placeholder,
+                        color: theme.textFaint,
                         fontStyle: 'italic',
-                        fontSize: 14,
+                        fontSize: 13.5,
                     }}>
-                        🚫 Mensaje eliminado
+                        Este mensaje fue eliminado
                     </Text>
                 </View>
             );
@@ -180,15 +196,8 @@ const ChatScreen = () => {
             const isPlaying = currentlyPlayingId === messageId;
             const progress = audioProgress[messageId] || 0;
             const duration = message.audioDuration ?? audioDurations[messageId];
-            const isLoading = isLoadingAudio === messageId;
-
-            console.log('🎵 Audio bubble:', {
-                messageId: messageId.substring(0, 10),
-                isPlaying,
-                duration,
-                isLoading,
-                currentlyPlayingId: currentlyPlayingId?.substring(0, 10)
-            });
+            const isLoadingThisAudio = isLoadingAudio === messageId;
+            const waveColor = isDark ? '#5B4A79' : '#C9C4EC';
 
             return (
                 <TouchableOpacity
@@ -197,120 +206,83 @@ const ChatScreen = () => {
                     style={{
                         marginVertical: 4,
                         marginHorizontal: 8,
+                        alignSelf: isOwn ? 'flex-end' : 'flex-start',
                     }}>
                     <View style={{
-                        backgroundColor: isOwn ? theme.primary : (colorScheme === 'dark' ? '#2C2C2E' : '#E8E8E8'),
-                        borderRadius: 16,
-                        padding: 12,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: isOwn ? ownBubbleBg : theme.surface,
+                        borderWidth: isOwn ? 0 : 1,
+                        borderColor: theme.borderSoft,
+                        borderRadius: 20,
+                        borderBottomRightRadius: isOwn ? 6 : 20,
+                        borderBottomLeftRadius: isOwn ? 20 : 6,
+                        padding: 11,
                         minWidth: 200,
                         maxWidth: 280,
                     }}>
-                        <View style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            marginBottom: 8,
-                        }}>
-                            <TouchableOpacity
-                                onPress={() => {
-                                    console.log('🔘 Botón audio presionado:', messageId.substring(0, 10));
-                                    toggleAudioPlayback(message);
-                                }}
-                                disabled={isLoading}
-                                style={{
-                                    width: 44,
-                                    height: 44,
-                                    borderRadius: 22,
-                                    backgroundColor: isOwn ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.15)',
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    marginRight: 12,
-                                }}
-                            >
-                                {isLoading ? (
-                                    <ActivityIndicator size="small" color={isOwn ? theme.white : theme.primary} />
-                                ) : (
-                                    <Ionicons
-                                        name={isPlaying ? 'pause' : 'play'}
-                                        size={22}
-                                        color={isOwn ? theme.white : theme.primary}
-                                    />
-                                )}
-                            </TouchableOpacity>
-
-                            <View style={{ flex: 1, marginRight: 8 }}>
-                                {/* Ondas de audio animadas cuando está reproduciendo */}
-                                {isPlaying ? (
-                                    <View style={{
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        height: 30,
-                                        marginBottom: 4,
-                                    }}>
-                                        <AudioWaveAnimation color={isOwn ? theme.white : theme.primary} />
-                                    </View>
-                                ) : (
-                                    /* Barra de progreso cuando está pausado */
-                                    <View style={{
-                                        height: 30,
-                                        justifyContent: 'center',
-                                        marginBottom: 4,
-                                    }}>
-                                        <View style={{
-                                            height: 3,
-                                            backgroundColor: isOwn ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.1)',
-                                            borderRadius: 2,
-                                            overflow: 'hidden',
-                                        }}>
-                                            <View style={{
-                                                height: '100%',
-                                                width: `${progress * 100}%`,
-                                                backgroundColor: isOwn ? theme.white : theme.primary,
-                                            }} />
-                                        </View>
-                                    </View>
-                                )}
-
-                                {/* Duración */}
-                                <Text style={{
-                                    fontSize: 12,
-                                    color: isOwn ? theme.white : theme.text,
-                                    opacity: 0.8,
-                                }}>
-                                    {duration ? formatAudioDuration(duration) : '0:00'}
-                                </Text>
-                            </View>
-
-                            {/* Indicador de no reproducido */}
-                            {!isOwn && !message.audioPlayed && (
-                                <View style={{
-                                    width: 8,
-                                    height: 8,
-                                    borderRadius: 4,
-                                    backgroundColor: theme.primary,
-                                    marginLeft: 4,
-                                }} />
+                        <TouchableOpacity
+                            onPress={() => toggleAudioPlayback(message)}
+                            disabled={isLoadingThisAudio}
+                            style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 17,
+                                backgroundColor: theme.primary,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                marginRight: 12,
+                            }}
+                        >
+                            {isLoadingThisAudio ? (
+                                <ActivityIndicator size="small" color={theme.white} />
+                            ) : (
+                                <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color={theme.white} />
                             )}
+                        </TouchableOpacity>
+
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                            {/* Ondas de audio animadas cuando está reproduciendo */}
+                            {isPlaying ? (
+                                <View style={{ height: 24, justifyContent: 'center' }}>
+                                    <AudioWaveAnimation color={waveColor} />
+                                </View>
+                            ) : (
+                                /* Barra de progreso cuando está pausado */
+                                <View style={{ height: 24, justifyContent: 'center' }}>
+                                    <View style={{ height: 3, backgroundColor: waveColor, borderRadius: 1.5, overflow: 'hidden' }}>
+                                        <View style={{ height: '100%', width: `${progress * 100}%`, backgroundColor: theme.primary }} />
+                                    </View>
+                                </View>
+                            )}
+
+                            <Text style={{
+                                fontSize: 11.5,
+                                fontWeight: '600',
+                                color: isOwn ? ownBubbleTextColor : theme.textMuted,
+                                marginTop: 4,
+                            }}>
+                                {duration ? formatAudioDuration(duration) : '0:00'}
+                            </Text>
                         </View>
 
-                        {/* Hora y estado */}
-                        <View style={{
-                            flexDirection: 'row',
-                            justifyContent: isOwn ? 'flex-end' : 'flex-start',
-                            alignItems: 'center',
-                            marginTop: 4,
-                        }}>
-                            <Text style={{
-                                fontSize: 11,
-                                color: isOwn ? theme.white : theme.placeholder,
-                                opacity: 0.7,
-                            }}>
-                                {new Date(message.createdAt).toLocaleTimeString('es-ES', {
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                })}
-                            </Text>
-                            {isOwn && <MessageStatus message={message} isOwn={isOwn} />}
-                        </View>
+                        {/* Punto de "no escuchado" */}
+                        {!isOwn && !message.audioPlayed && (
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.affection }} />
+                        )}
+                    </View>
+
+                    <View style={{
+                        flexDirection: 'row',
+                        justifyContent: isOwn ? 'flex-end' : 'flex-start',
+                        alignItems: 'center',
+                        marginTop: 3,
+                        paddingHorizontal: 4,
+                    }}>
+                        <Text style={{ fontSize: 10, color: theme.textFaint }}>
+                            {formatMessageTime(message.createdAt)}
+                        </Text>
+                        {isOwn && <MessageStatus message={message} isOwn={isOwn} />}
                     </View>
                 </TouchableOpacity>
             );
@@ -325,11 +297,16 @@ const ChatScreen = () => {
                     style={{
                         marginVertical: 4,
                         marginHorizontal: 8,
+                        alignSelf: isOwn ? 'flex-end' : 'flex-start',
                     }}>
                     <View style={{
-                        backgroundColor: isOwn ? theme.primary : (colorScheme === 'dark' ? '#2C2C2E' : '#E8E8E8'),
-                        borderRadius: 16,
-                        padding: 12,
+                        backgroundColor: isOwn ? ownBubbleBg : theme.surface,
+                        borderWidth: isOwn ? 0 : 1,
+                        borderColor: theme.borderSoft,
+                        borderRadius: 20,
+                        borderBottomRightRadius: isOwn ? 6 : 20,
+                        borderBottomLeftRadius: isOwn ? 20 : 6,
+                        padding: 11,
                         maxWidth: 280,
                     }}>
                         <TouchableOpacity
@@ -344,64 +321,45 @@ const ChatScreen = () => {
                             style={{
                                 flexDirection: 'row',
                                 alignItems: 'center',
-                                marginBottom: 12,
+                                gap: 10,
                             }}
                         >
                             <View style={{
-                                width: 48,
-                                height: 48,
-                                borderRadius: 24,
-                                backgroundColor: isOwn ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.1)',
+                                width: 36,
+                                height: 36,
+                                borderRadius: 11,
+                                backgroundColor: isOwn ? 'rgba(255,255,255,0.2)' : theme.primaryTint,
                                 justifyContent: 'center',
                                 alignItems: 'center',
                             }}>
-                                <Ionicons
-                                    name="document-text"
-                                    size={24}
-                                    color={isOwn ? theme.white : theme.primary}
-                                />
+                                <Ionicons name="document-text" size={20} color={isOwn ? ownBubbleTextColor : theme.primary} />
                             </View>
 
                             <View style={{ flex: 1 }}>
                                 <Text
-                                    style={{
-                                        color: isOwn ? theme.white : theme.text,
-                                        fontSize: 14,
-                                        fontWeight: '500',
-                                    }}
+                                    style={{ color: isOwn ? ownBubbleTextColor : theme.text, fontSize: 13, fontWeight: '700' }}
                                     numberOfLines={1}
                                 >
                                     {message.fileName || 'Archivo'}
                                 </Text>
                                 {message.fileSize && (
-                                    <Text style={{
-                                        color: isOwn ? theme.white : theme.placeholder,
-                                        fontSize: 12,
-                                        marginTop: 2,
-                                        opacity: 0.7,
-                                    }}>
-                                        {(message.fileSize / 1024).toFixed(2)} KB
+                                    <Text style={{ color: isOwn ? ownBubbleTextColor : theme.textFaint, fontSize: 11, marginTop: 2, opacity: isOwn ? 0.8 : 1 }}>
+                                        {(message.fileSize / 1024).toFixed(1)} KB
                                     </Text>
                                 )}
                             </View>
+
+                            <Ionicons name="download-outline" size={20} color={isOwn ? ownBubbleTextColor : theme.textMuted} />
                         </TouchableOpacity>
 
-                        {/* Hora y estado - CORREGIDO */}
                         <View style={{
                             flexDirection: 'row',
                             justifyContent: isOwn ? 'flex-end' : 'flex-start',
                             alignItems: 'center',
                             marginTop: 8,
                         }}>
-                            <Text style={{
-                                fontSize: 11,
-                                color: isOwn ? theme.white : theme.placeholder,
-                                opacity: 0.7,
-                            }}>
-                                {new Date(message.createdAt).toLocaleTimeString('es-ES', {
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                })}
+                            <Text style={{ fontSize: 10, color: isOwn ? ownBubbleTextColor : theme.textFaint, opacity: isOwn ? 0.8 : 1 }}>
+                                {formatMessageTime(message.createdAt)}
                             </Text>
                             {isOwn && <MessageStatus message={message} isOwn={isOwn} />}
                         </View>
@@ -410,60 +368,46 @@ const ChatScreen = () => {
             );
         }
 
-        // Renderizar burbuja de texto/imagen estándar con hora corregida
+        // Renderizar burbuja de texto/imagen estándar
         return (
             <Bubble
                 {...props}
                 wrapperStyle={{
                     left: {
-                        backgroundColor: colorScheme === 'dark' ? '#2C2C2E' : '#E8E8E8',
+                        backgroundColor: theme.surface,
+                        borderWidth: 1,
+                        borderColor: theme.borderSoft,
+                        borderRadius: 20,
+                        borderBottomLeftRadius: 6,
                         marginVertical: 4,
                     },
                     right: {
-                        backgroundColor: theme.primary,
+                        backgroundColor: ownBubbleBg,
+                        borderRadius: 20,
+                        borderBottomRightRadius: 6,
                         marginVertical: 4,
                     },
                 }}
                 textStyle={{
-                    left: { color: theme.text },
-                    right: { color: theme.white },
+                    left: { color: theme.text, fontSize: 14.5, lineHeight: 20 },
+                    right: { color: ownBubbleTextColor, fontSize: 14.5, lineHeight: 20 },
                 }}
-                timeTextStyle={{
-                    left: {
-                        color: theme.placeholder,
-                        fontSize: 11,
-                        marginTop: 4,
-                        marginLeft: 0,  // CORREGIDO: eliminar margen izquierdo excesivo
-                    },
-                    right: {
-                        color: theme.white,
-                        fontSize: 11,
-                        marginTop: 4,
-                    },
-                }}
-                renderTime={(timeProps) => (
+                renderTime={(timeProps: any) => (
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: isOwn ? 'flex-end' : 'flex-start',
                         marginTop: 4,
-                        paddingHorizontal: 8,  // CORREGIDO: padding horizontal consistente
+                        paddingHorizontal: 8,
                         paddingBottom: 4,
                     }}>
-                        <Text style={{
-                            fontSize: 11,
-                            color: isOwn ? theme.white : theme.placeholder,
-                            opacity: 0.7,
-                        }}>
-                            {new Date(message.createdAt).toLocaleTimeString('es-ES', {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            })}
+                        <Text style={{ fontSize: 10, color: isOwn ? ownBubbleTextColor : theme.textFaint, opacity: isOwn ? 0.8 : 1 }}>
+                            {formatMessageTime(timeProps.currentMessage.createdAt)}
                         </Text>
                         {isOwn && <MessageStatus message={message} isOwn={isOwn} />}
                     </View>
                 )}
-                renderMessageImage={(imageProps) => (
+                renderMessageImage={(imageProps: any) => (
                     <TouchableOpacity
                         onPress={() => {
                             if (imageProps.currentMessage.image) {
@@ -481,6 +425,17 @@ const ChatScreen = () => {
             />
         );
     };
+
+    // Separador de día — pill centrado (spec del handoff).
+    const renderDay = (props: any) => (
+        <View style={{ alignItems: 'center', marginVertical: 10 }}>
+            <View style={{ backgroundColor: '#EFEFF7', borderRadius: 999, paddingVertical: 4, paddingHorizontal: 12 }}>
+                <Text style={{ fontSize: 10.5, fontWeight: '600', color: '#5C5C68' }}>
+                    {new Date(props.currentMessage.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}
+                </Text>
+            </View>
+        </View>
+    );
 
     // Loading state
     if (loading || planLoading) {
@@ -684,6 +639,7 @@ const ChatScreen = () => {
                     alwaysShowSend
                     showUserAvatar={false}
                     renderBubble={renderBubble}
+                    renderDay={renderDay}
                     onLongPress={handleMessageLongPress}
                     renderAvatar={null}
                     text={inputText}
@@ -1056,8 +1012,8 @@ const styles = StyleSheet.create({
     chatImage: {
         width: 250,
         height: 150,
-        borderRadius: 13,
-        margin: 3,
+        borderRadius: 16,
+        margin: 5,
         resizeMode: 'cover',
     }
 });

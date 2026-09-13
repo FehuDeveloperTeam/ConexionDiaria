@@ -1,69 +1,27 @@
+// Estados de entrega — Sprint 7.4a. Solo en mensajes propios: enviado
+// (un check), entregado (done_all gris) y leído (done_all en acento).
+// No hay un estado "enviando" propio: el modelo de datos no distingue
+// "escribiendo en Firestore" de "ya escrito" en el mensaje optimista.
 import React from 'react';
-import { View } from 'react-native';
+import { useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ExtendedMessage } from '../types';
 
-// Componente de palomas de estado - Mejorado estilo WhatsApp
 export const MessageStatus: React.FC<{ message: ExtendedMessage; isOwn: boolean }> = ({ message, isOwn }) => {
+    const colorScheme = useColorScheme() || 'light';
     if (!isOwn || message.deleted) return null;
 
-    const getStatusIcon = () => {
-        if (message.read) {
-            return (
-                <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    marginLeft: 2,
-                    position: 'relative',
-                    width: 16,
-                    height: 14,
-                }}>
-                    <Ionicons
-                        name="checkmark"
-                        size={14}
-                        color="#FF69B4"
-                        style={{ position: 'absolute', left: 0 }}
-                    />
-                    <Ionicons
-                        name="checkmark"
-                        size={14}
-                        color="#FF69B4"
-                        style={{ position: 'absolute', left: 4 }}
-                    />
-                </View>
-            );
-        }
-        if (message.delivered) {
-            return (
-                <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    marginLeft: 2,
-                    position: 'relative',
-                    width: 16,
-                    height: 14,
-                }}>
-                    <Ionicons
-                        name="checkmark"
-                        size={14}
-                        color="#FFF"
-                        style={{ position: 'absolute', left: 0 }}
-                    />
-                    <Ionicons
-                        name="checkmark"
-                        size={14}
-                        color="#FFF"
-                        style={{ position: 'absolute', left: 4 }}
-                    />
-                </View>
-            );
-        }
-        return <Ionicons name="checkmark" size={14} color="#FFF" style={{ marginLeft: 2 }} />;
-    };
+    if (message.read) {
+        // Acento sobre fondo violeta (spec): #B9F0FF en claro, el propio
+        // primary lavanda en oscuro.
+        const color = colorScheme === 'dark' ? '#BB86FC' : '#B9F0FF';
+        return <Ionicons name="checkmark-done" size={15} color={color} style={{ marginLeft: 4 }} />;
+    }
 
-    return (
-        <View style={{ marginLeft: 4 }}>
-            {getStatusIcon()}
-        </View>
-    );
+    if (message.delivered) {
+        const color = colorScheme === 'dark' ? '#87878F' : 'rgba(255,255,255,0.75)';
+        return <Ionicons name="checkmark-done" size={15} color={color} style={{ marginLeft: 4 }} />;
+    }
+
+    return <Ionicons name="checkmark" size={15} color="rgba(255,255,255,0.75)" style={{ marginLeft: 4 }} />;
 };
