@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../src/config/firebaseConfig';
-import { fontFamilies, radii, spacing } from '../../src/config/theme';
+import { radii, spacing } from '../../src/config/theme';
 import {
     collection, addDoc, onSnapshot, query, doc, orderBy, limit,
     serverTimestamp, Timestamp, deleteDoc, updateDoc,
@@ -72,7 +72,7 @@ const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', '
 const MESES_ABREV = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
 
 const CalendarScreen: React.FC = () => {
-    const { theme, isDarkMode: isDark } = useTheme();
+    const { theme, isDarkMode: isDark, fontFamilies } = useTheme();
     const { isDesktop } = useResponsive();
 
     const { user, userData, plan, isLoading: planLoading } = usePlan();

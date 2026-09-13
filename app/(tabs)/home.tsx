@@ -18,7 +18,7 @@ import {
 import { db, functions } from '../../src/config/firebaseConfig';
 import { httpsCallable } from 'firebase/functions';
 import { sendEmailVerification } from 'firebase/auth';
-import { themes, fontFamilies, spacing, radii } from '../../src/config/theme'; // Importamos la definición base de 'themes'
+import { themes, spacing, radii, FontFamilies } from '../../src/config/theme'; // Importamos la definición base de 'themes'
 import * as Clipboard from 'expo-clipboard';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -99,7 +99,7 @@ const formatAnniversaryEyebrow = (date: Date): string =>
     `JUNTOS DESDE EL ${date.getDate()} DE ${MESES_ABREV[date.getMonth()]}, ${date.getFullYear()}`;
 
 // --- Estilos Dinámicos ---
-const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, borderStyle: any) => StyleSheet.create({
+const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, borderStyle: any, fontFamilies: FontFamilies) => StyleSheet.create({
     safeArea: {
         flex: 1,
         backgroundColor: theme.background
@@ -219,10 +219,10 @@ const Home: React.FC = () => {
     
     // --- Usando Hooks de Contexto ---
     const { user, userData, partnerData, relationshipData, plan, isLoading } = usePlan();
-    const { theme, fontFamily, borderStyle } = useTheme();
+    const { theme, fontFamily, borderStyle, fontFamilies } = useTheme();
 
     // Generamos los estilos dinámicamente
-    const styles = getStyles(theme, fontFamily, borderStyle);
+    const styles = getStyles(theme, fontFamily, borderStyle, fontFamilies);
 
     // --- Estados Locales (Solo para UI e historial) ---
     const [missYouHistory, setMissYouHistory] = useState<DocumentData[]>([]);

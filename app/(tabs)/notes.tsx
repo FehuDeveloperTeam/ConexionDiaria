@@ -9,7 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '../../src/config/firebaseConfig';
-import { fontFamilies, noteColors, noteRotations, radii, shadows, spacing } from '../../src/config/theme';
+import { noteColors, noteRotations, radii, shadows, spacing } from '../../src/config/theme';
 import { collection, addDoc, onSnapshot, query, orderBy, doc, limit, DocumentData, serverTimestamp, deleteDoc, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 import { usePlan } from '../../src/contexts/planContext';
@@ -24,7 +24,7 @@ import { useRouter } from 'expo-router';
 interface EditingNote { id: string; text: string; }
 
 const NotesScreen: React.FC = () => {
-    const { theme, isDarkMode: isDark } = useTheme();
+    const { theme, isDarkMode: isDark, fontFamilies } = useTheme();
     const router = useRouter();
 
     const { user, userData } = usePlan();

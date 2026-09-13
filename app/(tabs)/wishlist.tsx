@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { fontFamilies, radii, shadows, spacing } from '../../src/config/theme';
+import { radii, shadows, spacing } from '../../src/config/theme';
 import { db } from '../../src/config/firebaseConfig';
 import {
     collection, addDoc, onSnapshot, Timestamp, query, doc,
@@ -47,7 +47,7 @@ interface WishItem {
 const WishlistScreen: React.FC = () => {
     const router = useRouter();
     const { plan, user, userData, partnerData, isLoading } = usePlan();
-    const { theme, isDarkMode: isDark } = useTheme();
+    const { theme, isDarkMode: isDark, fontFamilies } = useTheme();
     const { isDesktop } = useResponsive();
 
     const [allItems, setAllItems] = useState<WishItem[]>([]);

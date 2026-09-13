@@ -4,7 +4,7 @@ import { useRouter, Link } from 'expo-router';
 import { createUserWithEmailAndPassword, sendEmailVerification, User } from 'firebase/auth';
 import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../src/config/firebaseConfig';
-import { themes, fontFamilies, spacing } from '../src/config/theme';
+import { themes, spacing, FontFamilies } from '../src/config/theme';
 import { useTheme } from '../src/contexts/themeContext';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
@@ -13,7 +13,7 @@ import { generateUniqueInvitationCode, buildInvitationCodeDoc } from '../src/ser
 import { TextField } from '../src/components/TextField';
 import { Button } from '../src/components/Button';
 
-const getStyles = (theme: typeof themes.light) => StyleSheet.create({
+const getStyles = (theme: typeof themes.light, fontFamilies: FontFamilies) => StyleSheet.create({
     container: { flexGrow: 1, padding: spacing.s20, backgroundColor: theme.bg },
     backButton: { paddingVertical: spacing.s10, marginBottom: spacing.s10 },
     title: { fontFamily: fontFamilies.display, fontSize: 34, lineHeight: 36, color: theme.text, marginBottom: spacing.s26 },
@@ -23,8 +23,8 @@ const getStyles = (theme: typeof themes.light) => StyleSheet.create({
 });
 
 const Register: React.FC = () => {
-    const { theme } = useTheme();
-    const styles = getStyles(theme);
+    const { theme, fontFamilies } = useTheme();
+    const styles = getStyles(theme, fontFamilies);
     const router = useRouter();
 
     const [email, setEmail] = useState('');

@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../src/config/firebaseConfig';
-import { fontFamilies, radii, spacing } from '../../src/config/theme';
+import { radii, spacing } from '../../src/config/theme';
 import {
     collection, addDoc, onSnapshot, query, orderBy, doc, limit,
     DocumentData, serverTimestamp, updateDoc, deleteDoc,
@@ -27,7 +27,7 @@ import { useRouter } from 'expo-router';
 interface EditingTask { id: string; text: string; authorId: string; }
 
 const TasksScreen: React.FC = () => {
-    const { theme, isDarkMode: isDark } = useTheme();
+    const { theme, isDarkMode: isDark, fontFamilies } = useTheme();
     const router = useRouter();
 
     const { user, userData } = usePlan();

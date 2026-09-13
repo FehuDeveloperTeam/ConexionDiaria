@@ -9,7 +9,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../src/config/firebaseConfig';
-import { fontFamilies, radii, spacing } from '../src/config/theme';
+import { radii, spacing } from '../src/config/theme';
 import { PREMIUM_BORDER_OPTIONS, useTheme } from '../src/contexts/themeContext';
 import { usePlan } from '../src/contexts/planContext';
 import { Button } from '../src/components/Button';
@@ -26,7 +26,7 @@ const FONT_CHIPS: { key: 'Newsreader_400Regular' | 'Manrope_500Medium' | 'monosp
 
 const ThemeEditorScreen: React.FC = () => {
     const router = useRouter();
-    const { theme } = useTheme();
+    const { theme, fontFamilies } = useTheme();
     const { user, userData, relationshipData, plan, isLoading } = usePlan();
 
     const currentSettings = relationshipData?.settings || {};

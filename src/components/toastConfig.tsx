@@ -5,13 +5,12 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToastConfigParams } from 'react-native-toast-message';
-import { fontFamilies } from '../config/theme';
 import { useTheme } from '../contexts/themeContext';
 
 const PillToast: React.FC<
     ToastConfigParams<unknown> & { icon: keyof typeof Ionicons.glyphMap; iconColor: string }
 > = ({ text1, text2, icon, iconColor }) => {
-    const { theme, isDarkMode } = useTheme();
+    const { theme, isDarkMode, fontFamilies } = useTheme();
     return (
     <View
         style={{

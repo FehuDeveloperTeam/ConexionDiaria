@@ -12,7 +12,7 @@ import * as Clipboard from 'expo-clipboard';
 import Toast from 'react-native-toast-message';
 import { useTheme } from '../contexts/themeContext';
 import { Button } from './Button';
-import { fontFamilies, radii, spacing } from '../config/theme';
+import { radii, spacing } from '../config/theme';
 
 export const EmptyState: React.FC<{
     icon: keyof typeof Ionicons.glyphMap;
@@ -21,7 +21,7 @@ export const EmptyState: React.FC<{
     invitationCode?: string | null;
     onConnectPress: () => void;
 }> = ({ icon, title, message, invitationCode, onConnectPress }) => {
-    const { theme } = useTheme();
+    const { theme, fontFamilies } = useTheme();
 
     const handleCopyCode = async () => {
         if (!invitationCode) return;

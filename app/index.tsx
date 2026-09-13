@@ -3,11 +3,11 @@ import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { themes, fontFamilies, spacing } from '../src/config/theme';
+import { themes, spacing, FontFamilies } from '../src/config/theme';
 import { useTheme } from '../src/contexts/themeContext';
 import { Button } from '../src/components/Button';
 
-const getStyles = (theme: typeof themes.light, isLight: boolean) => StyleSheet.create({
+const getStyles = (theme: typeof themes.light, isLight: boolean, fontFamilies: FontFamilies) => StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.bg },
     container: { flex: 1, paddingHorizontal: 34, justifyContent: 'space-between', alignItems: 'center' },
     header: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.s20 },
@@ -38,8 +38,8 @@ const getStyles = (theme: typeof themes.light, isLight: boolean) => StyleSheet.c
 });
 
 const LandingScreen: React.FC = () => {
-    const { theme, isDarkMode } = useTheme();
-    const styles = getStyles(theme, !isDarkMode);
+    const { theme, isDarkMode, fontFamilies } = useTheme();
+    const styles = getStyles(theme, !isDarkMode, fontFamilies);
 
     return (
         <SafeAreaView style={styles.safeArea}>

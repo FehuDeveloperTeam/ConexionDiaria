@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { auth, db, storage } from '../../src/config/firebaseConfig';
-import { fontFamilies, radii, spacing } from '../../src/config/theme';
+import { radii, spacing } from '../../src/config/theme';
 import { signOut } from 'firebase/auth';
 import { doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
@@ -66,7 +66,7 @@ const PrefRow: React.FC<{
     right: React.ReactNode;
     onPress?: () => void;
 }> = ({ icon, label, subcopy, isLast, right, onPress }) => {
-    const { theme } = useTheme();
+    const { theme, fontFamilies } = useTheme();
     return (
         <TouchableOpacity
             onPress={onPress}
@@ -95,7 +95,7 @@ const PrefRow: React.FC<{
 };
 
 const PremiumBadge: React.FC = () => {
-    const { theme } = useTheme();
+    const { theme, fontFamilies } = useTheme();
     return (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.warnBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
             <Ionicons name="lock-closed" size={13} color={theme.warnText} />
@@ -106,7 +106,7 @@ const PremiumBadge: React.FC = () => {
 
 const ConfigScreen: React.FC = () => {
     const router = useRouter();
-    const { theme, isDarkMode, setDarkMode } = useTheme();
+    const { theme, isDarkMode, setDarkMode, fontFamilies } = useTheme();
     const { plan, user, userData, relationshipData, isLoading } = usePlan();
 
     const [displayName, setDisplayName] = useState('');

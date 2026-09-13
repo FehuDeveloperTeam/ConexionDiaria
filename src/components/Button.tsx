@@ -8,7 +8,7 @@
 import React from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, ViewStyle } from 'react-native';
 import { useTheme } from '../contexts/themeContext';
-import { fontFamilies, radii, shadows, spacing } from '../config/theme';
+import { radii, shadows, spacing } from '../config/theme';
 
 type ButtonVariant = 'primary' | 'outline' | 'ghost';
 
@@ -21,7 +21,7 @@ export const Button: React.FC<{
     loadingText?: string;
     style?: ViewStyle;
 }> = ({ title, onPress, variant = 'primary', disabled = false, loading = false, loadingText, style }) => {
-    const { theme, isDarkMode } = useTheme();
+    const { theme, isDarkMode, fontFamilies } = useTheme();
     const isDisabled = disabled || loading;
 
     const backgroundColor =

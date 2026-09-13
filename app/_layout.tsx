@@ -4,7 +4,13 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
-import { Newsreader_400Regular } from '@expo-google-fonts/newsreader';
+import {
+    Newsreader_400Regular,
+    Newsreader_500Medium,
+    Newsreader_600SemiBold,
+    Newsreader_700Bold,
+    Newsreader_800ExtraBold,
+} from '@expo-google-fonts/newsreader';
 import {
     Manrope_500Medium,
     Manrope_600SemiBold,
@@ -115,6 +121,15 @@ const RootLayout: React.FC = () => {
     // fuente.
     const [fontsLoaded, fontError] = useFonts({
         Newsreader_400Regular,
+        // Sprint 8.5: pesos adicionales de Newsreader — antes solo se
+        // cargaba el regular (uso exclusivo en títulos/momentos
+        // emotivos); el probador de tema ahora puede elegir Newsreader
+        // como tipografía de cuerpo, y para eso necesita también semibold/
+        // bold/extrabold (las mismas variantes de peso que ya usa Manrope).
+        Newsreader_500Medium,
+        Newsreader_600SemiBold,
+        Newsreader_700Bold,
+        Newsreader_800ExtraBold,
         Manrope_500Medium,
         Manrope_600SemiBold,
         Manrope_700Bold,

@@ -10,7 +10,7 @@ import { Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/themeContext';
 import { Button } from './Button';
-import { fontFamilies, radii, spacing } from '../config/theme';
+import { radii, spacing } from '../config/theme';
 
 interface ThemePreview {
     name: string;
@@ -18,12 +18,15 @@ interface ThemePreview {
     text: string;
 }
 
-const ThemeCard: React.FC<{ theme: ThemePreview }> = ({ theme }) => (
-    <View style={{ flex: 1, backgroundColor: theme.background, borderRadius: radii.field, padding: spacing.s12, alignItems: 'center', gap: spacing.s4 }}>
-        <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.text, opacity: 0.15 }} />
-        <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 12, color: theme.text }}>{theme.name}</Text>
-    </View>
-);
+const ThemeCard: React.FC<{ theme: ThemePreview }> = ({ theme }) => {
+    const { fontFamilies } = useTheme();
+    return (
+        <View style={{ flex: 1, backgroundColor: theme.background, borderRadius: radii.field, padding: spacing.s12, alignItems: 'center', gap: spacing.s4 }}>
+            <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.text, opacity: 0.15 }} />
+            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 12, color: theme.text }}>{theme.name}</Text>
+        </View>
+    );
+};
 
 export const ThemeInheritanceDialog: React.FC<{
     visible: boolean;
@@ -33,7 +36,7 @@ export const ThemeInheritanceDialog: React.FC<{
     onConfirm: () => void;
     onCancel: () => void;
 }> = ({ visible, partnerName, losingTheme, keepingTheme, onConfirm, onCancel }) => {
-    const { theme } = useTheme();
+    const { theme, fontFamilies } = useTheme();
     if (!visible) return null;
 
     return (

@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, storage } from '../../src/config/firebaseConfig';
-import { fontFamilies, radii, spacing } from '../../src/config/theme';
+import { radii, spacing } from '../../src/config/theme';
 import { DocumentData, onSnapshot, collection, query, orderBy, limit, addDoc, doc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -58,7 +58,7 @@ const monthKeyOf = (date: Date) =>
     date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase();
 
 const AlbumScreen: React.FC = () => {
-    const { theme, isDarkMode: isDark } = useTheme();
+    const { theme, isDarkMode: isDark, fontFamilies } = useTheme();
     const { isDesktop } = useResponsive();
     const router = useRouter();
 

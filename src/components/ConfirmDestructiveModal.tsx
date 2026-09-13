@@ -9,7 +9,7 @@ import { Modal, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/themeContext';
 import { Button } from './Button';
-import { fontFamilies, radii, spacing } from '../config/theme';
+import { radii, spacing } from '../config/theme';
 
 export const ConfirmDestructiveModal: React.FC<{
     visible: boolean;
@@ -21,7 +21,7 @@ export const ConfirmDestructiveModal: React.FC<{
     onConfirm: () => void;
     onCancel: () => void;
 }> = ({ visible, icon = 'trash', title, message, confirmLabel = 'Eliminar', cancelLabel = 'Cancelar', onConfirm, onCancel }) => {
-    const { theme } = useTheme();
+    const { theme, fontFamilies } = useTheme();
 
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>

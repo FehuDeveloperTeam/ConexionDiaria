@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../contexts/themeContext';
-import { fontFamilies, radii, spacing } from '../config/theme';
+import { radii, spacing } from '../config/theme';
 
 export const TextField: React.FC<{
     label?: string;
@@ -44,7 +44,7 @@ export const TextField: React.FC<{
     textAlign,
     onSubmitEditing,
 }) => {
-    const { theme } = useTheme();
+    const { theme, fontFamilies } = useTheme();
     const [isVisible, setIsVisible] = useState(false);
     const hasError = !!error;
 

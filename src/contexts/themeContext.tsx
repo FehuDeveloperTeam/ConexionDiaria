@@ -3,8 +3,39 @@
 import React, { createContext, useContext, ReactNode, useMemo, useState, useEffect, useCallback } from 'react';
 import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { themes, ThemeColors } from '../config/theme'; // Asumo que 'themes' exporta tus colores base
+import { themes, ThemeColors, fontFamilies as defaultFontFamilies, FontFamilies } from '../config/theme'; // Asumo que 'themes' exporta tus colores base
 import { usePlan } from './planContext'; // Usamos el hook que ya creamos
+
+// Sprint 8.5 — tipografía de cuerpo del probador de tema propagada a toda
+// la app. 'display' (títulos/momentos emotivos) y 'action'/'actionBold'
+// (Poppins, botones y tab bar — decisión fija del Product Owner) NUNCA
+// cambian acá: la elección de la pareja solo reemplaza el cuerpo
+// (body/bodySemiBold/bodyBold/bodyExtraBold). Mono usa la familia
+// genérica del sistema — al no tener archivos por peso como los Google
+// Fonts, todos los pesos de cuerpo se ven visualmente iguales con Mono
+// (limitación conocida, no hay forma de graduar el grosor de una fuente
+// del sistema sin la prop 'fontWeight', que ningún estilo existente trae).
+function resolveFontFamilies(bodyChoice: PremiumSettings['fontFamily']): FontFamilies {
+    if (bodyChoice === 'Newsreader_400Regular') {
+        return {
+            ...defaultFontFamilies,
+            body: 'Newsreader_400Regular',
+            bodySemiBold: 'Newsreader_600SemiBold',
+            bodyBold: 'Newsreader_700Bold',
+            bodyExtraBold: 'Newsreader_800ExtraBold',
+        };
+    }
+    if (bodyChoice === 'monospace') {
+        return {
+            ...defaultFontFamilies,
+            body: 'monospace',
+            bodySemiBold: 'monospace',
+            bodyBold: 'monospace',
+            bodyExtraBold: 'monospace',
+        };
+    }
+    return defaultFontFamilies;
+}
 
 // Preferencia local de "modo oscuro" — Sprint 7.8a (Ajustes). El sistema
 // operativo ya decide un modo por defecto (useColorScheme), pero el switch
@@ -67,6 +98,7 @@ const DEFAULT_BORDER_OPTION = (baseBorderColor: string): PremiumBorderOption => 
 interface ThemeContextType {
     theme: ThemeColors; // Los colores finales (fondo/texto de página con la personalización aplicada)
     fontFamily: string | undefined; // Tipografía de cuerpo elegida (premium), o undefined = la del sistema
+    fontFamilies: FontFamilies; // Set completo de fuentes por rol, con el cuerpo ya resuelto (Sprint 8.5)
     borderStyle: PremiumBorderOption; // El estilo de tarjeta elegido (premium), o el neutro por defecto
     isDarkMode: boolean; // Modo oscuro efectivo (override manual o del sistema)
     setDarkMode: (value: boolean) => void; // Forzar el modo desde Ajustes
@@ -124,8 +156,13 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         return undefined;
     }, [plan, settings]);
 
+    const fontFamilies = useMemo(
+        () => resolveFontFamilies(plan === 'premium' ? settings.fontFamily : undefined),
+        [plan, settings]
+    );
+
     return (
-        <ThemeContext.Provider value={{ theme, fontFamily, borderStyle, isDarkMode: colorScheme === 'dark', setDarkMode }}>
+        <ThemeContext.Provider value={{ theme, fontFamily, fontFamilies, borderStyle, isDarkMode: colorScheme === 'dark', setDarkMode }}>
             {children}
         </ThemeContext.Provider>
     );

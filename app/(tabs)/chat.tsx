@@ -7,7 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GiftedChat, InputToolbar, Composer, Send, Actions, Bubble } from 'react-native-gifted-chat';
 import { useRouter } from 'expo-router';
-import { fontFamilies, spacing, radii } from '../../src/config/theme';
+import { spacing, radii } from '../../src/config/theme';
 import { useTheme } from '../../src/contexts/themeContext';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
@@ -35,7 +35,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 // Componente Principal del Chat
 const ChatScreen = () => {
-    const { theme, isDarkMode } = useTheme();
+    const { theme, isDarkMode, fontFamilies } = useTheme();
     const router = useRouter();
 
     // Context de Plan

@@ -150,6 +150,8 @@ export const fontFamilies = {
   actionBold: 'Poppins_700Bold',
 };
 
+export type FontFamilies = typeof fontFamilies;
+
 // Los pesos en sí se cargan con useFonts() en app/_layout.tsx, importando
 // los exports nombrados de cada paquete @expo-google-fonts/* directamente
 // (es el mecanismo que ya resuelve los .ttf internos) — mantener esa lista

@@ -16,7 +16,7 @@ import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../contexts/themeContext';
-import { fontFamilies, radii, spacing } from '../config/theme';
+import { radii, spacing } from '../config/theme';
 import { useResponsive } from '../hooks/useResponsive';
 
 export const PaywallSheet: React.FC<{
@@ -44,7 +44,7 @@ export const PaywallSheet: React.FC<{
     offerPrice = 'US$2.99',
     offerBadge = '-70% HOY',
 }) => {
-    const { theme } = useTheme();
+    const { theme, fontFamilies } = useTheme();
     const { isDesktop } = useResponsive();
 
     const cardContent = (

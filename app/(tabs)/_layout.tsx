@@ -3,7 +3,7 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { fontFamilies, radii, spacing } from '../../src/config/theme';
+import { radii, spacing } from '../../src/config/theme';
 import { useTheme } from '../../src/contexts/themeContext';
 import { usePlan } from '../../src/contexts/planContext';
 import { useResponsive, SIDEBAR_WIDTH } from '../../src/hooks/useResponsive';
@@ -53,7 +53,7 @@ const RAIL_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 // código (los mensajes solo guardan 'read'/'delivered' por mensaje) —
 // añadirlo es una función nueva, no un re-skin, y se deja para otra sesión.
 function DesktopTabRail({ state, descriptors, navigation }: BottomTabBarProps) {
-    const { theme, borderStyle } = useTheme();
+    const { theme, borderStyle, fontFamilies } = useTheme();
     const { userData, partnerData, plan } = usePlan();
     const railBorderColor = borderStyle.key !== 'default' ? borderStyle.borderColor : theme.borderSoft;
     const activeBg = borderStyle.key !== 'default' ? borderStyle.background : theme.primaryTint;
@@ -143,7 +143,7 @@ function DesktopTabRail({ state, descriptors, navigation }: BottomTabBarProps) {
 }
 
 const TabLayout: React.FC = () => {
-    const { theme, borderStyle } = useTheme();
+    const { theme, borderStyle, fontFamilies } = useTheme();
     const { isDesktop } = useResponsive();
     // Sprint 7.8b: la tab bar hereda el estilo de borde de la pareja
     // (probador de tema) — mismo criterio que el hero de Inicio.
