@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-    View, Text, StyleSheet, Button,
+    View, Text, StyleSheet,
     ActivityIndicator, TextInput, TouchableOpacity,
     Alert,
     Modal, ScrollView, FlatList,
@@ -22,6 +22,7 @@ import { themes, fontFamilies, spacing, radii } from '../../src/config/theme'; /
 import * as Clipboard from 'expo-clipboard';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -35,6 +36,7 @@ import { registerPushToken } from '../../src/services/notifications';
 // las secciones que 7.3b todavía no re-skinea (historial, extrañómetro).
 import { Button as AppButton } from '../../src/components/Button';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
+import { TextField } from '../../src/components/TextField';
 
 // --- Constantes de Emojis (Free vs Premium) ---
 const MOODS_BASE = [
@@ -100,10 +102,20 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
         gap: 15
     },
     container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: theme.background, gap: 15 },
-    title: { fontSize: 24, fontWeight: 'bold', color: theme.text, textAlign: 'center', fontFamily: fontFamily },
-    subtitle: { fontSize: 18, color: theme.text, textAlign: 'center', marginBottom: 20, fontFamily: fontFamily },
-    codeBox: { backgroundColor: theme.inputBackground, paddingVertical: 15, paddingHorizontal: 20, borderRadius: 8, borderWidth: 1, borderColor: theme.borderColor, width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    codeText: { fontSize: 16, color: theme.primary, fontWeight: 'bold', textAlign: 'center' },
+    title: { fontFamily: fontFamilies.display, fontSize: 30, color: theme.text, textAlign: 'center' },
+    subtitle: { fontFamily: fontFamilies.body, fontSize: 14, color: theme.textMuted, textAlign: 'center' },
+
+    // --- Sprint 7.3b: Inicio sin pareja vinculada ---
+    noPartnerContainer: { flexGrow: 1, alignItems: 'center', padding: spacing.s20, gap: spacing.s16, backgroundColor: theme.bg },
+    inviteCard: { width: '100%', backgroundColor: theme.surface, borderRadius: radii.cardLg, padding: spacing.s22, alignItems: 'center', gap: spacing.s10 },
+    inviteIconBox: { width: 74, height: 74, borderRadius: radii.card, backgroundColor: theme.primaryTint, alignItems: 'center', justifyContent: 'center' },
+    inviteCardTitle: { fontFamily: fontFamilies.display, fontSize: 21, color: theme.text },
+    inviteCardCopy: { fontFamily: fontFamilies.body, fontSize: 13.5, lineHeight: 20, color: theme.textMuted, textAlign: 'center', maxWidth: 250 },
+    fieldLabel: { fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 0.9, textTransform: 'uppercase', color: theme.textMuted, alignSelf: 'flex-start', marginTop: spacing.s8 },
+    codeBox: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderWidth: 1, borderStyle: 'dashed', borderColor: '#B9B4E4', borderRadius: radii.field + 2, paddingVertical: spacing.s12, paddingHorizontal: spacing.s16 },
+    codeText: { fontFamily: fontFamilies.actionBold, fontSize: 24, letterSpacing: 5, color: theme.primary },
+    copyPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.s6, backgroundColor: theme.primaryTint, borderRadius: radii.chip + 4, paddingVertical: spacing.s6, paddingHorizontal: spacing.s10 },
+    copyPillText: { fontFamily: fontFamilies.bodyBold, fontSize: 12, color: theme.primary },
     // A-02: aviso de correo sin verificar (bloquea el emparejamiento en el
     // servidor, ver functions/src/pairing.ts). Colores fijos de advertencia,
     // no del tema, para que se distinga del resto de la pantalla en claro y oscuro.
@@ -111,8 +123,6 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
     verifyBannerText: { color: theme.text, fontSize: 14, fontFamily: fontFamily },
     verifyBannerActions: { flexDirection: 'row', justifyContent: 'space-between' },
     verifyBannerLink: { color: theme.primary, fontWeight: 'bold', fontSize: 13, fontFamily: fontFamily },
-    input: { height: 50, width: '100%', borderColor: theme.borderColor, borderWidth: 1, borderRadius: 8, paddingHorizontal: 15, fontSize: 16, color: theme.text, backgroundColor: theme.inputBackground, textAlign: 'center' },
-    infoText: { fontSize: 16, color: theme.text, fontFamily: fontFamily },
 
     // --- Sprint 7.3a: hero de aniversario ---
     heroCard: { width: '100%', borderRadius: radii.card, padding: spacing.s20, gap: spacing.s6 },
@@ -146,12 +156,6 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
     moodSheetCounter: { fontFamily: fontFamilies.body, fontSize: 11, color: theme.textFaint, alignSelf: 'flex-end', marginTop: spacing.s4 },
     moodSheetButtons: { flexDirection: 'row', gap: spacing.s10, marginTop: spacing.s12 },
 
-    missYouContainer: { alignItems: 'center', marginVertical: 20, gap: 5 },
-    countersRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 20 },
-    counterItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-    receivedText: { fontSize: 32, fontWeight: 'bold', color: theme.primary, fontFamily: fontFamily },
-    sentText: { fontSize: 18, color: theme.placeholder, fontFamily: fontFamily },
-    historyLink: { fontSize: 12, color: theme.link, marginTop: 10, fontFamily: fontFamily },
     modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.5)' },
     modalContainer: {
         width: '90%',
@@ -165,50 +169,17 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
     emojiSelector: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
     emojiButton: { padding: 8 },
     emojiInSelector: { fontSize: 36 },
-    tableHeader: {
-        flexDirection: 'row',
-        borderBottomWidth: 2,
-        borderBottomColor: theme.primary,
-        paddingBottom: 10,
-        marginBottom: 10,
-        width: '100%'
-    },
-    tableRow: {
-        flexDirection: 'row',
-        borderBottomWidth: 1,
-        borderBottomColor: theme.borderColor,
-        paddingVertical: 12,
-        width: '100%',
-        alignItems: 'center'
-    },
-    headerText: {
-        fontWeight: 'bold',
-        color: theme.text,
-        textAlign: 'center',
-        fontSize: 14,
-        fontFamily: fontFamily
-    },
-    dateColumn: {
-        flex: 2,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: 5
-    },
-    numberColumn: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center'
-    },
-    columnText: {
-        color: theme.text,
-        textAlign: 'center',
-        fontSize: 13,
-        fontFamily: fontFamily
-    },
-    historyContentContainer: {
-        flexShrink: 1,
-        width: '100%'
-    },
+    // --- Sprint 7.3b: historial del extrañómetro (dentro del sheet) ---
+    historyTableHeader: { flexDirection: 'row', paddingBottom: spacing.s10, width: '100%' },
+    historyHeaderText: { fontFamily: fontFamilies.bodyBold, fontSize: 10.5, letterSpacing: 0.7, color: theme.textFaint },
+    historyRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.bg, borderRadius: radii.chip + 4, paddingVertical: spacing.s10 + 1, paddingHorizontal: spacing.s4, marginBottom: spacing.s6 },
+    historyRowText: { fontFamily: fontFamilies.body, fontSize: 13, color: theme.text },
+    historyReceivedText: { color: theme.affection, fontFamily: fontFamilies.bodyBold },
+    historyPaywallRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.s10, borderWidth: 1, borderStyle: 'dashed', borderColor: theme.borderStrong, backgroundColor: theme.primaryTint, borderRadius: radii.chip + 4, padding: spacing.s12 },
+    historyPaywallTitle: { fontFamily: fontFamilies.bodyBold, fontSize: 13, color: theme.text },
+    historyPaywallSubtitle: { fontFamily: fontFamilies.body, fontSize: 11.5, color: theme.textMuted },
+    historyPaywallCta: { fontFamily: fontFamilies.bodyBold, fontSize: 12.5, color: theme.primary },
+
     historyFlatList: {
         width: '100%',
         maxHeight: 300
@@ -220,34 +191,15 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
         fontSize: 14,
         fontFamily: fontFamily
     },
-    closeButtonContainer: {
-        marginTop: 15,
-        width: '100%'
-    },
-    missYouButtonContainer: {
-        marginTop: 15,
-        marginBottom: 10,
-        alignItems: 'center',
-    },
-    missYouButton: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: theme.primary,
-        justifyContent: 'center',
-        alignItems: 'center',
-        shadowColor: theme.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 5,
-        elevation: 8,
-    },
-    missYouButtonText: {
-        color: theme.primary,
-        fontSize: 14,
-        fontWeight: 'bold',
-        marginTop: 10,
-    }
+    // --- Sprint 7.3b: tarjeta del extrañómetro ---
+    missYouCard: { width: '100%', backgroundColor: theme.surface, borderRadius: radii.card, borderWidth: 1, borderColor: theme.borderSoft, paddingVertical: spacing.s22, alignItems: 'center', gap: spacing.s12 },
+    missYouCountsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.s20 },
+    missYouCountItem: { alignItems: 'center', gap: 2 },
+    missYouPrimaryCount: { fontFamily: fontFamilies.display, fontSize: 40, lineHeight: 40, color: theme.affection },
+    missYouSecondaryCount: { fontFamily: fontFamilies.bodySemiBold, fontSize: 22, color: theme.textFaint },
+    missYouCountLabel: { fontFamily: fontFamilies.bodySemiBold, fontSize: 10.5, color: theme.textMuted },
+    missYouDivider: { width: 1, height: 36, backgroundColor: theme.borderSoft },
+    historyLink: { fontFamily: fontFamilies.bodyBold, fontSize: 12.5, color: theme.primary },
 });
 
 // --- Componente Principal ---
@@ -273,6 +225,7 @@ const Home: React.FC = () => {
     const [relationshipDuration, setRelationshipDuration] = useState<string | null>(null);
     const [anniversaryEyebrow, setAnniversaryEyebrow] = useState<string | null>(null);
     const [isMoodPaywallVisible, setIsMoodPaywallVisible] = useState(false);
+    const [isHistoryPaywallVisible, setIsHistoryPaywallVisible] = useState(false);
     const [isEmailVerified, setIsEmailVerified] = useState(true);
     const [isResendingVerification, setIsResendingVerification] = useState(false);
     const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -500,16 +453,20 @@ const Home: React.FC = () => {
         } catch { Toast.show({ type: 'error', text1: 'Error al guardar la fecha' }); }
     }, [user, userData, hideDatePicker]);
 
+    // Rebote al tocar (Sprint 7.3b, ver README del bundle de diseño):
+    // scale .92 -> 1.06 -> 1, 220ms en total.
     const pulseHeart = () => {
         Animated.sequence([
-            Animated.timing(pulseAnim, { toValue: 1.3, duration: 200, useNativeDriver: true }),
-            Animated.timing(pulseAnim, { toValue: 1.0, duration: 200, useNativeDriver: true })
+            Animated.timing(pulseAnim, { toValue: 0.92, duration: 80, useNativeDriver: true }),
+            Animated.timing(pulseAnim, { toValue: 1.06, duration: 80, useNativeDriver: true }),
+            Animated.timing(pulseAnim, { toValue: 1, duration: 60, useNativeDriver: true }),
         ]).start();
     };
 
     const handleSendMissYou = useCallback(async () => {
         if (!userData || !userData.partnerId || !user) return;
         pulseHeart();
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         const currentUserUid = user.uid;
         const chatId = [currentUserUid, userData.partnerId].sort().join('_');
         const today = getTodayDateKey();
@@ -544,9 +501,9 @@ const Home: React.FC = () => {
     if (userData && !userData.partnerId) {
         return (
             <SafeAreaView style={styles.safeArea}>
-                <View style={styles.container}>
-                    <Text style={styles.title}>¡Hola, {userData.displayName}!</Text>
-                    <Text style={styles.subtitle}>Para empezar, conecta con tu pareja.</Text>
+                <ScrollView contentContainerStyle={styles.noPartnerContainer}>
+                    <Text style={styles.title}>Hola, {userData.displayName}</Text>
+                    <Text style={styles.subtitle}>Falta alguien aquí.</Text>
 
                     {!isEmailVerified && (
                         <View style={styles.verifyBanner}>
@@ -564,24 +521,36 @@ const Home: React.FC = () => {
                         </View>
                     )}
 
-                    <Text style={styles.infoText}>Tu código de conexión:</Text>
-                    <View style={styles.codeBox}>
-                        <Text style={styles.codeText}>{userData?.invitationCode ?? '——————'}</Text>
-                        <TouchableOpacity onPress={handleCopyCode}>
-                            <Feather name="copy" size={24} color={theme.primary} />
-                        </TouchableOpacity>
+                    <View style={styles.inviteCard}>
+                        <View style={styles.inviteIconBox}>
+                            <Ionicons name="heart-outline" size={38} color={theme.primary} />
+                        </View>
+                        <Text style={styles.inviteCardTitle}>Vincula a tu pareja</Text>
+                        <Text style={styles.inviteCardCopy}>
+                            Comparte tu código, o ingresa el suyo, para empezar a compartir este espacio.
+                        </Text>
+
+                        <Text style={styles.fieldLabel}>Tu código</Text>
+                        <View style={styles.codeBox}>
+                            <Text style={styles.codeText}>{userData?.invitationCode ?? '——————'}</Text>
+                            <TouchableOpacity style={styles.copyPill} onPress={handleCopyCode}>
+                                <Feather name="copy" size={14} color={theme.primary} />
+                                <Text style={styles.copyPillText}>Copiar</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={styles.fieldLabel}>Código de tu pareja</Text>
+                        <TextField
+                            value={partnerCode}
+                            onChangeText={setPartnerCode}
+                            placeholder="– – – – – –"
+                            autoCapitalize="characters"
+                            maxLength={6}
+                            textAlign="center"
+                        />
+                        <AppButton title="Conectar" onPress={handleConnectPartner} style={{ width: '100%' }} />
                     </View>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Introduce el código de tu pareja"
-                        placeholderTextColor={theme.placeholder}
-                        value={partnerCode}
-                        onChangeText={setPartnerCode}
-                        autoCapitalize="characters"
-                        maxLength={6}
-                    />
-                    <Button title="Conectar" onPress={handleConnectPartner} color={theme.primary} />
-                </View>
+                </ScrollView>
             </SafeAreaView>
         );
     }
@@ -681,49 +650,58 @@ const Home: React.FC = () => {
                         visible={isHistoryVisible}
                         onRequestClose={() => setIsHistoryVisible(false)}
                     >
-                        <View style={styles.modalOverlay}>
-                            <View style={[styles.modalContainer, {backgroundColor: theme.background}]}>
-                                <Text style={[styles.modalTitle, {color: theme.text, fontFamily: fontFamily}]}>Historial Extrañómetro</Text>
-                                <View style={styles.historyContentContainer}>
-                                    <View style={styles.tableHeader}>
-                                        <View style={styles.dateColumn}><Text style={[styles.headerText, {color: theme.text, fontFamily: fontFamily}]}>Fecha</Text></View>
-                                        <View style={styles.numberColumn}><Text style={[styles.headerText, {color: theme.text, fontFamily: fontFamily}]}>Recibidos</Text></View>
-                                        <View style={styles.numberColumn}><Text style={[styles.headerText, {color: theme.text, fontFamily: fontFamily}]}>Enviados</Text></View>
-                                    </View>
-                                    <FlatList
-                                        style={styles.historyFlatList}
-                                        data={historyDataToShow} // --- MOSTRANDO DATOS LIMITADOS/COMPLETOS ---
-                                        keyExtractor={item => item.id}
-                                        showsVerticalScrollIndicator={true}
-                                        nestedScrollEnabled={true}
-                                        renderItem={({ item }) => (
-                                            <View style={[styles.tableRow, {borderBottomColor: theme.borderColor}]}>
-                                                <View style={styles.dateColumn}><Text style={[styles.columnText, {color: theme.text, fontFamily: fontFamily}]} numberOfLines={1}>{item.id}</Text></View>
-                                                <View style={styles.numberColumn}><Text style={[styles.columnText, {color: theme.text, fontFamily: fontFamily}]}>{item[partnerId] || 0}</Text></View>
-                                                <View style={styles.numberColumn}><Text style={[styles.columnText, {color: theme.text, fontFamily: fontFamily}]}>{item[myId] || 0}</Text></View>
+                        <View style={styles.moodSheetOverlay}>
+                            <View style={[styles.moodSheetContainer, { maxHeight: '78%' }]}>
+                                <View style={styles.moodSheetHandle} />
+                                <Text style={styles.moodSheetTitle}>Historial del extrañómetro</Text>
+                                <View style={styles.historyTableHeader}>
+                                    <Text style={[styles.historyHeaderText, { flex: 2 }]}>FECHA</Text>
+                                    <Text style={[styles.historyHeaderText, { flex: 1, textAlign: 'center' }]}>RECIBIDOS</Text>
+                                    <Text style={[styles.historyHeaderText, { flex: 1, textAlign: 'center' }]}>ENVIADOS</Text>
+                                </View>
+                                <FlatList
+                                    style={styles.historyFlatList}
+                                    data={historyDataToShow} // --- MOSTRANDO DATOS LIMITADOS/COMPLETOS ---
+                                    keyExtractor={item => item.id}
+                                    showsVerticalScrollIndicator={true}
+                                    nestedScrollEnabled={true}
+                                    renderItem={({ item }) => (
+                                        <View style={styles.historyRow}>
+                                            <Text style={[styles.historyRowText, { flex: 2 }]} numberOfLines={1}>{item.id}</Text>
+                                            <Text style={[styles.historyRowText, styles.historyReceivedText, { flex: 1, textAlign: 'center' }]}>{item[partnerId] || 0}</Text>
+                                            <Text style={[styles.historyRowText, { flex: 1, textAlign: 'center' }]}>{item[myId] || 0}</Text>
+                                        </View>
+                                    )}
+                                    ListEmptyComponent={<Text style={[styles.emptyHistoryText, {fontFamily: fontFamily}]}>Aún no hay historial.</Text>}
+                                    ListFooterComponent={plan === 'free' ? (
+                                        <TouchableOpacity style={styles.historyPaywallRow} onPress={() => setIsHistoryPaywallVisible(true)}>
+                                            <Ionicons name="lock-closed" size={16} color={theme.primary} />
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.historyPaywallTitle}>Historial completo</Text>
+                                                <Text style={styles.historyPaywallSubtitle}>Free muestra los últimos 3 días</Text>
                                             </View>
-                                        )}
-                                        ListEmptyComponent={<Text style={[styles.emptyHistoryText, {fontFamily: fontFamily}]}>Aún no hay historial.</Text>}
-                                        ListFooterComponent={plan === 'free' ? ( // --- PAYWALL EN EL HISTORIAL ---
-                                            <TouchableOpacity onPress={() => router.push('/(tabs)/config')} style={{padding: 15, alignItems: 'center'}}>
-                                                <Ionicons name="lock-closed" size={16} color={theme.primary} />
-                                                <Text style={{color: theme.primary, fontFamily: fontFamily, textAlign: 'center', marginTop: 5}}>
-                                                    Actualiza a Premium para ver el historial completo.
-                                                </Text>
-                                            </TouchableOpacity>
-                                        ) : null}
-                                    />
-                                </View>
-                                <View style={styles.closeButtonContainer}>
-                                    <Button
-                                        title="Cerrar"
-                                        onPress={() => setIsHistoryVisible(false)}
-                                        color={theme.primary}
-                                    />
-                                </View>
+                                            <Text style={styles.historyPaywallCta}>Desbloquear</Text>
+                                        </TouchableOpacity>
+                                    ) : null}
+                                />
+                                <AppButton title="Cerrar" onPress={() => setIsHistoryVisible(false)} variant="outline" style={{ marginTop: spacing.s12 }} />
                             </View>
                         </View>
                     </Modal>
+
+                    <PaywallSheet
+                        visible={isHistoryPaywallVisible}
+                        onClose={() => setIsHistoryPaywallVisible(false)}
+                        onUpgradePress={() => { setIsHistoryPaywallVisible(false); router.push('/(tabs)/config'); }}
+                        icon="time"
+                        title="Desbloquea el historial completo"
+                        description="Mira cuánto se extrañaron desde el primer día, no solo los últimos 3."
+                        benefits={[
+                            'Historial ilimitado del extrañómetro',
+                            '22 emojis adicionales, incluida una categoría atrevida',
+                            'Personalización de tema para los dos',
+                        ]}
+                    />
 
                     <DateTimePickerModal
                         isVisible={isDatePickerVisible}
@@ -823,33 +801,28 @@ const Home: React.FC = () => {
                         ]}
                     />
 
-                    <View style={styles.missYouContainer}>
-                        <Text style={styles.subtitle}>Extrañómetro</Text>
-                        <View style={styles.countersRow}>
-                            <View style={styles.counterItem}>
-                                <Ionicons name="heart" size={32} color={theme.primary} />
-                                <Text style={styles.receivedText}>{receivedCount}</Text>
+                    {/* Sprint 7.3b: el corazón de la tarjeta ES el botón de enviar —
+                        ya no hay un botón "¡Te extraño!" aparte debajo. */}
+                    <View style={styles.missYouCard}>
+                        <Pressable onPress={handleSendMissYou}>
+                            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                                <Ionicons name="heart" size={82} color={theme.affection} />
+                            </Animated.View>
+                        </Pressable>
+                        <View style={styles.missYouCountsRow}>
+                            <View style={styles.missYouCountItem}>
+                                <Text style={styles.missYouPrimaryCount}>{receivedCount}</Text>
+                                <Text style={styles.missYouCountLabel}>te extrañaron hoy</Text>
                             </View>
-                            <View style={styles.counterItem}>
-                                <Ionicons name="heart-outline" size={18} color={theme.placeholder} />
-                                <Text style={styles.sentText}>{sentCount}</Text>
+                            <View style={styles.missYouDivider} />
+                            <View style={styles.missYouCountItem}>
+                                <Text style={styles.missYouSecondaryCount}>{sentCount}</Text>
+                                <Text style={styles.missYouCountLabel}>extrañaste tú</Text>
                             </View>
                         </View>
                         <TouchableOpacity onPress={() => setIsHistoryVisible(true)}>
                             <Text style={styles.historyLink}>Ver historial</Text>
                         </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.missYouButtonContainer}>
-                        <Pressable onPress={handleSendMissYou}>
-                            <Animated.View style={[
-                                styles.missYouButton,
-                                { transform: [{ scale: pulseAnim }] }
-                            ]}>
-                                <Ionicons name="heart" size={40} color={theme.white} />
-                            </Animated.View>
-                        </Pressable>
-                        <Text style={styles.missYouButtonText}>¡Te extraño!</Text>
                     </View>
 
                 </ScrollView>

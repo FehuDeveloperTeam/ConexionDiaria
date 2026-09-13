@@ -26,6 +26,8 @@ export const TextField: React.FC<{
     keyboardType?: TextInputProps['keyboardType'];
     autoCapitalize?: TextInputProps['autoCapitalize'];
     returnKeyType?: TextInputProps['returnKeyType'];
+    maxLength?: number;
+    textAlign?: TextInputProps['textAlign'];
     onSubmitEditing?: (e: NativeSyntheticEvent<TextInputSubmitEditingEventData>) => void;
 }> = ({
     label,
@@ -38,6 +40,8 @@ export const TextField: React.FC<{
     keyboardType,
     autoCapitalize,
     returnKeyType,
+    maxLength,
+    textAlign,
     onSubmitEditing,
 }) => {
     const { theme } = useTheme();
@@ -90,6 +94,8 @@ export const TextField: React.FC<{
                     keyboardType={keyboardType}
                     autoCapitalize={autoCapitalize}
                     returnKeyType={returnKeyType}
+                    maxLength={maxLength}
+                    textAlign={textAlign}
                     onSubmitEditing={onSubmitEditing}
                 />
                 {isPassword && (
