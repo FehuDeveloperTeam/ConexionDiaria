@@ -3,7 +3,7 @@
 // con navegación por miniaturas y acciones (descargar/compartir/borrar).
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-    View, Text, ScrollView, Dimensions,
+    View, Text, ScrollView, useWindowDimensions,
     ActivityIndicator, Image, TouchableOpacity, Alert,
     Modal,
 } from 'react-native';
@@ -26,12 +26,11 @@ import { EmptyState } from '../../src/components/EmptyState';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
-import { useResponsive } from '../../src/hooks/useResponsive';
+import { useResponsive, CONTENT_MAX_WIDTH } from '../../src/hooks/useResponsive';
 import { useRouter } from 'expo-router';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_GAP = 6;
-const CELL_SIZE = (SCREEN_WIDTH - spacing.s22 * 2 - GRID_GAP * 2) / 3;
+const GRID_COLUMNS = 2;
 
 const uriToBlob = (uri: string): Promise<Blob> => {
     return new Promise((resolve, reject) => {
@@ -60,7 +59,16 @@ const monthKeyOf = (date: Date) =>
 const AlbumScreen: React.FC = () => {
     const { theme, isDarkMode: isDark, fontFamilies } = useTheme();
     const { isDesktop } = useResponsive();
+    const { width: windowWidth, height: windowHeight } = useWindowDimensions();
     const router = useRouter();
+
+    // El grid vive dentro de <DesktopContentWrap>, que en escritorio limita
+    // el ancho a CONTENT_MAX_WIDTH — antes esto se calculaba con el ancho
+    // completo de la ventana, así que en escritorio las celdas quedaban
+    // enormes y el grid de 3 columnas terminaba viéndose como una sola
+    // columna apilada (regresión de 7.6b al envolver Álbum en 8.3).
+    const containerWidth = isDesktop ? Math.min(windowWidth, CONTENT_MAX_WIDTH) : windowWidth;
+    const CELL_SIZE = (containerWidth - spacing.s22 * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
 
     const { user, userData } = usePlan();
     const [photos, setPhotos] = useState<DocumentData[]>([]);
@@ -420,14 +428,19 @@ const AlbumScreen: React.FC = () => {
 
                             <View style={{ flex: 1, justifyContent: 'center' }}>
                                 <ScrollView
+                                    style={{ flex: 1 }}
                                     contentContainerStyle={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
                                     maximumZoomScale={3}
                                     minimumZoomScale={1}
                                     centerContent
                                 >
+                                    {/* Antes esto forzaba una caja cuadrada de lado = ancho de
+                                        ventana (mismo valor en width Y height) — en pantallas más
+                                        anchas que altas esa caja no cabía verticalmente y el visor
+                                        se veía negro, con la foto recortada fuera de vista. */}
                                     <Image
                                         source={{ uri: currentPhoto.imageUrl }}
-                                        style={{ width: SCREEN_WIDTH, height: SCREEN_WIDTH, resizeMode: 'contain' }}
+                                        style={{ width: windowWidth * 0.92, height: windowHeight * 0.62, resizeMode: 'contain' }}
                                     />
                                 </ScrollView>
 

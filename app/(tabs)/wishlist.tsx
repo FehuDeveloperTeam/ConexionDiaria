@@ -247,7 +247,7 @@ const WishlistScreen: React.FC = () => {
             <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingHorizontal: spacing.s22, gap: spacing.s8, paddingBottom: spacing.s10 }}
+                contentContainerStyle={{ paddingHorizontal: spacing.s22, gap: spacing.s8, paddingBottom: spacing.s10, alignItems: 'center' }}
             >
                 {['Todos', ...WISH_TYPES].map(type => {
                     const active = filterType === type;

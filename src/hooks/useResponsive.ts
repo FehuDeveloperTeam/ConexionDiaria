@@ -6,7 +6,7 @@ import { useWindowDimensions } from 'react-native';
 
 export const DESKTOP_BREAKPOINT = 760;
 export const WIDE_BREAKPOINT = 1080;
-export const CONTENT_MAX_WIDTH = 720;
+export const CONTENT_MAX_WIDTH = 960;
 export const SIDEBAR_WIDTH = 248;
 
 export function useResponsive() {
