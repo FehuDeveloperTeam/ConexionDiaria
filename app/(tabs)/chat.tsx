@@ -15,6 +15,7 @@ import { usePlan } from '../../src/contexts/planContext';
 import { ExtendedMessage } from '../../src/screens/chat/types';
 import { MessageStatus } from '../../src/screens/chat/components/MessageStatus';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
+import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 import { ImageViewerModal } from '../../src/screens/chat/components/ImageViewerModal';
 import { VideoViewerModal } from '../../src/screens/chat/components/VideoViewerModal';
 import { FileViewerModal } from '../../src/screens/chat/components/FileViewerModal';
@@ -500,6 +501,7 @@ const ChatScreen = () => {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
+            <DesktopContentWrap>
             {/* Header */}
             <View style={{
                 flexDirection: 'row',
@@ -1103,6 +1105,7 @@ const ChatScreen = () => {
             <Toast />
             </View>
             </KeyboardAvoidingView>
+            </DesktopContentWrap>
         </SafeAreaView>
     );
 };

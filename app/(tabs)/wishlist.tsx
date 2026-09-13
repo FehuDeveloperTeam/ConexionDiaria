@@ -24,6 +24,8 @@ import { EmptyState } from '../../src/components/EmptyState';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
+import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
+import { useResponsive } from '../../src/hooks/useResponsive';
 
 const WISH_TYPES = ['Aniversario', 'Cumpleaños', 'Navidad', 'San Valentín', 'Solo porque sí', 'Otro'];
 const FREE_LIMIT = 10;
@@ -46,6 +48,7 @@ const WishlistScreen: React.FC = () => {
     const router = useRouter();
     const { plan, user, userData, partnerData, isLoading } = usePlan();
     const { theme, isDarkMode: isDark } = useTheme();
+    const { isDesktop } = useResponsive();
 
     const [allItems, setAllItems] = useState<WishItem[]>([]);
     const [filterType, setFilterType] = useState<string>('Todos');
@@ -224,6 +227,7 @@ const WishlistScreen: React.FC = () => {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
+            <DesktopContentWrap>
             <View style={{ paddingHorizontal: spacing.s22, paddingTop: spacing.s16, paddingBottom: spacing.s10 }}>
                 <Text style={{ fontFamily: fontFamilies.display, fontSize: 30, color: theme.text }}>Deseos</Text>
                 <Text style={{
@@ -408,13 +412,13 @@ const WishlistScreen: React.FC = () => {
                 }
             />
 
-            {/* FAB */}
+            {/* FAB — en escritorio no hay tab bar que despejar abajo */}
             <TouchableOpacity
                 onPress={openAddItemModal}
                 style={{
                     position: 'absolute',
                     right: 20,
-                    bottom: 118,
+                    bottom: isDesktop ? 24 : 118,
                     width: 58,
                     height: 58,
                     borderRadius: 20,
@@ -426,6 +430,7 @@ const WishlistScreen: React.FC = () => {
             >
                 <Ionicons name={limitReached ? 'lock-closed' : 'add'} size={28} color={theme.white} />
             </TouchableOpacity>
+            </DesktopContentWrap>
 
             {/* Menú contextual flotante — Editar (ambos) / Eliminar (solo autor) */}
             <Modal visible={!!contextMenuItem} transparent animationType="fade" onRequestClose={() => setContextMenuItem(null)}>

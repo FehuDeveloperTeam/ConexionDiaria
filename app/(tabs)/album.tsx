@@ -25,6 +25,8 @@ import { useTheme } from '../../src/contexts/themeContext';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
+import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
+import { useResponsive } from '../../src/hooks/useResponsive';
 import { useRouter } from 'expo-router';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -57,6 +59,7 @@ const monthKeyOf = (date: Date) =>
 
 const AlbumScreen: React.FC = () => {
     const { theme, isDarkMode: isDark } = useTheme();
+    const { isDesktop } = useResponsive();
     const router = useRouter();
 
     const { user, userData } = usePlan();
@@ -273,6 +276,7 @@ const AlbumScreen: React.FC = () => {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
+            <DesktopContentWrap>
             <View style={{ paddingHorizontal: spacing.s22, paddingTop: spacing.s16, paddingBottom: spacing.s10 }}>
                 <Text style={{ fontFamily: fontFamilies.display, fontSize: 30, color: theme.text }}>Álbum</Text>
                 <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 12, color: theme.textMuted, marginTop: spacing.s4 }}>
@@ -368,13 +372,13 @@ const AlbumScreen: React.FC = () => {
                 ))}
             </ScrollView>
 
-            {/* CTA Agregar */}
+            {/* CTA Agregar — en escritorio no hay tab bar que despejar abajo */}
             <TouchableOpacity
                 onPress={handleAddPhoto}
                 style={{
                     position: 'absolute',
                     right: 20,
-                    bottom: 118,
+                    bottom: isDesktop ? 24 : 118,
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: spacing.s8,
@@ -390,6 +394,7 @@ const AlbumScreen: React.FC = () => {
                 <Ionicons name="image" size={20} color={theme.white} />
                 <Text style={{ fontFamily: fontFamilies.actionBold, fontSize: 15, color: theme.white }}>Agregar</Text>
             </TouchableOpacity>
+            </DesktopContentWrap>
 
             {/* Visor full-screen */}
             <Modal visible={viewerIndex !== null} transparent animationType="fade" onRequestClose={() => setViewerIndex(null)}>

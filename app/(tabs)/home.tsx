@@ -37,6 +37,7 @@ import { registerPushToken } from '../../src/services/notifications';
 import { Button as AppButton } from '../../src/components/Button';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
 import { TextField } from '../../src/components/TextField';
+import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 
 // --- Constantes de Emojis (Free vs Premium) ---
 const MOODS_BASE = [
@@ -511,6 +512,7 @@ const Home: React.FC = () => {
     if (userData && !userData.partnerId) {
         return (
             <SafeAreaView style={styles.safeArea}>
+                <DesktopContentWrap>
                 <ScrollView contentContainerStyle={styles.noPartnerContainer}>
                     <Text style={styles.title}>Hola, {userData.displayName}</Text>
                     <Text style={styles.subtitle}>Falta alguien aquí.</Text>
@@ -561,6 +563,7 @@ const Home: React.FC = () => {
                         <AppButton title="Conectar" onPress={handleConnectPartner} style={{ width: '100%' }} />
                     </View>
                 </ScrollView>
+                </DesktopContentWrap>
             </SafeAreaView>
         );
     }
@@ -581,6 +584,7 @@ const Home: React.FC = () => {
 
         return (
             <SafeAreaView style={styles.safeArea}>
+                <DesktopContentWrap>
                 <ScrollView contentContainerStyle={styles.scrollContainer}>
 
                     <Modal
@@ -874,6 +878,7 @@ const Home: React.FC = () => {
                     </View>
 
                 </ScrollView>
+                </DesktopContentWrap>
             </SafeAreaView>
         );
     }

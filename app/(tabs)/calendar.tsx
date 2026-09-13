@@ -26,6 +26,8 @@ import { Button } from '../../src/components/Button';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
+import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
+import { useResponsive } from '../../src/hooks/useResponsive';
 
 // "L M M J V S D" (handoff): semana empieza en lunes y ambos martes/
 // miércoles se abrevian "M" — el dayNamesShort por defecto ('X' para
@@ -71,6 +73,7 @@ const MESES_ABREV = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SE
 
 const CalendarScreen: React.FC = () => {
     const { theme, isDarkMode: isDark } = useTheme();
+    const { isDesktop } = useResponsive();
 
     const { user, userData, plan, isLoading: planLoading } = usePlan();
     const [loading, setLoading] = useState(true);
@@ -429,6 +432,7 @@ const CalendarScreen: React.FC = () => {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
+            <DesktopContentWrap>
             <ScrollView contentContainerStyle={{ padding: spacing.s22, paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
                 <Text style={{ fontFamily: fontFamilies.display, fontSize: 30, color: theme.text, marginBottom: spacing.s16 }}>
                     Calendario
@@ -574,13 +578,15 @@ const CalendarScreen: React.FC = () => {
                 )}
             </ScrollView>
 
-            {/* FAB */}
+            {/* FAB — en móvil a 118 para despejar la tab bar inferior (antes
+                quedaba en 20, tapado detrás de la tab bar); en escritorio no
+                hay tab bar que despejar. */}
             <TouchableOpacity
                 onPress={openEventModal}
                 style={{
                     position: 'absolute',
                     right: 20,
-                    bottom: 20,
+                    bottom: isDesktop ? 24 : 118,
                     width: 58,
                     height: 58,
                     borderRadius: 20,
@@ -594,6 +600,7 @@ const CalendarScreen: React.FC = () => {
             >
                 <Ionicons name="add" size={28} color={theme.white} />
             </TouchableOpacity>
+            </DesktopContentWrap>
 
             {/* Modal de nuevo evento — bottom sheet */}
             <Modal animationType="slide" transparent visible={isEventModalVisible} onRequestClose={closeEventModal}>
