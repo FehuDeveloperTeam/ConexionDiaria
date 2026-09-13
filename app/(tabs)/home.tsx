@@ -46,6 +46,16 @@ const MOODS_BASE = [
     { emoji: '🤔', name: 'Pensativo/a' }, { emoji: '😐', name: 'Neutral' },
 ];
 
+// Adelanto de "picante" para el plan free — decisión explícita del
+// Product Owner: los picantes son parte del enganche premium, pero el
+// free también debe tener acceso a algunos (de la librería de emoji ya
+// disponible, sin depender de un paquete nuevo). Usa emojis que NO están
+// en MOODS_PREMIUM_ADDON, para no restarle nada al set premium (que sigue
+// siendo el más grande y el más intenso — ver PaywallSheet más abajo).
+const MOODS_FREE_BONUS = [
+    { emoji: '💋', name: 'Besucón/a' }, { emoji: '🙈', name: 'Pícaro/a' },
+];
+
 const MOODS_PREMIUM_ADDON = [
     // Afectivos y Estándar
     { emoji: '🥳', name: 'Festivo/a' }, { emoji: '🤩', name: 'Asombrado/a' },
@@ -563,9 +573,10 @@ const Home: React.FC = () => {
         
         // --- LÓGICA DE EMOJIS (FREEMIUM) ---
         // Sprint 7.3a: los 8 emojis base ya se eligen directo desde la fila
-        // rápida (quickMoodRow); este modal ahora solo muestra los 22
-        // adicionales premium ("ver más").
-        const moodListToShow = MOODS_PREMIUM_ADDON;
+        // rápida (quickMoodRow); este modal muestra el resto: los 22
+        // adicionales premium, o el adelanto de 2 "picantes" en free (ver
+        // MOODS_FREE_BONUS más arriba).
+        const moodListToShow = plan === 'premium' ? MOODS_PREMIUM_ADDON : MOODS_FREE_BONUS;
         const historyDataToShow = missYouHistory; // El 'useEffect' ya ha aplicado el límite
 
         return (
@@ -583,8 +594,10 @@ const Home: React.FC = () => {
                             activeOpacity={1}
                             onPressOut={() => setIsMoodSelectorVisible(false)}
                         >
-                            <TouchableOpacity style={[styles.modalContainer, {maxHeight: '40%', backgroundColor: theme.background}]} activeOpacity={1}>
-                                <Text style={[styles.modalTitle, {color: theme.text, fontFamily: fontFamily}]}>Más ánimos</Text>
+                            <TouchableOpacity style={[styles.modalContainer, {maxHeight: '45%', backgroundColor: theme.background}]} activeOpacity={1}>
+                                <Text style={[styles.modalTitle, {color: theme.text, fontFamily: fontFamily}]}>
+                                    {plan === 'premium' ? 'Más ánimos' : 'Un adelanto 🌶️'}
+                                </Text>
                                 <ScrollView style={styles.emojiScrollView}>
                                     <View style={styles.emojiSelector}>
                                         {/* --- MOSTRANDO LISTA DINÁMICA DE EMOJIS --- */}
@@ -598,6 +611,25 @@ const Home: React.FC = () => {
                                             </TouchableOpacity>
                                         ))}
                                     </View>
+                                    {plan !== 'premium' && (
+                                        <TouchableOpacity
+                                            style={{
+                                                flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
+                                                borderWidth: 1, borderStyle: 'dashed', borderColor: theme.borderStrong,
+                                                backgroundColor: theme.primaryTint, borderRadius: radii.chip + 4,
+                                                padding: spacing.s12, marginTop: spacing.s10,
+                                            }}
+                                            onPress={() => {
+                                                setIsMoodSelectorVisible(false);
+                                                setIsMoodPaywallVisible(true);
+                                            }}
+                                        >
+                                            <Ionicons name="lock-closed" size={16} color={theme.primary} />
+                                            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 12.5, color: theme.text, flex: 1 }}>
+                                                +20 ánimos más, incluida toda la categoría atrevida
+                                            </Text>
+                                        </TouchableOpacity>
+                                    )}
                                 </ScrollView>
                             </TouchableOpacity>
                         </TouchableOpacity>
@@ -776,7 +808,10 @@ const Home: React.FC = () => {
                                 <Ionicons name="add" size={20} color={theme.primary} />
                             </TouchableOpacity>
                         ) : (
-                            <TouchableOpacity style={styles.quickMoodLockCircle} onPress={() => setIsMoodPaywallVisible(true)}>
+                            // El candado sigue marcando que hay más — pero ahora abre el
+                            // mismo selector con el adelanto de 2 picantes (MOODS_FREE_BONUS)
+                            // en vez de ir directo al paywall.
+                            <TouchableOpacity style={styles.quickMoodLockCircle} onPress={openMoodSelector}>
                                 <Ionicons name="lock-closed" size={16} color={theme.primary} />
                             </TouchableOpacity>
                         )}
