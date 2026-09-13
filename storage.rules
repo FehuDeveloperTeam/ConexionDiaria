@@ -1,8 +1,80 @@
 rules_version = '2';
+
+// REGLAS DE STORAGE PARA CONEXIÓN DIARIA
+//
+// Antes esto era una sola regla, 'allow read, write: if request.auth != null'
+// sobre /{allPaths=**}: cualquier persona que se registrara podía listar,
+// descargar, sobrescribir y BORRAR los archivos de cualquier pareja — fotos
+// del álbum, imágenes del chat, notas de voz y avatares. Las rutas se arman
+// con los UID, así que eran perfectamente derivables (hallazgo F-01).
+//
+// Ahora cada ruta que la app usa de verdad tiene su propia regla, y todo lo
+// demás queda cerrado.
+//
+// Detalle importante: las URLs que devuelve getDownloadURL() llevan un token y
+// NO pasan por estas reglas. Las fotos se siguen mostrando igual, porque la
+// app las pinta con esa URL guardada en Firestore (que sí está protegida por
+// las reglas de Firestore). Lo que estas reglas cortan es el acceso por SDK:
+// enumerar rutas ajenas, bajarlas, pisarlas o borrarlas.
+
 service firebase.storage {
   match /b/{bucket}/o {
+
+    function estaAutenticado() {
+      return request.auth != null;
+    }
+
+    // El id de la relación es 'uid1_uid2' (ordenados), igual que en Firestore.
+    function esDeLaRelacion(relationshipId) {
+      return estaAutenticado()
+        && request.auth.uid in relationshipId.split('_');
+    }
+
+    // --- Foto de perfil ---
+    // Solo su dueño, incluso para leer: la pareja la ve igual, porque se
+    // muestra con la URL de descarga guardada en el perfil, no vía SDK.
+    match /avatars/{userId}/{archivo} {
+      allow read: if estaAutenticado() && request.auth.uid == userId;
+
+      allow create, update: if estaAutenticado()
+        && request.auth.uid == userId
+        && request.resource.size < 5 * 1024 * 1024;
+
+      allow delete: if estaAutenticado() && request.auth.uid == userId;
+    }
+
+    // --- Álbum compartido ---
+    match /albums/{relationshipId}/{archivo} {
+      allow read: if esDeLaRelacion(relationshipId);
+
+      allow create, update: if esDeLaRelacion(relationshipId)
+        && request.resource.size < 15 * 1024 * 1024;
+
+      // Borrar el archivo lo puede hacer cualquiera de los dos. El control de
+      // "solo el autor borra" vive en el documento de Firestore; replicarlo
+      // acá exigiría una lectura a Firestore por cada borrado, y el peor caso
+      // queda dentro de la propia pareja.
+      allow delete: if esDeLaRelacion(relationshipId);
+    }
+
+    // --- Adjuntos del chat: /images, /audios y /files ---
+    match /relationships/{relationshipId}/{tipo}/{archivo} {
+      allow read: if esDeLaRelacion(relationshipId);
+
+      // Sin restricción de contentType a propósito: por /files viajan
+      // documentos de cualquier tipo, y el cliente hoy no fija el
+      // contentType al subir (si algún día lo fija, se puede endurecer).
+      // El tope de tamaño sí importa: sin él, un miembro puede inflar la
+      // cuenta de Storage sin límite.
+      allow create, update: if esDeLaRelacion(relationshipId)
+        && request.resource.size < 50 * 1024 * 1024;
+
+      allow delete: if esDeLaRelacion(relationshipId);
+    }
+
+    // --- Todo lo que no esté declarado arriba, cerrado ---
     match /{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }

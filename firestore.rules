@@ -116,8 +116,18 @@ service cloud.firestore {
     // perfil privado del otro usuario (ver Sprint 2 / src/services/invitationCode.ts).
     // El documento solo contiene { uid, createdAt } — nada personal.
     match /invitationCodes/{code} {
-      // Cualquier usuario autenticado puede resolver un código.
-      allow read: if isAuthenticated();
+      // Resolver un código puntual que alguien te pasó: sí.
+      //
+      // Enumerar la colección: NO. 'read' son dos permisos, 'get' y 'list', y
+      // como esta condición no depende del documento, con 'read' bastaba UNA
+      // consulta para llevarse el { uid } de todas las personas registradas —
+      // que es justo el insumo que necesita un atacante para derivar las rutas
+      // de Storage de cualquier pareja y para el emparejamiento forzado.
+      //
+      // resolveInvitationCode() usa getDoc, o sea 'get': el flujo de
+      // emparejar sigue funcionando igual.
+      allow get: if isAuthenticated();
+      allow list: if false;
 
       // Solo se crea al registrarse, y solo apuntando a uno mismo.
       allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
