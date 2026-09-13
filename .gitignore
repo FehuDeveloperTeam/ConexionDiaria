@@ -35,6 +35,11 @@ yarn-error.*
 .env*.local
 !.env.example
 
+# Firebase: logs y caché que dejan los emuladores al correr las pruebas
+.firebase/
+*-debug.log
+firebase-debug.*.log
+
 # typescript
 *.tsbuildinfo
 
