@@ -277,7 +277,7 @@ const WishlistScreen: React.FC = () => {
             </ScrollView>
 
             <SectionList
-                style={{ flex: 1 }}
+                style={{ flex: 1, minHeight: 0 }}
                 contentContainerStyle={{ paddingHorizontal: spacing.s22, paddingBottom: 140 }}
                 sections={sectionData}
                 keyExtractor={(item) => item.id}

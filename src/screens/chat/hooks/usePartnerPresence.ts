@@ -1,8 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AppState } from 'react-native';
 import { User as FirebaseUser } from 'firebase/auth';
 import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../../config/firebaseConfig';
+
+// El "en línea" del otro dispositivo se apaga con un updateDoc en el cleanup
+// de su propio hook al desmontarse (ver setUserOffline más abajo) — pero en
+// web eso NO corre si esa pestaña se cierra, se recarga, o se cambia de
+// cuenta sin pasar por un logout que desmonte limpio (reportado: "cambié de
+// usuario y mi pareja seguía en línea"). En vez de confiar solo en ese
+// cleanup, acá tratamos "en línea" como caduco si el latido (cada 30s, ver
+// setUserOnline) no se actualizó hace más de STALE_MS — así se autocorrige
+// aunque el otro lado nunca haya alcanzado a avisar que se fue.
+const STALE_MS = 2 * 60 * 1000;
 
 // Info de la pareja para el header del chat (nombre/online/lastSeen/foto)
 // y la propia presencia del usuario actual (isOnline/lastSeen).
@@ -13,12 +23,13 @@ export function usePartnerPresence({
     currentUser: FirebaseUser | null;
     partnerId: string | null | undefined;
 }) {
-    const [partnerInfo, setPartnerInfo] = useState<{
+    const [partnerRaw, setPartnerRaw] = useState<{
         name: string;
-        isOnline: boolean;
+        isOnlineRaw: boolean;
         lastSeen: Timestamp | null;
         photoURL?: string;
     } | null>(null);
+    const [now, setNow] = useState(() => Date.now());
 
     // Escuchar cambios en los datos de la pareja para el header
     useEffect(() => {
@@ -54,9 +65,9 @@ export function usePartnerPresence({
                     hasPhotoURL: !!data.photoURL
                 });
 
-                setPartnerInfo({
+                setPartnerRaw({
                     name: partnerName,
-                    isOnline: data.isOnline || false,
+                    isOnlineRaw: data.isOnline || false,
                     lastSeen: data.lastSeen || null,
                     photoURL: data.photoURL || data.photoUrl || undefined,
                 });
@@ -134,17 +145,24 @@ export function usePartnerPresence({
         };
     }, [currentUser]);
 
-    // Actualizar la visualización del tiempo de última conexión cada minuto
+    // Recalcular "now" cada 30s: hace que 'isOnline' caduque solo (ver
+    // STALE_MS arriba) y de paso refresca el texto "Hace X min".
     useEffect(() => {
-        const interval = setInterval(() => {
-            // Forzar re-render para actualizar "Hace X min"
-            if (partnerInfo && !partnerInfo.isOnline && partnerInfo.lastSeen) {
-                setPartnerInfo(prev => prev ? { ...prev } : null);
-            }
-        }, 60000); // Cada 60 segundos
-
+        const interval = setInterval(() => setNow(Date.now()), 30000);
         return () => clearInterval(interval);
-    }, [partnerInfo]);
+    }, []);
+
+    const partnerInfo = useMemo(() => {
+        if (!partnerRaw) return null;
+        const lastSeenMs = partnerRaw.lastSeen?.toDate ? partnerRaw.lastSeen.toDate().getTime() : null;
+        const isOnline = partnerRaw.isOnlineRaw && lastSeenMs !== null && (now - lastSeenMs) < STALE_MS;
+        return {
+            name: partnerRaw.name,
+            isOnline,
+            lastSeen: partnerRaw.lastSeen,
+            photoURL: partnerRaw.photoURL,
+        };
+    }, [partnerRaw, now]);
 
     return { partnerInfo };
 }

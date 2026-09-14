@@ -18,7 +18,14 @@ export const DesktopContentWrap: React.FC<{ children: React.ReactNode; style?: V
 
     return (
         <View style={[{ flex: 1, alignItems: 'center' }, style]}>
-            <View style={{ flex: 1, width: '100%', maxWidth: CONTENT_MAX_WIDTH }}>
+            {/* minHeight: 0 es el fix clásico de flexbox web para listas
+                virtualizadas (SectionList/FlatList) dentro de un flex
+                column anidado: sin esto, el 'min-height: auto' por defecto
+                del navegador hace que este contenedor crezca para caber el
+                contenido estimado de la lista en vez de recortarlo al alto
+                disponible — eso es lo que dejaba un hueco enorme en blanco
+                arriba de la lista de Deseos. */}
+            <View style={{ flex: 1, width: '100%', maxWidth: CONTENT_MAX_WIDTH, minHeight: 0 }}>
                 {children}
             </View>
         </View>

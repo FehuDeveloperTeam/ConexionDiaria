@@ -59,7 +59,7 @@ const monthKeyOf = (date: Date) =>
 const AlbumScreen: React.FC = () => {
     const { theme, isDarkMode: isDark, fontFamilies } = useTheme();
     const { isDesktop } = useResponsive();
-    const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+    const { width: windowWidth } = useWindowDimensions();
     const router = useRouter();
 
     // El grid vive dentro de <DesktopContentWrap>, que en escritorio limita
@@ -76,6 +76,7 @@ const AlbumScreen: React.FC = () => {
     const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
 
     const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+    const [viewerBoxSize, setViewerBoxSize] = useState({ width: 0, height: 0 });
     const [deletingPhoto, setDeletingPhoto] = useState<DocumentData | null>(null);
     const [isSharing, setIsSharing] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
@@ -426,22 +427,29 @@ const AlbumScreen: React.FC = () => {
                                 </View>
                             </SafeAreaView>
 
-                            <View style={{ flex: 1, justifyContent: 'center' }}>
+                            <View
+                                style={{ flex: 1, justifyContent: 'center' }}
+                                onLayout={(e) => setViewerBoxSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+                            >
                                 <ScrollView
                                     style={{ flex: 1 }}
-                                    contentContainerStyle={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+                                    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}
                                     maximumZoomScale={3}
                                     minimumZoomScale={1}
                                     centerContent
                                 >
                                     {/* Antes esto forzaba una caja cuadrada de lado = ancho de
-                                        ventana (mismo valor en width Y height) — en pantallas más
-                                        anchas que altas esa caja no cabía verticalmente y el visor
-                                        se veía negro, con la foto recortada fuera de vista. */}
-                                    <Image
-                                        source={{ uri: currentPhoto.imageUrl }}
-                                        style={{ width: windowWidth * 0.92, height: windowHeight * 0.62, resizeMode: 'contain' }}
-                                    />
+                                        ventana (mismo valor en width Y height), sin relación con el
+                                        espacio real entre el header y la tira de miniaturas — dejaba
+                                        la foto chica y arrinconada arriba con una franja negra enorme
+                                        debajo. Medimos ese espacio real con onLayout en vez de adivinar
+                                        con el alto total de la ventana. */}
+                                    {viewerBoxSize.height > 0 && (
+                                        <Image
+                                            source={{ uri: currentPhoto.imageUrl }}
+                                            style={{ width: viewerBoxSize.width * 0.94, height: viewerBoxSize.height * 0.94, resizeMode: 'contain' }}
+                                        />
+                                    )}
                                 </ScrollView>
 
                                 {viewerIndex! > 0 && (
