@@ -5,6 +5,52 @@ está implementado todavía.** Antes de ejecutarlo hay que cerrar la definición
 de Free vs Premium (ver `FREE_VS_PREMIUM` más abajo), para no construir algo
 y tener que rehacerlo cuando cambie el modelo de monetización.
 
+## Monetización — decidido
+
+Modelo: **intimidad y memoria**, no escasez. Editar y borrar quedan libres en
+ambos planes. Compra a nivel de pareja ("uno paga, ambos disfrutan", ya
+implementado en `planContext.tsx`).
+
+**Cupos**: activos + archivo. El cupo se libera al *cumplir* (regalado/hecho),
+no al borrar, y lo cumplido pasa a un archivo permanente. Free ve los últimos
+10 del archivo; premium, todo. Se descarta el contador persistente de por vida.
+
+**Topes del plan free**: 10 deseos activos (ya existe), 10 notas activas, un
+grupo de tareas, 90 días de historial de chat. El envío de mensajes NO se
+limita nunca — es el hábito diario que sostiene la app.
+
+**Escalera de precios** (el anual siempre equivale a 10 meses):
+
+| Momento | Mensual | Anual | Desc. |
+|---|---|---|---|
+| Precio lista (desde el usuario 501) | US$9,99 | US$99,99 ¹ | — |
+| Navidad y San Valentín ¹ | US$5,99 | US$59,99 | 40 % |
+| Cumpleaños de cada uno | US$4,99 | US$49,99 | 50 % |
+| Aniversario (3 días previos) | US$2,99 | US$29,99 | 70 % |
+| Fundadores (primeros 500) | US$2,99 | US$29,99 | 70 % |
+
+¹ Propuesto por Claude siguiendo el patrón, no definido por el usuario.
+
+**Riesgos abiertos**:
+
+1. Cinco ventanas de descuento al año dejan a cualquiera a menos de tres meses
+   de la siguiente: conviene mantenerlas cortas y sin anuncio previo, o bajar
+   el lista a US$6,99.
+2. `availablePackages[0]` ya no sirve con cinco escalones: hace falta una
+   oferta por escalón y que la app elija según fecha de la pareja y contador.
+3. El contador de 500 debe vivir en el servidor, no en el cliente.
+4. Verificar cómo implementar cinco ventanas si las tiendas limitan las
+   ofertas introductorias a una por persona (probablemente productos propios
+   o códigos de oferta).
+
+Comparativa completa: https://claude.ai/artifact/LyXrGVB3MrVei9S9fx2KJa
+
+## Orden de construcción acordado
+
+1. Arreglos y visibilidad de editar/eliminar en escritorio.
+2. Archivo y topes del plan free.
+3. Funciones estrella: aviso de regalo, ficha de pareja, modo protección.
+
 ## Decisiones ya tomadas
 
 - **No habrá personalización sin emparejar.** Se descarta conectar
