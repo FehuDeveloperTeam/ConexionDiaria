@@ -243,10 +243,15 @@ const WishlistScreen: React.FC = () => {
                 </Text>
             </View>
 
-            {/* Filtro horizontal de categorías */}
+            {/* Filtro horizontal de categorías.
+                flexGrow/flexShrink 0: en react-native-web TODO ScrollView trae
+                flexGrow:1 por defecto, y en uno horizontal ese crecimiento va en
+                el eje del padre — o sea vertical. Sin esto la fila de chips se
+                repartía la pantalla a medias con el SectionList de abajo. */}
             <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
+                style={{ flexGrow: 0, flexShrink: 0 }}
                 contentContainerStyle={{ paddingHorizontal: spacing.s22, gap: spacing.s8, paddingBottom: spacing.s10, alignItems: 'center' }}
             >
                 {['Todos', ...WISH_TYPES].map(type => {

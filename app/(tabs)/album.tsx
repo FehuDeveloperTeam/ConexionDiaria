@@ -478,11 +478,17 @@ const AlbumScreen: React.FC = () => {
                                 )}
                             </View>
 
-                            {/* Tira de miniaturas */}
+                            {/* Tira de miniaturas.
+                                flexGrow/flexShrink 0: en react-native-web TODO ScrollView
+                                trae flexGrow:1 por defecto, y en uno horizontal ese
+                                crecimiento va en el eje del padre — o sea vertical. Sin
+                                esto la tira se repartía la pantalla a medias con la foto,
+                                dejando 400px de negro para miniaturas de 38px. */}
                             <ScrollView
                                 horizontal
                                 showsHorizontalScrollIndicator={false}
-                                contentContainerStyle={{ gap: spacing.s8, paddingHorizontal: spacing.s16, paddingVertical: spacing.s10 }}
+                                style={{ flexGrow: 0, flexShrink: 0 }}
+                                contentContainerStyle={{ gap: spacing.s8, paddingHorizontal: spacing.s16, paddingVertical: spacing.s10, alignItems: 'center' }}
                             >
                                 {photos.map((photo, idx) => (
                                     <TouchableOpacity key={photo.id} onPress={() => setViewerIndex(idx)}>
