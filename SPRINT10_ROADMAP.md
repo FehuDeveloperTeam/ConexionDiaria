@@ -62,9 +62,13 @@ la decide la escala elegida, no los datos.
 
 ## Pendiente de configuración (no se puede hacer desde el entorno de desarrollo)
 
-1. Marcarte como administrador, desde la carpeta `functions`:
-   `node scripts/setAdmin.js tu@correo.com`
-   (necesita `GOOGLE_APPLICATION_CREDENTIALS` o `gcloud auth application-default login`).
+1. Marcarte como administrador. Primero descarga una llave de cuenta de
+   servicio en la consola de Firebase (Configuración del proyecto → Cuentas de
+   servicio → Generar nueva clave privada) y guárdala **fuera del
+   repositorio**. Después, desde la carpeta `functions`:
+   `node scripts/setAdmin.js tu@correo.com --key C:\ruta\a\la\llave.json`
+   Sirve igual sin `--key` si ya tienes `GOOGLE_APPLICATION_CREDENTIALS` o
+   `gcloud auth application-default login`.
    Después hay que cerrar y volver a iniciar sesión: el token viejo sigue
    siendo válido hasta que caduca.
 2. `firebase deploy --only firestore:rules,firestore:indexes` — los índices son

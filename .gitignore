@@ -52,3 +52,11 @@ tests/.tmp-pricing/
 tests/.tmp-milestones/
 tests/.tmp-questions/
 tests/.tmp-memories/
+
+# Llaves de cuenta de servicio de Firebase (Sprint 10.1, scripts/setAdmin.js).
+# Lo correcto es guardarlas fuera del repositorio; esto es la red de seguridad
+# por si una termina acá dentro. Una de estas llaves lee y escribe cualquier
+# cosa del proyecto sin pasar por las reglas.
+*serviceAccount*.json
+*service-account*.json
+*-firebase-adminsdk-*.json

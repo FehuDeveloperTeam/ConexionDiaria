@@ -1,15 +1,22 @@
 // Da (o quita) el permiso de administrador del panel — Sprint 10.1.
 //
-// Uso, desde la carpeta 'functions' y con credenciales de la cuenta de
-// servicio disponibles:
+// Uso, desde la carpeta 'functions':
 //
-//   node scripts/setAdmin.js persona@correo.com
-//   node scripts/setAdmin.js persona@correo.com --quitar
+//   node scripts/setAdmin.js persona@correo.com --key C:\ruta\a\la\llave.json
+//   node scripts/setAdmin.js persona@correo.com --key ... --quitar
 //
-// Las credenciales salen de GOOGLE_APPLICATION_CREDENTIALS (la ruta a un JSON
-// de cuenta de servicio) o de haber corrido antes:
+// La llave es un JSON de cuenta de servicio, que se descarga una vez desde
+// la consola de Firebase:
+//   Configuración del proyecto -> Cuentas de servicio -> Generar nueva clave
+//   privada.
 //
-//   gcloud auth application-default login
+// Guárdala FUERA del repositorio. Es una llave con permisos de administrador
+// sobre todo el proyecto: quien la tenga puede leer y escribir cualquier cosa,
+// sin pasar por las reglas de seguridad.
+//
+// También sirve sin --key si ya tienes configurado uno de estos:
+//   - la variable GOOGLE_APPLICATION_CREDENTIALS apuntando a ese mismo JSON
+//   - 'gcloud auth application-default login'
 //
 // Por qué un script y no una pantalla en la app: el primer administrador no
 // puede darse el permiso a sí mismo desde dentro del producto sin abrir una
@@ -20,18 +27,56 @@
 // las reglas de Firestore lo leen sin una consulta extra y ningún cliente
 // puede escribírselo.
 
-const { initializeApp, applicationDefault } = require('firebase-admin/app');
+const fs = require('fs');
+const path = require('path');
+const { initializeApp, applicationDefault, cert } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
 
-const email = process.argv[2];
-const revoke = process.argv.includes('--quitar');
+const args = process.argv.slice(2);
+const email = args.find(a => !a.startsWith('--'));
+const revoke = args.includes('--quitar');
+
+const keyFlagIndex = args.indexOf('--key');
+const keyPath = keyFlagIndex >= 0 ? args[keyFlagIndex + 1] : process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
 if (!email) {
-    console.error('Falta el correo.\n  node scripts/setAdmin.js persona@correo.com [--quitar]');
+    console.error('Falta el correo.');
+    console.error('  node scripts/setAdmin.js persona@correo.com --key ruta\\a\\la\\llave.json [--quitar]');
     process.exit(1);
 }
 
-initializeApp({ credential: applicationDefault() });
+// El id del proyecto sale del .firebaserc del repo, que es donde ya vive.
+// Sin esto, el SDK intenta averiguarlo preguntándole al servidor de metadatos
+// de Google Cloud — que solo existe dentro de Google — y falla con un
+// ENOTFOUND de metadata.google.internal, que no explica nada de lo que pasa.
+const readProjectId = () => {
+    if (process.env.GOOGLE_CLOUD_PROJECT) return process.env.GOOGLE_CLOUD_PROJECT;
+    try {
+        const rc = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '.firebaserc'), 'utf8'));
+        return rc.projects?.default ?? null;
+    } catch {
+        return null;
+    }
+};
+
+const projectId = readProjectId();
+if (!projectId) {
+    console.error('No se pudo determinar el proyecto. Revisa que exista .firebaserc en la raíz del repo.');
+    process.exit(1);
+}
+
+let credential;
+if (keyPath) {
+    if (!fs.existsSync(keyPath)) {
+        console.error(`No existe el archivo de llave: ${keyPath}`);
+        process.exit(1);
+    }
+    credential = cert(require(path.resolve(keyPath)));
+} else {
+    credential = applicationDefault();
+}
+
+initializeApp({ credential, projectId });
 
 (async () => {
     try {
@@ -50,9 +95,24 @@ initializeApp({ credential: applicationDefault() });
             : `${email} (${user.uid}) ya es administrador.`);
         // El token viejo sigue siendo válido hasta que caduca (una hora), así
         // que el cambio no es instantáneo si la sesión ya estaba abierta.
-        console.log('Tiene que cerrar y volver a iniciar sesión para que el cambio surta efecto.');
+        console.log('Cierra sesión y vuelve a entrar en la app para que el cambio surta efecto.');
     } catch (error) {
-        console.error('No se pudo cambiar el permiso:', error.message);
+        const code = error?.errorInfo?.code || error?.code || '';
+
+        if (code === 'auth/user-not-found') {
+            console.error(`No hay ninguna cuenta registrada con ${email}.`);
+        } else if (String(error?.message || '').includes('metadata.google.internal')) {
+            // El caso que trae acá a casi todo el mundo la primera vez.
+            console.error('No hay credenciales disponibles en este equipo.');
+            console.error('');
+            console.error('Descarga una llave desde la consola de Firebase:');
+            console.error('  Configuración del proyecto -> Cuentas de servicio -> Generar nueva clave privada');
+            console.error('');
+            console.error('Y vuelve a correrlo apuntando a ese archivo:');
+            console.error(`  node scripts/setAdmin.js ${email} --key C:\\ruta\\a\\la\\llave.json`);
+        } else {
+            console.error('No se pudo cambiar el permiso:', error?.message || error);
+        }
         process.exit(1);
     }
 })();
