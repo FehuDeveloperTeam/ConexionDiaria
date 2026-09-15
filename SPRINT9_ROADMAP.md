@@ -46,7 +46,7 @@ Aquí se vuelve real la separación entre los planes.
 
 | # | Sesión | Notas |
 |---|---|---|
-| 9.11 | Fecha de nacimiento en el modelo | **Prerrequisito descubierto:** `UserDoc` no guarda fecha de nacimiento, solo `relationshipStartDate`. Sin esto no hay aviso de cumpleaños ni ventana de descuento de cumpleaños. Dato de la app, disponible en ambos planes: modelo, registro, ajustes y relleno para las cuentas que ya existen. Bloquea a 9.13 y a 9.18. |
+| 9.11 | Fecha de nacimiento en el modelo | **Prerrequisito descubierto:** `UserDoc` no guarda fecha de nacimiento, solo `relationshipStartDate`. Sin esto no hay aviso de cumpleaños ni ventana de descuento de cumpleaños. **Se pide como campo obligatorio al crear la cuenta, antes del emparejamiento** — así no hay cuentas sin el dato y se puede usar también para regalos especiales, emojis de cumpleaños y saludos. Toca modelo, registro, ajustes y relleno para las cuentas que ya existen. Bloquea a 9.13 y a 9.18. |
 | 9.12 | Ficha de la pareja | Al tocar su nombre: datos consolidados y notas privadas de un solo lado —gustos, tallas de ropa y calzado, medidas— para preparar regalos. Premium. |
 | 9.13 | Aviso de regalo | **La función estrella.** Encadena Calendario → Deseos → tallas: «faltan dos semanas para su cumpleaños, quiere estas tres cosas, usa talla M y calza 38». Convierte la sección más desatendida en la más valiosa. Depende de 9.11 y 9.12. |
 | 9.14 | Modo protección | Difuminado alto sobre las fotos del chat: solo siluetas, sin detalle reconocible. La foto se revela al abrir el modal. Premium. |
