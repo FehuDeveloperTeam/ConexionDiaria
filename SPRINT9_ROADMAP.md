@@ -28,6 +28,19 @@ con 22 rutas) y pusheadas a `claude/conexiondiaria-app-review-o9tn7y`.
 | 9.11 | Fecha de nacimiento obligatoria al crear la cuenta | `8fa961a` |
 | 9.12 | Ficha de la pareja con notas privadas | `084a7ad` |
 | 9.13 | Aviso de regalo: Calendario, Deseos y tallas | `d37b494` |
+| 9.14 | Modo protección: fotos difuminadas hasta abrirlas | `952c92e` |
+| 9.15 | Notas de voz, con el mismo cupo que las escritas | `50f32bf` |
+| 9.16 | Categorías propias en Deseos | `aeb46ac` |
+
+**Fases A, B y C cerradas.** Quedan la fase D (monetización real: 9.17 a 9.19)
+y la E (calendario y hábito: 9.20 a 9.22), más el video del chat (9.23).
+
+### Deuda anotada
+
+El reproductor de audio del chat mantiene su propia copia de la mecánica que
+9.15 extrajo a `useSingleAudioPlayer`. No se migró en el mismo sprint porque
+tiene responsabilidades que el genérico no cubre (marcar escuchado, avisos de
+inicio y fin) y acababa de verificarse a mano; migrarlo es trabajo aparte.
 
 Las reglas de 9.9 ya están desplegadas. Quedan verificadas contra el emulador
 con `npm run test:rules` (35 pruebas).
