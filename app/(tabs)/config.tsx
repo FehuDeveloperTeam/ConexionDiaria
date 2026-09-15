@@ -610,6 +610,17 @@ const ConfigScreen: React.FC = () => {
                             right={<Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
                         />
                     )}
+                    {/* Sprint 10.2: la bienvenida se salta con un toque, así
+                        que tiene que haber forma de volver a verla. */}
+                    {!!userData?.partnerId && (
+                        <PrefRow
+                            icon="sparkles-outline"
+                            label="Ver la bienvenida"
+                            subcopy="Un repaso de lo que pueden hacer los dos"
+                            onPress={() => router.push('/welcome')}
+                            right={<Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
+                        />
+                    )}
                     <PrefRow
                         icon="color-palette-outline"
                         label="Personalizar tema"

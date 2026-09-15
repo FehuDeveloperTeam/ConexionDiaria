@@ -11,8 +11,26 @@ después qué funcionó. Los datos que no se recogen no se recuperan.
 | # | Sesión | Estado | Notas |
 |---|---|---|---|
 | 10.1 | Panel administrativo | ✅ | Métricas agregadas, resumen diario y ficha de soporte. Ruta `/admin` dentro de la misma app, con permiso por *custom claim*. |
-| 10.2 | Onboarding al emparejarse | | Cinco pasos, saltable y repetible desde Ajustes. Incluye pedir el permiso de notificaciones en el momento correcto —cuando ya se explicó para qué— y el estado vacío del álbum, que hoy no dibuja nada cuando no hay recuerdos. |
+| 10.2 | Onboarding al emparejarse | ✅ | Cinco pasos, saltable y repetible desde Ajustes. Incluye pedir el permiso de notificaciones en el momento correcto —cuando ya se explicó para qué— y el estado vacío del álbum, que hoy no dibuja nada cuando no hay recuerdos. |
 | 10.3 | Avisos: para uno o para ambos | | Cada evento guarda a quién avisa. Es el mismo trabajo que arreglar el recordatorio compartido, que hoy es una notificación **local**: solo suena en el aparato que creó el evento. Necesita una función programada. Se suman los avisos de cumpleaños y aniversario, que no existen. |
+
+## Decidido en 10.2
+
+**Saltar también la marca como vista.** Si reapareciera en cada arranque, la
+segunda vez ya nadie la lee. Queda disponible para siempre desde Ajustes, que
+es la forma honesta de no perderla.
+
+**El permiso de notificaciones va en el último paso**, no al abrir la app por
+primera vez. Pedirlo de golpe, antes de explicar para qué sirve, es cuando la
+gente dice que no por reflejo — y ese «no» de iOS no se puede volver a pedir
+desde la app.
+
+**El espacio de «Un día como hoy» ahora está siempre.** Antes solo aparecía
+cuando había algo que mostrar, y con un álbum joven eso es casi nunca: hacen
+falta fotos subidas exactamente hace seis meses o un año, el mismo día del
+calendario. El resultado era una sección que nadie llegaba a ver. Mientras no
+haya recuerdos, promete lo que va a pasar. Un hueco vacío sería peor que nada,
+pero una promesa no es un hueco.
 
 ## Decidido en 10.1
 

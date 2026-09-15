@@ -38,7 +38,7 @@ SplashScreen.preventAutoHideAsync();
 // Se ejecutará *después* de que PlanProvider esté disponible
 function AuthRedirect() {
     // 4. Obtenemos el estado de usuario y carga desde nuestro hook
-    const { user, isLoading } = usePlan();
+    const { user, userData, isLoading } = usePlan();
     const router = useRouter();
     const segments = useSegments();
 
@@ -63,16 +63,25 @@ function AuthRedirect() {
         const root = segments[0];
         const onPublicRoute = root === undefined || root === 'login' || root === 'register';
 
+        // Sprint 10.2: la bienvenida se debe una sola vez, y recién cuando la
+        // pareja ya está formada — antes de eso casi nada de la app funciona.
+        // Se exige 'userData' cargado: null todavía significa "no sé", y
+        // tratarlo como "no la ha visto" mandaría a /welcome a alguien que ya
+        // la vio, en cada arranque.
+        const owesOnboarding = !!user && !!userData && !!userData.partnerId && !userData.onboardedAt;
+
         if (user && onPublicRoute) {
             // Con sesión iniciada no tiene sentido quedarse en el landing.
             router.replace('/(tabs)/home');
         } else if (!user && !onPublicRoute) {
             // Sin sesión, cualquier pantalla privada queda fuera de alcance.
             router.replace('/');
+        } else if (owesOnboarding && root !== 'welcome') {
+            router.replace('/welcome');
         }
         // (Los otros casos son correctos y no se hace nada)
 
-    }, [user, isLoading, segments, router]); // Depende del estado del PlanProvider
+    }, [user, userData, isLoading, segments, router]); // Depende del estado del PlanProvider
 
     // 5. Mostramos la pantalla de carga MIENTRAS el PlanProvider esté 'isLoading'
     if (isLoading) {
@@ -110,6 +119,8 @@ function AppShell() {
                 {/* Panel del equipo — Sprint 10.1. Fuera del grupo de
                     pestañas: no le corresponde el riel de la app. */}
                 <Stack.Screen name="admin" />
+                {/* Bienvenida de la pareja recién conectada — Sprint 10.2. */}
+                <Stack.Screen name="welcome" />
             </Stack>
 
             {/* Este componente decide si mostrar la carga o redirigir */}

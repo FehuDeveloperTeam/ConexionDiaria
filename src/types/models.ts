@@ -52,6 +52,12 @@ export interface UserDoc {
   // Las claves son las de src/config/measurements.ts.
   measurements?: Record<string, string>;
 
+  // Sprint 10.2 — cuándo se terminó (o se saltó) la bienvenida. Mientras
+  // falte, la app lleva a /welcome al entrar con pareja ya conectada.
+  // Saltarla también la marca: si no, reaparecería en cada arranque, que es
+  // la forma más rápida de que alguien deje de leerla.
+  onboardedAt?: Timestamp | null;
+
   // Hasta cuándo no volver a ofrecer el asistente de tallas en Inicio
   // ('YYYY-MM-DD'). Se guarda en el perfil y no en el dispositivo para que
   // posponerlo en el teléfono también lo posponga en el computador.

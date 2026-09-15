@@ -369,17 +369,16 @@ const AlbumScreen: React.FC = () => {
             </View>
 
             <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.s22, paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
-                {monthGroups.length === 0 && (
-                    <Text style={{ fontFamily: fontFamilies.body, fontSize: 14, color: theme.textFaint, textAlign: 'center', marginTop: spacing.s26 }}>
-                        Aún no han añadido fotos a su álbum.
-                    </Text>
-                )}
-
-                {/* Sprint 9.26: "Un día como hoy". Solo aparece si hay algo que
-                    mostrar — un hueco vacío que diga "no hay recuerdos" sería
-                    peor que no tener la sección. */}
-                {memories.length > 0 && (
-                    <View style={{
+                {/* Sprint 9.26: "Un día como hoy".
+                    Sprint 10.2: antes solo aparecía cuando había algo que
+                    mostrar, y con un álbum joven eso es casi nunca — hacen
+                    falta fotos subidas exactamente hace seis meses o un año,
+                    el mismo día del calendario. El resultado era una sección
+                    que nadie llegaba a ver nunca. Ahora el espacio está
+                    siempre y, mientras no haya recuerdos, promete lo que va a
+                    pasar. Un hueco vacío sería peor que nada, pero una
+                    promesa no es un hueco. */}
+                <View style={{
                         backgroundColor: theme.surface,
                         borderRadius: radii.card,
                         borderWidth: 1,
@@ -401,6 +400,25 @@ const AlbumScreen: React.FC = () => {
                             ScrollView trae flexGrow:1, y en uno horizontal ese
                             crecimiento va en el eje del padre — o sea vertical.
                             Sin esto la tira se come media pantalla. */}
+                        {memories.length === 0 ? (
+                            <View style={{ paddingHorizontal: spacing.s14, gap: spacing.s10 }}>
+                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 13.5, lineHeight: 20, color: theme.textMuted }}>
+                                    Suban sus fotos acá. Con el tiempo se las vamos a traer de vuelta:
+                                    dentro de seis meses y de un año, este espacio les va a mostrar lo
+                                    que estaban haciendo un día como hoy.
+                                </Text>
+                                <TouchableOpacity
+                                    onPress={handleAddPhoto}
+                                    accessibilityRole="button"
+                                    style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s6 }}
+                                >
+                                    <Ionicons name="add-circle-outline" size={16} color={theme.primary} />
+                                    <Text style={{ fontFamily: fontFamilies.action, fontSize: 13.5, color: theme.primary }}>
+                                        Agregar la primera
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        ) : (
                         <ScrollView
                             horizontal
                             showsHorizontalScrollIndicator={false}
@@ -433,8 +451,8 @@ const AlbumScreen: React.FC = () => {
                                 </TouchableOpacity>
                             )))}
                         </ScrollView>
-                    </View>
-                )}
+                        )}
+                </View>
 
                 {monthGroups.map(group => (
                     <View key={group.month} style={{ marginBottom: spacing.s16 }}>
