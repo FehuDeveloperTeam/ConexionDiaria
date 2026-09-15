@@ -72,6 +72,9 @@ const ChatScreen = () => {
         AsyncStorage.setItem(RAIL_COLLAPSED_KEY, next ? '1' : '0').catch(() => {});
     };
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+    // Separado del de almacenamiento: son dos motivos distintos y cada uno
+    // tiene que explicar el suyo.
+    const [showHistoryPaywall, setShowHistoryPaywall] = useState(false);
 
     // Estados para el modal de archivos
     const [fileViewerVisible, setFileViewerVisible] = useState(false);
@@ -99,11 +102,12 @@ const ChatScreen = () => {
         loading,
         messages,
         hasMoreMessages,
+        historyLimitReached,
         isLoadingEarlier,
         handleLoadEarlier,
         onSend,
         deleteMessage,
-    } = useChatMessages(userData, () => setInputText(''));
+    } = useChatMessages(userData, () => setInputText(''), plan);
 
     // Mantener presionado un mensaje propio (no borrado) ofrece borrarlo.
     const handleMessageLongPress = (_context: unknown, message: ExtendedMessage) => {
@@ -633,9 +637,37 @@ const ChatScreen = () => {
                 <GiftedChat
                     messages={messages}
                     onSend={onSend}
-                    loadEarlier={hasMoreMessages}
+                    // Al tocar el tope del plan free se sigue ocupando esta
+                    // ranura, pero con el aviso en vez del botón: es el punto
+                    // exacto donde el usuario quiere seguir hacia atrás.
+                    loadEarlier={hasMoreMessages || historyLimitReached}
                     onLoadEarlier={handleLoadEarlier}
                     isLoadingEarlier={isLoadingEarlier}
+                    renderLoadEarlier={historyLimitReached ? () => (
+                        <TouchableOpacity
+                            onPress={() => setShowHistoryPaywall(true)}
+                            style={{
+                                flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
+                                marginHorizontal: spacing.s16, marginVertical: spacing.s12,
+                                borderWidth: 1, borderStyle: 'dashed', borderColor: theme.primary,
+                                backgroundColor: theme.primaryTint, borderRadius: radii.card,
+                                padding: spacing.s14,
+                            }}
+                        >
+                            <Ionicons name="lock-closed" size={16} color={theme.premium} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: theme.text }}>
+                                    Aquí empiezan sus últimos 90 días
+                                </Text>
+                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
+                                    La conversación anterior sigue guardada
+                                </Text>
+                            </View>
+                            <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 12, color: theme.primary }}>
+                                Ver todo
+                            </Text>
+                        </TouchableOpacity>
+                    ) : undefined}
                     user={{
                         _id: currentUser?.uid || '',
                         name: userData?.name || 'Usuario',
@@ -974,6 +1006,16 @@ const ChatScreen = () => {
                 title="Almacenamiento lleno"
                 description={`Usaron ${Math.round(usedStorage / (1024 * 1024))} MB de ${Math.round(maxStorage / (1024 * 1024))} MB disponibles.`}
                 benefits={['25 GB de almacenamiento compartido', 'Envío ilimitado de fotos, audios y archivos', 'Calidad original sin compresión']}
+            />
+
+            <PaywallSheet
+                visible={showHistoryPaywall}
+                onClose={() => setShowHistoryPaywall(false)}
+                onUpgradePress={() => { setShowHistoryPaywall(false); router.push('/(tabs)/config'); }}
+                icon="chatbubbles"
+                title="Toda su conversación"
+                description="El plan free muestra los últimos 90 días. Nada se borra: lo anterior sigue guardado esperándolos."
+                benefits={['Historial completo del chat, desde el primer mensaje', 'Buscar recuerdos de cualquier época', '25 GB de almacenamiento compartido']}
             />
 
             {/* Hoja de adjuntar — Sprint 7.4b: reemplaza el action sheet nativo */}
