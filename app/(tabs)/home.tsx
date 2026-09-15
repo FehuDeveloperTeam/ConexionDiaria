@@ -38,6 +38,10 @@ import { Button as AppButton } from '../../src/components/Button';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
 import { DailyQuestionCard } from '../../src/components/DailyQuestionCard';
 import { countFilled, fieldsFor, normalizeMeasurements } from '../../src/config/measurements';
+import {
+    daysBetween, nextAnniversary as computeNextAnniversary,
+    nextMonthiversary as computeNextMonthiversary,
+} from '../../src/services/milestones';
 import type { Gender } from '../../src/types/models';
 import { TextField } from '../../src/components/TextField';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
@@ -460,6 +464,76 @@ const Home: React.FC = () => {
         // encima todo el año y deje de mirarse.
         return days <= GIFT_ALERT_DAYS ? { ...soonest, days } : null;
     }, [partnerData?.birthDate, partnerData?.displayName, userData?.relationshipStartDate]);
+
+    // --- Sprint 9.28: "Lo próximo" mira TODO lo que viene, no solo la agenda ---
+    //
+    // Antes esto leía únicamente la colección 'events': sin eventos puestos a
+    // mano, la tarjeta no se dibujaba. Y sin embargo siempre sabemos algo —el
+    // aniversario, los meses cumplidos y los dos cumpleaños, que son
+    // obligatorios desde 9.11—, así que la pantalla se quedaba callada
+    // teniendo qué decir.
+    //
+    // El aviso de regalo (9.13) ya anuncia la fecha más cercana cuando faltan
+    // menos de dos semanas. Si esta tarjeta mostrara la misma, la pantalla
+    // repetiría la misma fecha dos veces seguidas: por eso se salta la que el
+    // aviso ya está mostrando y enseña la siguiente.
+    const nextUp = useMemo(() => {
+        type Row = { title: string; date: Date; icon: keyof typeof Ionicons.glyphMap };
+        const rows: Row[] = [];
+        const today = new Date();
+
+        const start = userData?.relationshipStartDate?.toDate
+            ? userData.relationshipStartDate.toDate()
+            : null;
+
+        if (start) {
+            const anniversary = computeNextAnniversary(start, today);
+            rows.push({ title: anniversary.title, date: anniversary.date, icon: 'heart' });
+
+            const monthiversary = computeNextMonthiversary(start, today);
+            if (monthiversary) {
+                rows.push({ title: monthiversary.title, date: monthiversary.date, icon: 'heart-outline' });
+            }
+        }
+
+        const nextYearly = (source: Date) => {
+            const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            let next = new Date(today.getFullYear(), source.getMonth(), source.getDate());
+            if (next < todayMidnight) next = new Date(today.getFullYear() + 1, source.getMonth(), source.getDate());
+            return next;
+        };
+
+        const partnerBirth = partnerData?.birthDate?.toDate ? partnerData.birthDate.toDate() : null;
+        if (partnerBirth) {
+            rows.push({
+                title: `Cumpleaños de ${partnerData?.displayName || 'tu pareja'}`,
+                date: nextYearly(partnerBirth),
+                icon: 'balloon',
+            });
+        }
+
+        const myBirth = userData?.birthDate?.toDate ? userData.birthDate.toDate() : null;
+        if (myBirth) {
+            rows.push({ title: 'Tu cumpleaños', date: nextYearly(myBirth), icon: 'balloon-outline' });
+        }
+
+        if (nextEvent) {
+            rows.push({ title: nextEvent.title, date: nextEvent.date, icon: 'calendar-outline' });
+        }
+
+        const sameDay = (a: Date, b: Date) =>
+            a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+        const remaining = rows
+            .filter(row => !(giftOccasion && sameDay(row.date, giftOccasion.date)))
+            .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+        return remaining[0] ?? null;
+    }, [
+        userData?.relationshipStartDate, userData?.birthDate,
+        partnerData?.birthDate, partnerData?.displayName,
+        nextEvent, giftOccasion,
+    ]);
 
     // 'partnerData' se reemplaza entero en cada latido del listener (isOnline
     // se reescribe cada 30 s). Usarlo como dependencia del efecto de abajo
@@ -1154,9 +1228,11 @@ const Home: React.FC = () => {
                         hora exacta, para que un evento de esta tarde diga "Hoy" y uno
                         de mañana temprano diga "Mañana". Solo aparece si hay algo
                         próximo: sin eventos no se muestra un hueco vacío. */}
-                    {nextEvent && (() => {
-                        const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-                        const days = Math.round((startOfDay(nextEvent.date) - startOfDay(new Date())) / 86400000);
+                    {nextUp && (() => {
+                        // daysBetween cuenta días de calendario y no de 24
+                        // horas: el día del cambio de hora dura 23, y
+                        // truncando milisegundos la cuenta se adelanta un día.
+                        const days = daysBetween(new Date(), nextUp.date);
                         const whenLabel = days <= 0 ? 'Hoy' : days === 1 ? 'Mañana' : `En ${days} días`;
 
                         return (
@@ -1166,11 +1242,11 @@ const Home: React.FC = () => {
                                 onPress={() => router.push('/(tabs)/calendar')}
                             >
                                 <View style={styles.nextIcon}>
-                                    <Ionicons name="calendar-outline" size={18} color={theme.primary} />
+                                    <Ionicons name={nextUp.icon} size={18} color={theme.primary} />
                                 </View>
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.nextLabel}>LO PRÓXIMO</Text>
-                                    <Text style={styles.nextTitle} numberOfLines={1}>{nextEvent.title}</Text>
+                                    <Text style={styles.nextTitle} numberOfLines={1}>{nextUp.title}</Text>
                                 </View>
                                 <Text style={styles.nextWhen}>{whenLabel}</Text>
                             </TouchableOpacity>
