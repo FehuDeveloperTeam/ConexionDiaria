@@ -14,6 +14,22 @@ después qué funcionó. Los datos que no se recogen no se recuperan.
 | 10.2 | Onboarding al emparejarse | ✅ | Cinco pasos, saltable y repetible desde Ajustes. Incluye pedir el permiso de notificaciones en el momento correcto —cuando ya se explicó para qué— y el estado vacío del álbum, que hoy no dibuja nada cuando no hay recuerdos. |
 | 10.3 | Avisos: para uno o para ambos | | Cada evento guarda a quién avisa. Es el mismo trabajo que arreglar el recordatorio compartido, que hoy es una notificación **local**: solo suena en el aparato que creó el evento. Necesita una función programada. Se suman los avisos de cumpleaños y aniversario, que no existen. |
 
+## Corregido en 10.2b
+
+La bienvenida rebotaba en bucle: se salía al inicio y volvía sola. La causa
+era `serverTimestamp()`. Firestore entrega el snapshot local de inmediato,
+pero con los campos de marca de servidor en **null** hasta que el servidor
+confirma; el guardia leía ese null como «todavía no la ha visto» y devolvía a
+/welcome. Se cambió por `Timestamp.now()` del cliente: el campo solo marca que
+alguien ya la vio, así que la hora la puede poner el teléfono, y a cambio el
+valor existe al instante.
+
+Se sumó además una salida de emergencia en memoria
+(`services/onboardingSession.ts`), para que una escritura fallida —sin red,
+reglas sin desplegar— no pueda dejar a nadie encerrado entre las dos
+pantallas. Se pierde al recargar, que es lo correcto: si la escritura falló, la
+bienvenida debe volver a salir.
+
 ## Decidido en 10.2
 
 **Saltar también la marca como vista.** Si reapareciera en cada arranque, la

@@ -16,7 +16,7 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '../src/config/firebaseConfig';
 import { spacing } from '../src/config/theme';
@@ -25,6 +25,7 @@ import { useTheme } from '../src/contexts/themeContext';
 import { Button } from '../src/components/Button';
 import { DesktopContentWrap } from '../src/components/DesktopContentWrap';
 import { ensureNotificationPermissions, registerPushToken } from '../src/services/notifications';
+import { markOnboardingDismissed } from '../src/services/onboardingSession';
 
 interface Step {
     icon: keyof typeof Ionicons.glyphMap;
@@ -80,11 +81,23 @@ const WelcomeScreen: React.FC = () => {
     const finish = async () => {
         setIsFinishing(true);
         if (user) {
+            // Se avisa ANTES de escribir, no después: si la escritura falla,
+            // igual hay que poder salir de acá.
+            markOnboardingDismissed(user.uid);
             try {
-                await setDoc(doc(db, 'users', user.uid), { onboardedAt: serverTimestamp() }, { merge: true });
+                // Timestamp.now() del cliente y no serverTimestamp().
+                //
+                // Firestore entrega el snapshot local de inmediato, pero con
+                // los campos de serverTimestamp() en null hasta que el
+                // servidor confirma. El guardia leía ese null como "todavía
+                // no ha visto la bienvenida" y devolvía acá: se salía al
+                // inicio y se volvía, en bucle.
+                //
+                // Este campo solo marca que alguien ya vio la bienvenida. Que
+                // la hora la ponga el teléfono no tiene ninguna consecuencia,
+                // y a cambio el valor está disponible al instante.
+                await setDoc(doc(db, 'users', user.uid), { onboardedAt: Timestamp.now() }, { merge: true });
             } catch (error) {
-                // Si no se pudo marcar, que la bienvenida vuelva a salir es
-                // molesto pero inofensivo; quedarse encerrado acá no lo es.
                 console.error('No se pudo marcar la bienvenida como vista:', error);
             }
         }

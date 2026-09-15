@@ -26,6 +26,7 @@ import { toastConfig } from '../src/components/toastConfig';
 // 2. Importamos AMBOS providers y el hook 'usePlan'
 import { PlanProvider, usePlan } from '../src/contexts/planContext';
 import { ThemeProvider, useTheme } from '../src/contexts/themeContext'; // Importamos el nuevo ThemeProvider
+import { wasOnboardingDismissed } from '../src/services/onboardingSession';
 import Purchases from 'react-native-purchases';
 
 // Sprint 7.0: mantener la splash nativa visible hasta que las tres
@@ -68,7 +69,14 @@ function AuthRedirect() {
         // Se exige 'userData' cargado: null todavía significa "no sé", y
         // tratarlo como "no la ha visto" mandaría a /welcome a alguien que ya
         // la vio, en cada arranque.
-        const owesOnboarding = !!user && !!userData && !!userData.partnerId && !userData.onboardedAt;
+        //
+        // La segunda condición es la salida de emergencia: si alguien ya cerró
+        // la bienvenida en esta sesión pero la escritura no llegó a grabarse,
+        // sin esto quedaría rebotando entre las dos pantallas para siempre.
+        const owesOnboarding = !!user && !!userData
+            && !!userData.partnerId
+            && !userData.onboardedAt
+            && !wasOnboardingDismissed(user.uid);
 
         if (user && onPublicRoute) {
             // Con sesión iniciada no tiene sentido quedarse en el landing.
