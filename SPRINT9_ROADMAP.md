@@ -24,11 +24,15 @@ con 22 rutas) y pusheadas a `claude/conexiondiaria-app-review-o9tn7y`.
 | 9.7 | Archivo de Deseos: lo regalado deja de ocupar cupo | `1edd880` |
 | 9.8 | Archivo y tope de Notas, con archivado manual | `6b9d194` |
 | 9.9 | Grupos de tareas, con reglas propias y sus pruebas | `377cda9` |
+| 9.10 | El plan free ve los últimos 90 días del chat | `6dfa1f4` |
+| 9.11 | Fecha de nacimiento obligatoria al crear la cuenta | `8fa961a` |
+| 9.12 | Ficha de la pareja con notas privadas | `084a7ad` |
+| 9.13 | Aviso de regalo: Calendario, Deseos y tallas | `d37b494` |
 
-> **Pendiente de despliegue:** 9.9 agrega la subcolección `taskGroups` a
-> `firestore.rules`. Hasta que se despliegue (`firebase deploy --only
-> firestore:rules`), el proyecto real rechaza crear y leer grupos. Las reglas
-> están verificadas contra el emulador: `npm run test:rules`, 35 pruebas.
+Las reglas de 9.9 ya están desplegadas. Quedan verificadas contra el emulador
+con `npm run test:rules` (35 pruebas).
+
+Desde 9.12 el export son **23 rutas**, no 22: se suma `/partner`.
 
 De paso, el lint bajó de 4 a 3 warnings en 9.1 (nueva línea base) y se
 retiró de `chat.tsx` el cableado del visor de video, que era inalcanzable.
