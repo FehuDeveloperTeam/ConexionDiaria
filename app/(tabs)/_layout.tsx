@@ -111,9 +111,16 @@ function DesktopTabRail({ state, descriptors, navigation }: BottomTabBarProps) {
             paddingHorizontal: spacing.s12,
         }}>
             <View style={{ gap: spacing.s4 }}>
-                {state.routes.map((route, index) => {
+                {state.routes
+                    // Solo las ocho pestañas reales. La ficha de la pareja
+                    // vive en este grupo para conservar el riel, pero no es
+                    // una pestaña: se llega a ella desde la tarjeta de abajo.
+                    .filter(route => RAIL_ICONS[route.name])
+                    .map((route) => {
                     const { options } = descriptors[route.key];
-                    const isFocused = state.index === index;
+                    // Por clave y no por posición: al filtrar rutas, el índice
+                    // de esta lista ya no coincide con el del navegador.
+                    const isFocused = state.routes[state.index]?.key === route.key;
                     const label = typeof options.title === 'string' ? options.title : route.name;
 
                     return (
@@ -267,6 +274,13 @@ const TabLayout: React.FC = () => {
                     headerShown: false,
                 }}
             />
+
+            {/* Ficha de la pareja — Sprint 9.12. Vive dentro de este grupo para
+                conservar el riel lateral: como ruta suelta perdía la
+                navegación entera y el borde del contenido quedaba justo donde
+                antes estaba la barra, cortando la pantalla. 'href: null' la
+                deja fuera de la barra de pestañas. */}
+            <Tabs.Screen name="partner" options={{ href: null, headerShown: false }} />
 
             {/* Ocultamos las pantallas que no son pestañas (como login, register, etc.) */}
             {/* Expo Router lo maneja automáticamente si no están en esta lista */}

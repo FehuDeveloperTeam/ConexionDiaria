@@ -107,7 +107,6 @@ function AppShell() {
                 <Stack.Screen name="register" />
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="theme-editor" />
-                <Stack.Screen name="partner" />
             </Stack>
 
             {/* Este componente decide si mostrar la carga o redirigir */}

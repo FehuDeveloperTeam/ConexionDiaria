@@ -17,14 +17,14 @@ import { useRouter } from 'expo-router';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
-import { db } from '../src/config/firebaseConfig';
-import { radii, spacing } from '../src/config/theme';
-import { usePlan } from '../src/contexts/planContext';
-import { useTheme } from '../src/contexts/themeContext';
-import { Button } from '../src/components/Button';
-import { FullScreenLoader } from '../src/components/FullScreenLoader';
-import { DesktopContentWrap } from '../src/components/DesktopContentWrap';
-import { formatDate } from '../src/services/dateFormat';
+import { db } from '../../src/config/firebaseConfig';
+import { radii, spacing } from '../../src/config/theme';
+import { usePlan } from '../../src/contexts/planContext';
+import { useTheme } from '../../src/contexts/themeContext';
+import { Button } from '../../src/components/Button';
+import { FullScreenLoader } from '../../src/components/FullScreenLoader';
+import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
+import { formatDate } from '../../src/services/dateFormat';
 
 interface PartnerNotes {
     clothingSize: string;
