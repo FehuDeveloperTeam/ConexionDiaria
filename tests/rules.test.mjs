@@ -255,6 +255,52 @@ await check(
     assertSucceeds(deleteDoc(doc(bob.firestore(), 'relationships', REL, 'taskGroups', 'finde')))
 );
 
+console.log('\nTallas (Firestore) — Sprint 9.24');
+
+// Las pruebas de emparejamiento de más arriba terminan desconectando a Alice
+// y a Bob (es justo lo que comprueban). Como acá hace falta que SÍ sean
+// pareja para distinguir "lo lee su pareja" de "lo lee cualquiera", se
+// rehace el vínculo saltándose las reglas, igual que la semilla inicial.
+await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, 'users', ALICE), { partnerId: BOB });
+    await setDoc(doc(db, 'users', BOB), { partnerId: ALICE });
+});
+
+// Dos destinos distintos a propósito, y las reglas son lo único que los
+// separa: MIS tallas van en mi perfil para que mi pareja las lea, y lo que yo
+// ANOTO de ella va en mi subcolección privada, donde ella no entra. Si un día
+// alguien moviera las anotaciones al perfil "por comodidad", esta tanda de
+// pruebas es la que lo cacha.
+await check(
+    'LEGÍTIMO: Alice puede declarar sus propias tallas en su perfil',
+    assertSucceeds(updateDoc(doc(alice.firestore(), 'users', ALICE), { measurements: { topSize: 'M', shoeSize: '38' } }))
+);
+await check(
+    'LEGÍTIMO: Bob sí puede leer las tallas que declaró Alice (para eso están)',
+    assertSucceeds(getDoc(doc(bob.firestore(), 'users', ALICE)))
+);
+await check(
+    'ATAQUE: Eve NO puede leer las tallas de Alice',
+    assertFails(getDoc(doc(eve.firestore(), 'users', ALICE)))
+);
+await check(
+    'ATAQUE: Bob NO puede escribir las tallas de Alice, aunque sea su pareja',
+    assertFails(updateDoc(doc(bob.firestore(), 'users', ALICE), { measurements: { topSize: 'XXL' } }))
+);
+await check(
+    'ATAQUE: Bob NO puede leer lo que Alice anotó de ÉL en su ficha privada',
+    assertFails(getDoc(doc(bob.firestore(), 'users', ALICE, 'private', 'partnerProfile')))
+);
+await check(
+    'LEGÍTIMO: Alice sí puede guardar sus anotaciones privadas sobre Bob',
+    assertSucceeds(setDoc(doc(alice.firestore(), 'users', ALICE, 'private', 'partnerProfile'), { topSize: 'L', notes: 'le gusta holgada' }))
+);
+await check(
+    'ATAQUE: Alice NO puede colarse a premium de paso al guardar sus tallas',
+    assertFails(updateDoc(doc(alice.firestore(), 'users', ALICE), { measurements: { topSize: 'M' }, plan: 'premium' }))
+);
+
 await testEnv.cleanup();
 
 console.log(`\n${'='.repeat(58)}`);

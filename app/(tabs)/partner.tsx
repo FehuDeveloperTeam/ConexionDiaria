@@ -25,16 +25,21 @@ import { Button } from '../../src/components/Button';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 import { formatDate } from '../../src/services/dateFormat';
+import { MeasurementRow } from '../../src/components/MeasurementRow';
+import {
+    countFilled, fieldsFor, groupsFor, normalizeMeasurements, MeasurementValues,
+} from '../../src/config/measurements';
+import type { Gender } from '../../src/types/models';
 
+// Las tallas dejaron de ser tres campos fijos en el 9.24: ahora las define el
+// catálogo de src/config/measurements.ts, así que viven en un mapa suelto.
 interface PartnerNotes {
-    clothingSize: string;
-    shoeSize: string;
-    ringSize: string;
+    sizes: MeasurementValues;
     likes: string;
     notes: string;
 }
 
-const EMPTY: PartnerNotes = { clothingSize: '', shoeSize: '', ringSize: '', likes: '', notes: '' };
+const EMPTY: PartnerNotes = { sizes: {}, likes: '', notes: '' };
 
 const PartnerSheetScreen: React.FC = () => {
     const router = useRouter();
@@ -42,6 +47,9 @@ const PartnerSheetScreen: React.FC = () => {
     const { plan, user, userData, partnerData, isLoading } = usePlan();
 
     const [form, setForm] = useState<PartnerNotes>(EMPTY);
+    // Lo ya persistido, que es lo que decide el tick verde: mientras se
+    // escribe sigue gris y se pone verde al guardar.
+    const [savedSizes, setSavedSizes] = useState<MeasurementValues>({});
     const [loadingNotes, setLoadingNotes] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -53,7 +61,17 @@ const PartnerSheetScreen: React.FC = () => {
             .then(snapshot => {
                 if (cancelled) return;
                 if (snapshot.exists()) {
-                    setForm({ ...EMPTY, ...snapshot.data() } as PartnerNotes);
+                    const data = snapshot.data();
+                    // Las tallas están sueltas en la raíz del documento (así se
+                    // guardaban antes del 9.24 y así se siguen guardando, para
+                    // no migrar nada); normalizeMeasurements las recoge y de
+                    // paso traduce la vieja 'clothingSize'.
+                    setForm({
+                        sizes: normalizeMeasurements(data),
+                        likes: typeof data.likes === 'string' ? data.likes : '',
+                        notes: typeof data.notes === 'string' ? data.notes : '',
+                    });
+                    setSavedSizes(normalizeMeasurements(data));
                 }
             })
             .catch(error => console.error('Error cargando la ficha:', error))
@@ -68,9 +86,10 @@ const PartnerSheetScreen: React.FC = () => {
         try {
             await setDoc(
                 doc(db, 'users', user.uid, 'private', 'partnerProfile'),
-                { ...form, updatedAt: serverTimestamp() },
+                { ...form.sizes, likes: form.likes, notes: form.notes, updatedAt: serverTimestamp() },
                 { merge: true }
             );
+            setSavedSizes(form.sizes);
             Toast.show({ type: 'success', text1: 'Ficha guardada' });
             router.back();
         } catch (error) {
@@ -106,6 +125,27 @@ const PartnerSheetScreen: React.FC = () => {
     }
 
     const partnerName = partnerData.displayName || 'tu pareja';
+
+    // Qué tallas se preguntan depende del género de ELLA, no del mío: son sus
+    // prendas. Sin género declarado se muestran todas (ver measurements.ts).
+    // Nada de useMemo acá: estamos pasados los early return de arriba y los
+    // hooks no pueden ir después de un return condicional.
+    const partnerGender: Gender | null = (partnerData.gender as Gender) ?? null;
+    const sizeGroups = groupsFor(partnerGender);
+    const sizeFields = fieldsFor(partnerGender);
+
+    // Lo que ella misma declaró en "Mis tallas". Llega por el listener de
+    // planContext, así que si lo cambia mientras tengo la ficha abierta, se
+    // actualiza sola.
+    const declaredSizes = normalizeMeasurements(partnerData.measurements);
+    const declaredCount = countFilled(declaredSizes, sizeFields);
+
+    // El contador cuenta las dos fuentes: lo que ella declaró ya es un dato
+    // que tengo, no algo que me falte por averiguar.
+    const sizesTotal = sizeFields.length;
+    const sizesFilled = sizeFields.filter(
+        f => !!(savedSizes[f.key]?.trim() || declaredSizes[f.key])
+    ).length;
     const birth = partnerData.birthDate?.toDate ? partnerData.birthDate.toDate() : null;
     const anniversary = userData.relationshipStartDate?.toDate ? userData.relationshipStartDate.toDate() : null;
 
@@ -119,7 +159,7 @@ const PartnerSheetScreen: React.FC = () => {
         fontFamily: fontFamilies.body, fontSize: 15, backgroundColor: theme.inputBackground,
     };
 
-    const setField = (key: keyof PartnerNotes) => (value: string) =>
+    const setText = (key: 'likes' | 'notes') => (value: string) =>
         setForm(prev => ({ ...prev, [key]: value }));
 
     return (
@@ -167,44 +207,61 @@ const PartnerSheetScreen: React.FC = () => {
                     </View>
                 </View>
 
-                {/* Tallas */}
+                {/* Tallas — Sprint 9.24. Dos fuentes en la misma fila: lo
+                    que {partnerName} declaró en "Mis tallas" (aparece en gris,
+                    y no hay nada que averiguar) y lo que yo anoto encima, que
+                    es privado. El tick verde dice que el dato existe, venga de
+                    donde venga. */}
                 <View style={{ gap: spacing.s14 }}>
-                    <Text style={labelStyle}>Tallas</Text>
-                    <View style={{ flexDirection: 'row', gap: spacing.s10 }}>
-                        <View style={{ flex: 1 }}>
-                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint, marginBottom: spacing.s6 }}>Ropa</Text>
-                            <TextInput
-                                style={[inputStyle, { height: 48 }]}
-                                placeholder="M"
-                                placeholderTextColor={theme.textFaint}
-                                value={form.clothingSize}
-                                onChangeText={setField('clothingSize')}
-                                maxLength={12}
-                            />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint, marginBottom: spacing.s6 }}>Calzado</Text>
-                            <TextInput
-                                style={[inputStyle, { height: 48 }]}
-                                placeholder="38"
-                                placeholderTextColor={theme.textFaint}
-                                value={form.shoeSize}
-                                onChangeText={setField('shoeSize')}
-                                maxLength={12}
-                            />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint, marginBottom: spacing.s6 }}>Anillo</Text>
-                            <TextInput
-                                style={[inputStyle, { height: 48 }]}
-                                placeholder="14"
-                                placeholderTextColor={theme.textFaint}
-                                value={form.ringSize}
-                                onChangeText={setField('ringSize')}
-                                maxLength={12}
-                            />
-                        </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s8 }}>
+                        <Text style={[labelStyle, { marginBottom: 0, flex: 1 }]}>
+                            Tallas · {sizesFilled} de {sizesTotal}
+                        </Text>
                     </View>
+
+                    {declaredCount > 0 ? (
+                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
+                            {declaredCount === 1
+                                ? `${partnerName} declaró una talla; aparece en gris.`
+                                : `${partnerName} declaró ${declaredCount} tallas; aparecen en gris.`}
+                        </Text>
+                    ) : (
+                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
+                            {partnerName} todavía no declara ninguna. Puedes anotarlas tú.
+                        </Text>
+                    )}
+
+                    {sizeGroups.map(group => (
+                        <View key={group.key}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s8, marginBottom: spacing.s8 }}>
+                                <Ionicons name={group.icon} size={15} color={theme.textMuted} />
+                                <Text style={[labelStyle, { marginBottom: 0 }]}>{group.title}</Text>
+                            </View>
+                            <View style={{
+                                backgroundColor: theme.surface, borderRadius: radii.card,
+                                borderWidth: 1, borderColor: theme.borderSoft,
+                            }}>
+                                {group.fields.map((field, index) => {
+                                    const declared = declaredSizes[field.key];
+                                    return (
+                                        <MeasurementRow
+                                            key={field.key}
+                                            label={field.label}
+                                            hint={field.hint}
+                                            sourceNote={declared ? `Lo puso ${partnerName}` : undefined}
+                                            value={form.sizes[field.key] ?? ''}
+                                            placeholder={declared || field.placeholder}
+                                            saved={!!(savedSizes[field.key]?.trim() || declared)}
+                                            isLast={index === group.fields.length - 1}
+                                            onChangeText={text => setForm(prev => ({
+                                                ...prev, sizes: { ...prev.sizes, [field.key]: text },
+                                            }))}
+                                        />
+                                    );
+                                })}
+                            </View>
+                        </View>
+                    ))}
                 </View>
 
                 <View>
@@ -214,7 +271,7 @@ const PartnerSheetScreen: React.FC = () => {
                         placeholder="Colores, marcas, perfumes, cosas que ha mencionado de pasada…"
                         placeholderTextColor={theme.textFaint}
                         value={form.likes}
-                        onChangeText={setField('likes')}
+                        onChangeText={setText('likes')}
                         multiline
                         maxLength={600}
                     />
@@ -227,7 +284,7 @@ const PartnerSheetScreen: React.FC = () => {
                         placeholder="Ideas de regalo, tiendas, lo que ya le regalaste…"
                         placeholderTextColor={theme.textFaint}
                         value={form.notes}
-                        onChangeText={setField('notes')}
+                        onChangeText={setText('notes')}
                         multiline
                         maxLength={600}
                     />

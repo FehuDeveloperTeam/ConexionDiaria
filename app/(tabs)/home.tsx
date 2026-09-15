@@ -36,6 +36,8 @@ import { registerPushToken } from '../../src/services/notifications';
 // las secciones que 7.3b todavía no re-skinea (historial, extrañómetro).
 import { Button as AppButton } from '../../src/components/Button';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
+import { countFilled, fieldsFor, normalizeMeasurements } from '../../src/config/measurements';
+import type { Gender } from '../../src/types/models';
 import { TextField } from '../../src/components/TextField';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 
@@ -83,13 +85,14 @@ const PAIRING_ERROR_TITLES: Record<string, string> = {
     'functions/unauthenticated': 'Sesión expirada',
 };
 
-const getTodayDateKey = (): string => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
+const getTodayDateKeyFrom = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
 };
+
+const getTodayDateKey = (): string => getTodayDateKeyFrom(new Date());
 
 // Eyebrow del hero de aniversario ("JUNTOS DESDE EL 14 DE FEB, 2023") —
 // Sprint 7.3a. Es un texto ilustrativo, no un campo numérico, así que no
@@ -276,11 +279,11 @@ const Home: React.FC = () => {
 
     // Sprint 9.13: lo que hay que saber para el regalo — qué pidió y qué tallas
     // usa. Solo se carga cuando una fecha está cerca (ver más abajo).
+    // Sprint 9.24: las tallas dejaron de ser tres campos fijos — se arman
+    // desde el catálogo, juntando lo que ella declaró y lo que yo anoté.
     const [giftIntel, setGiftIntel] = useState<{
         wishes: string[];
-        clothingSize: string;
-        shoeSize: string;
-        ringSize: string;
+        sizes: { label: string; value: string }[];
     } | null>(null);
     const [partnerCode, setPartnerCode] = useState('');
     const [isMoodSelectorVisible, setIsMoodSelectorVisible] = useState(false);
@@ -456,6 +459,44 @@ const Home: React.FC = () => {
         return days <= GIFT_ALERT_DAYS ? { ...soonest, days } : null;
     }, [partnerData?.birthDate, partnerData?.displayName, userData?.relationshipStartDate]);
 
+    // 'partnerData' se reemplaza entero en cada latido del listener (isOnline
+    // se reescribe cada 30 s). Usarlo como dependencia del efecto de abajo
+    // volvería a leer deseos y ficha cada medio minuto durante las dos semanas
+    // que dura el aviso, así que la dependencia es el CONTENIDO serializado y
+    // no la referencia.
+    const partnerMeasurementsKey = JSON.stringify(partnerData?.measurements ?? null);
+    const partnerGender: Gender | null = (partnerData?.gender as Gender) ?? null;
+
+    // --- Sprint 9.24: invitación a declarar MIS tallas ---
+    // El cálculo es local (sale del perfil que ya está en memoria), así que no
+    // cuesta ninguna lectura extra.
+    const myMeasurements = normalizeMeasurements(userData?.measurements);
+    const myMeasurementFields = fieldsFor((userData?.gender as Gender) ?? null);
+    const myMeasurementsFilled = countFilled(myMeasurements, myMeasurementFields);
+    const myMeasurementsPending = myMeasurementFields.length - myMeasurementsFilled;
+    // Posponer se guarda en el perfil y no en el dispositivo: si lo pospongo
+    // en el teléfono, tampoco quiero verlo en el computador.
+    const measurementsSnoozed = (userData?.measurementsSnoozedUntil ?? '') > getTodayDateKey();
+    const showMeasurementsInvite =
+        !!userData?.partnerId && myMeasurementsPending > 0 && !measurementsSnoozed;
+
+    const snoozeMeasurementsInvite = async () => {
+        if (!user) return;
+        const until = new Date();
+        // Dos semanas: lo bastante para no ser insistente, lo bastante poco
+        // para que la invitación siga existiendo si de verdad sirve.
+        until.setDate(until.getDate() + 14);
+        try {
+            await setDoc(
+                doc(db, 'users', user.uid),
+                { measurementsSnoozedUntil: getTodayDateKeyFrom(until) },
+                { merge: true }
+            );
+        } catch (error) {
+            console.error('No se pudo posponer la invitación de tallas:', error);
+        }
+    };
+
     // Los deseos y las tallas se piden SOLO cuando la fecha ya está cerca y el
     // plan lo permite: el resto del año esto no cuesta ninguna lectura.
     useEffect(() => {
@@ -488,12 +529,23 @@ const Home: React.FC = () => {
                 const data = sheet.exists() ? sheet.data() : {};
 
                 if (cancelled) return;
-                setGiftIntel({
-                    wishes,
-                    clothingSize: data.clothingSize || '',
-                    shoeSize: data.shoeSize || '',
-                    ringSize: data.ringSize || '',
-                });
+
+                // Dos fuentes, una sola lista: lo que ella declaró en "Mis
+                // tallas" y lo que yo anoté en su ficha. Lo mío manda, porque
+                // es más específico — si anoté algo distinto, será por algo.
+                const myNotes = normalizeMeasurements(data);
+                const declared = normalizeMeasurements(JSON.parse(partnerMeasurementsKey));
+                const sizes = fieldsFor(partnerGender)
+                    .map(field => ({
+                        label: field.label,
+                        value: myNotes[field.key] || declared[field.key] || '',
+                    }))
+                    .filter(entry => !!entry.value)
+                    // Tres caben en el aviso sin que deje de leerse de un
+                    // vistazo; el resto está a un toque en la ficha.
+                    .slice(0, 3);
+
+                setGiftIntel({ wishes, sizes });
             } catch (error) {
                 console.error('Error preparando el aviso de regalo:', error);
                 if (!cancelled) setGiftIntel(null);
@@ -501,7 +553,7 @@ const Home: React.FC = () => {
         })();
 
         return () => { cancelled = true; };
-    }, [giftOccasion, plan, user, userData?.partnerId]);
+    }, [giftOccasion, plan, user, userData?.partnerId, partnerMeasurementsKey, partnerGender]);
 
     // useEffect para cargar el Historial (ACTUALIZADO CON LÍMITE FREEMIUM)
     const missYouPartnerId = userData?.partnerId as string | undefined;
@@ -1008,23 +1060,13 @@ const Home: React.FC = () => {
                                         </Text>
                                     )}
 
-                                    {giftIntel && (giftIntel.clothingSize || giftIntel.shoeSize || giftIntel.ringSize) ? (
+                                    {giftIntel && giftIntel.sizes.length > 0 ? (
                                         <View style={styles.giftSizes}>
-                                            {!!giftIntel.clothingSize && (
-                                                <View style={styles.giftSizeChip}>
-                                                    <Text style={styles.giftSizeText}>Ropa {giftIntel.clothingSize}</Text>
+                                            {giftIntel.sizes.map(size => (
+                                                <View key={size.label} style={styles.giftSizeChip}>
+                                                    <Text style={styles.giftSizeText}>{size.label} {size.value}</Text>
                                                 </View>
-                                            )}
-                                            {!!giftIntel.shoeSize && (
-                                                <View style={styles.giftSizeChip}>
-                                                    <Text style={styles.giftSizeText}>Calza {giftIntel.shoeSize}</Text>
-                                                </View>
-                                            )}
-                                            {!!giftIntel.ringSize && (
-                                                <View style={styles.giftSizeChip}>
-                                                    <Text style={styles.giftSizeText}>Anillo {giftIntel.ringSize}</Text>
-                                                </View>
-                                            )}
+                                            ))}
                                         </View>
                                     ) : (
                                         <TouchableOpacity style={styles.giftLockRow} onPress={() => router.push('/partner')}>
@@ -1044,6 +1086,45 @@ const Home: React.FC = () => {
                                 </TouchableOpacity>
                             )}
                         </View>
+                    )}
+
+                    {/* Sprint 9.24 — invitación a declarar MIS tallas.
+                        Deliberadamente discreta: una fila, sin color de
+                        acento, sin modal y con una X para posponerla dos
+                        semanas. Compite en la misma pantalla con el aviso de
+                        regalo, que sí es urgente; esto no lo es, y si grita se
+                        vuelve ruido. Desaparece sola cuando no queda ninguna
+                        talla por responder. */}
+                    {showMeasurementsInvite && (
+                        <TouchableOpacity
+                            onPress={() => router.push('/measurements?guide=1')}
+                            accessibilityRole="button"
+                            accessibilityLabel="Responder mis tallas"
+                            style={{
+                                flexDirection: 'row', alignItems: 'center', gap: spacing.s12,
+                                backgroundColor: theme.surfaceAlt, borderRadius: radii.card,
+                                paddingVertical: spacing.s12, paddingHorizontal: spacing.s14,
+                                marginBottom: spacing.s16,
+                            }}
+                        >
+                            <Ionicons name="shirt-outline" size={18} color={theme.textMuted} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: theme.text }}>
+                                    ¿{partnerData?.displayName || 'Tu pareja'} sabe qué talla usas?
+                                </Text>
+                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint, marginTop: 2 }}>
+                                    Déjaselas anotadas · {myMeasurementsFilled} de {myMeasurementFields.length}
+                                </Text>
+                            </View>
+                            <TouchableOpacity
+                                onPress={snoozeMeasurementsInvite}
+                                accessibilityRole="button"
+                                accessibilityLabel="Recordármelo más adelante"
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Ionicons name="close" size={16} color={theme.textFaint} />
+                            </TouchableOpacity>
+                        </TouchableOpacity>
                     )}
 
                     {/* Sprint 9.5: "Lo próximo". Se compara a medianoche y no con la

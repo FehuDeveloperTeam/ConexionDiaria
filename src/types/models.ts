@@ -44,6 +44,19 @@ export interface UserDoc {
   isOnline: boolean;
   lastSeen: Timestamp;
 
+  // Sprint 9.24 — MIS tallas, declaradas por mí para que mi pareja no tenga
+  // que adivinarlas. Viven en el perfil, no en la subcolección privada, justo
+  // porque la gracia es que ella las lea (la regla de 'users' ya le deja leer
+  // mi perfil). Lo que YO anoto de ELLA es otra cosa y vive en
+  // users/{uid}/private/partnerProfile, donde nadie más entra.
+  // Las claves son las de src/config/measurements.ts.
+  measurements?: Record<string, string>;
+
+  // Hasta cuándo no volver a ofrecer el asistente de tallas en Inicio
+  // ('YYYY-MM-DD'). Se guarda en el perfil y no en el dispositivo para que
+  // posponerlo en el teléfono también lo posponga en el computador.
+  measurementsSnoozedUntil?: string | null;
+
   // De solo lectura para el cliente desde el Sprint 3 — los escribe
   // exclusivamente la Cloud Function que valida el webhook de RevenueCat
   // (functions/src/revenuecatWebhook.ts), nunca el cliente.

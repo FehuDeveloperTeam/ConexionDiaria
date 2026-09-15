@@ -282,6 +282,10 @@ const TabLayout: React.FC = () => {
                 deja fuera de la barra de pestañas. */}
             <Tabs.Screen name="partner" options={{ href: null, headerShown: false }} />
 
+            {/* "Mis tallas" — Sprint 9.24. Mismo criterio que la ficha: dentro
+                del grupo para conservar el riel, fuera de la barra. */}
+            <Tabs.Screen name="measurements" options={{ href: null, headerShown: false }} />
+
             {/* Ocultamos las pantallas que no son pestañas (como login, register, etc.) */}
             {/* Expo Router lo maneja automáticamente si no están en esta lista */}
 

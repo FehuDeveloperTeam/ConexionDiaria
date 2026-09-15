@@ -14,6 +14,8 @@ import { radii, spacing } from '../../src/config/theme';
 import { signOut } from 'firebase/auth';
 import { doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { formatDate } from '../../src/services/dateFormat';
+import { countFilled, fieldsFor, normalizeMeasurements } from '../../src/config/measurements';
+import type { Gender } from '../../src/types/models';
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -126,6 +128,11 @@ const ConfigScreen: React.FC = () => {
     const [isPartnerPaywallVisible, setIsPartnerPaywallVisible] = useState(false);
     const [isDisconnectConfirmVisible, setIsDisconnectConfirmVisible] = useState(false);
     const birthDate: Date | null = userData?.birthDate?.toDate ? userData.birthDate.toDate() : null;
+
+    // Sprint 9.24: el contador de "Mis tallas" sale del perfil que ya está en
+    // memoria, sin lecturas extra.
+    const myMeasurementFields = fieldsFor((userData?.gender as Gender) ?? null);
+    const myMeasurementsFilled = countFilled(normalizeMeasurements(userData?.measurements), myMeasurementFields);
 
     useEffect(() => {
         if (userData) {
@@ -445,6 +452,19 @@ const ConfigScreen: React.FC = () => {
                             right={plan === 'free' ? <PremiumBadge /> : <Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
                         />
                     )}
+                    {/* Sprint 9.24: el espejo de la ficha de la pareja. Acá
+                        declaro lo mío, y es gratis a propósito — lo que declaro
+                        alimenta la ficha de la OTRA persona, que sí es
+                        premium. */}
+                    <PrefRow
+                        icon="shirt-outline"
+                        label="Mis tallas"
+                        subcopy={userData?.partnerId
+                            ? `${myMeasurementsFilled} de ${myMeasurementFields.length} · las ve tu pareja`
+                            : `${myMeasurementsFilled} de ${myMeasurementFields.length} completadas`}
+                        onPress={() => router.push('/measurements')}
+                        right={<Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
+                    />
                     {/* Solo lectura, y a propósito. La fecha de nacimiento
                         decide cuándo se abre la ventana de descuento de
                         cumpleaños: si se pudiera editar, bastaría moverla dos
