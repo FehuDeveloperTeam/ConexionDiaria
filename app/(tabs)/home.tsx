@@ -607,14 +607,15 @@ const Home: React.FC = () => {
                 if (cancelled) return;
 
                 // Dos fuentes, una sola lista: lo que ella declaró en "Mis
-                // tallas" y lo que yo anoté en su ficha. Lo mío manda, porque
-                // es más específico — si anoté algo distinto, será por algo.
+                // tallas" y lo que yo anoté en su ficha. Manda lo que declaró
+                // ella: lo mío es una suposición mientras ella no ha dicho
+                // nada, y en cuanto lo dice, la que sabe su talla es ella.
                 const myNotes = normalizeMeasurements(data);
                 const declared = normalizeMeasurements(JSON.parse(partnerMeasurementsKey));
                 const sizes = fieldsFor(partnerGender)
                     .map(field => ({
                         label: field.label,
-                        value: myNotes[field.key] || declared[field.key] || '',
+                        value: declared[field.key] || myNotes[field.key] || '',
                     }))
                     .filter(entry => !!entry.value)
                     // Tres caben en el aviso sin que deje de leerse de un

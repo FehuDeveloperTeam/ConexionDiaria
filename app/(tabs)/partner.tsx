@@ -219,17 +219,11 @@ const PartnerSheetScreen: React.FC = () => {
                         </Text>
                     </View>
 
-                    {declaredCount > 0 ? (
-                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
-                            {declaredCount === 1
-                                ? `${partnerName} declaró una talla; aparece en gris.`
-                                : `${partnerName} declaró ${declaredCount} tallas; aparecen en gris.`}
-                        </Text>
-                    ) : (
-                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
-                            {partnerName} todavía no declara ninguna. Puedes anotarlas tú.
-                        </Text>
-                    )}
+                    <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, lineHeight: 18, color: theme.textFaint }}>
+                        {declaredCount > 0
+                            ? `Lo que ${partnerName} declaró manda y no se edita acá: si algo está mal, lo corrige ella desde "Mis tallas". El resto puedes anotarlo tú.`
+                            : `${partnerName} todavía no declara ninguna, así que puedes anotarlas tú. Cuando las declare, manda lo que diga ella.`}
+                    </Text>
 
                     {sizeGroups.map(group => (
                         <View key={group.key}>
@@ -243,16 +237,29 @@ const PartnerSheetScreen: React.FC = () => {
                             }}>
                                 {group.fields.map((field, index) => {
                                     const declared = declaredSizes[field.key];
+                                    const myNote = form.sizes[field.key] ?? '';
+
+                                    // Manda lo que ella declaró. Lo que yo
+                                    // anoté es una suposición mientras ella no
+                                    // ha dicho nada; en cuanto lo dice, mi
+                                    // anotación deja de usarse.
+                                    const sourceNote = declared
+                                        ? (myNote.trim() && myNote.trim() !== declared
+                                            ? `Lo puso ${partnerName} · tú anotaste ${myNote.trim()}`
+                                            : `Lo puso ${partnerName}`)
+                                        : (savedSizes[field.key]?.trim() ? 'Anotado por ti' : undefined);
+
                                     return (
                                         <MeasurementRow
                                             key={field.key}
                                             label={field.label}
                                             hint={field.hint}
-                                            sourceNote={declared ? `Lo puso ${partnerName}` : undefined}
-                                            value={form.sizes[field.key] ?? ''}
-                                            placeholder={declared || field.placeholder}
+                                            sourceNote={sourceNote}
+                                            value={declared || myNote}
+                                            placeholder={field.placeholder}
                                             saved={!!(savedSizes[field.key]?.trim() || declared)}
                                             isLast={index === group.fields.length - 1}
+                                            readOnly={!!declared}
                                             onChangeText={text => setForm(prev => ({
                                                 ...prev, sizes: { ...prev.sizes, [field.key]: text },
                                             }))}

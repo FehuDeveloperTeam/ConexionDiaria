@@ -33,8 +33,12 @@ export const MeasurementRow: React.FC<{
     placeholder: string;
     saved: boolean;
     isLast?: boolean;
+    // Sprint 9.29: una talla que la otra persona declaró no se edita acá.
+    // Manda lo que dice ella, así que un campo escribible sería un campo cuyo
+    // contenido se ignora — peor que no tenerlo.
+    readOnly?: boolean;
     onChangeText: (value: string) => void;
-}> = ({ label, hint, sourceNote, value, placeholder, saved, isLast, onChangeText }) => {
+}> = ({ label, hint, sourceNote, value, placeholder, saved, isLast, readOnly, onChangeText }) => {
     const { theme, fontFamilies } = useTheme();
 
     return (
@@ -54,21 +58,36 @@ export const MeasurementRow: React.FC<{
                 )}
             </View>
 
-            <TextInput
-                style={{
-                    width: 92, height: 40, textAlign: 'right',
-                    paddingHorizontal: spacing.s10,
-                    borderWidth: 1, borderColor: theme.borderSoft, borderRadius: radii.field,
-                    backgroundColor: theme.inputBackground,
-                    color: theme.text, fontFamily: fontFamilies.body, fontSize: 15,
-                }}
-                value={value}
-                onChangeText={onChangeText}
-                placeholder={placeholder}
-                placeholderTextColor={theme.textFaint}
-                accessibilityLabel={label}
-                maxLength={14}
-            />
+            {readOnly ? (
+                <View style={{ width: 92, height: 40, justifyContent: 'center' }}>
+                    <Text
+                        style={{
+                            textAlign: 'right',
+                            color: value ? theme.text : theme.textFaint,
+                            fontFamily: fontFamilies.bodySemiBold, fontSize: 15,
+                        }}
+                        numberOfLines={1}
+                    >
+                        {value || '—'}
+                    </Text>
+                </View>
+            ) : (
+                <TextInput
+                    style={{
+                        width: 92, height: 40, textAlign: 'right',
+                        paddingHorizontal: spacing.s10,
+                        borderWidth: 1, borderColor: theme.borderSoft, borderRadius: radii.field,
+                        backgroundColor: theme.inputBackground,
+                        color: theme.text, fontFamily: fontFamilies.body, fontSize: 15,
+                    }}
+                    value={value}
+                    onChangeText={onChangeText}
+                    placeholder={placeholder}
+                    placeholderTextColor={theme.textFaint}
+                    accessibilityLabel={label}
+                    maxLength={14}
+                />
+            )}
 
             <StatusTick filled={saved} />
         </View>

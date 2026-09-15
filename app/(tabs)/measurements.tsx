@@ -70,18 +70,35 @@ const MeasurementsScreen: React.FC = () => {
     // a ser el 3 de 4.
     const [queue, setQueue] = useState<typeof fields>([]);
 
+    // ...pero sí se descarta lo que dejó de aplicar. La cola se congela al
+    // entrar, y si el género se declara después, lo congelado incluiría
+    // preguntas que ya no corresponden.
+    const applicableKeys = useMemo(() => new Set(fields.map(f => f.key)), [fields]);
+    const activeQueue = useMemo(
+        () => queue.filter(field => applicableKeys.has(field.key)),
+        [queue, applicableKeys]
+    );
+
     // El arranque en modo guía espera a que el perfil termine de cargar: antes
     // de eso 'pending' son todos los campos, incluidos los ya respondidos.
     const guideStarted = useRef(false);
     useEffect(() => {
         if (guide !== '1' || isLoading || guideStarted.current) return;
         guideStarted.current = true;
-        const queueForGuide = pending.length > 0 ? pending : fields;
-        setQueue(queueForGuide);
+        setMode('guide');
+    }, [guide, isLoading]);
+
+    // La cola se arma cuando ya sabemos QUÉ preguntar, no al entrar.
+    //
+    // Antes se armaba al entrar, con el género todavía sin declarar: a un
+    // hombre le preguntaba por sostén y por vestido, y elegir "Masculino" no
+    // lo corregía, porque la cola ya estaba congelada con esas dos adentro.
+    useEffect(() => {
+        if (mode !== 'guide' || !gender || queue.length > 0) return;
+        setQueue(pending.length > 0 ? pending : fields);
         setStep(0);
         setAnswer('');
-        setMode('guide');
-    }, [guide, isLoading, pending, fields]);
+    }, [mode, gender, queue.length, pending, fields]);
 
     const filled = countFilled(saved, fields);
     const total = fields.length;
@@ -97,14 +114,15 @@ const MeasurementsScreen: React.FC = () => {
     };
 
     const startGuide = () => {
-        setQueue(pending.length > 0 ? pending : fields);
+        // Vacía: el efecto de arriba la arma con el género ya conocido.
+        setQueue([]);
         setStep(0);
         setAnswer('');
         setMode('guide');
     };
 
     const advance = async (value: string) => {
-        const field = queue[step];
+        const field = activeQueue[step];
         if (!field) return;
 
         if (value.trim()) {
@@ -122,7 +140,7 @@ const MeasurementsScreen: React.FC = () => {
         }
 
         setAnswer('');
-        if (step + 1 >= queue.length) {
+        if (step + 1 >= activeQueue.length) {
             setMode('list');
             Toast.show({ type: 'success', text1: 'Listo', text2: 'Tu pareja ya puede verlas.' });
         } else {
@@ -161,7 +179,7 @@ const MeasurementsScreen: React.FC = () => {
         textTransform: 'uppercase' as const, color: theme.textMuted, marginBottom: spacing.s8,
     };
 
-    const current = queue[step];
+    const current = activeQueue[step];
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
@@ -191,8 +209,10 @@ const MeasurementsScreen: React.FC = () => {
                     </View>
 
                     {/* Se pregunta solo si no está declarado, y con las tallas
-                        como motivo: es lo único para lo que se usa acá. */}
-                    {!gender && (
+                        como motivo: es lo único para lo que se usa acá. En
+                        modo guía esto es el primer paso, así que acá solo va
+                        en la lista — si no, saldría dos veces. */}
+                    {!gender && mode === 'list' && (
                         <View>
                             <Text style={sectionLabel}>Para preguntarte solo lo que te sirve</Text>
                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.s8 }}>
@@ -215,13 +235,50 @@ const MeasurementsScreen: React.FC = () => {
                         </View>
                     )}
 
-                    {mode === 'guide' && current ? (
+                    {mode === 'guide' && !gender ? (
+                        // Primer paso, y va primero por una razón concreta: la
+                        // cola de preguntas se arma con el género ya conocido.
+                        // Preguntarlo después obligaba a rehacerla a mitad de
+                        // camino, que es justo lo que antes no pasaba.
                         <View style={{
                             backgroundColor: theme.surface, borderRadius: radii.card,
                             borderWidth: 1, borderColor: theme.borderSoft, padding: spacing.s20, gap: spacing.s14,
                         }}>
                             <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
-                                {step + 1} de {queue.length}
+                                Antes de empezar
+                            </Text>
+                            <Text style={{ fontFamily: fontFamilies.display, fontSize: 22, color: theme.text }}>
+                                ¿Qué prendas te sirven?
+                            </Text>
+                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 13.5, lineHeight: 20, color: theme.textMuted }}>
+                                Así te pregunto solo por lo que usas y no por lo que no.
+                            </Text>
+                            <View style={{ gap: spacing.s8 }}>
+                                {GENDER_OPTIONS.map(option => (
+                                    <TouchableOpacity
+                                        key={option.value}
+                                        onPress={() => handlePickGender(option.value)}
+                                        accessibilityRole="button"
+                                        style={{
+                                            paddingVertical: spacing.s14, paddingHorizontal: spacing.s16,
+                                            borderRadius: radii.field, borderWidth: 1, borderColor: theme.borderSoft,
+                                            backgroundColor: theme.inputBackground,
+                                        }}
+                                    >
+                                        <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 15, color: theme.text }}>
+                                            {option.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+                    ) : mode === 'guide' && current ? (
+                        <View style={{
+                            backgroundColor: theme.surface, borderRadius: radii.card,
+                            borderWidth: 1, borderColor: theme.borderSoft, padding: spacing.s20, gap: spacing.s14,
+                        }}>
+                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
+                                {step + 1} de {activeQueue.length}
                             </Text>
                             <Text style={{ fontFamily: fontFamilies.display, fontSize: 22, color: theme.text }}>
                                 {current.question}
@@ -260,7 +317,7 @@ const MeasurementsScreen: React.FC = () => {
                                 </TouchableOpacity>
                                 <View style={{ flex: 1 }} />
                                 <Button
-                                    title={step + 1 >= queue.length ? 'Terminar' : 'Siguiente'}
+                                    title={step + 1 >= activeQueue.length ? 'Terminar' : 'Siguiente'}
                                     onPress={() => advance(answer)}
                                     loading={isSaving}
                                     style={{ minWidth: 140 }}
@@ -309,6 +366,30 @@ const MeasurementsScreen: React.FC = () => {
                             ))}
 
                             <Button title="Guardar tallas" onPress={handleSaveList} loading={isSaving} />
+
+                            {/* Esta pantalla es solo lo MÍO, y eso no era
+                                evidente: al no encontrar acá las tallas de la
+                                otra persona, parece que no estuvieran en
+                                ninguna parte. Están en su ficha. */}
+                            {!!userData?.partnerId && (
+                                <TouchableOpacity
+                                    onPress={() => router.push('/partner')}
+                                    accessibilityRole="button"
+                                    style={{
+                                        flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
+                                        paddingVertical: spacing.s12, paddingHorizontal: spacing.s14,
+                                        borderRadius: radii.field, backgroundColor: theme.surfaceAlt,
+                                    }}
+                                >
+                                    <Ionicons name="person-circle-outline" size={17} color={theme.textMuted} />
+                                    <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: theme.text, flex: 1 }}>
+                                        ¿Y las de {partnerName}?
+                                    </Text>
+                                    <Text style={{ fontFamily: fontFamilies.action, fontSize: 13, color: theme.primary }}>
+                                        Ver su ficha
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
                         </>
                     )}
                 </ScrollView>
