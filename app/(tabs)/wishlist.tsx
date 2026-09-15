@@ -31,6 +31,8 @@ import { useResponsive } from '../../src/hooks/useResponsive';
 
 const WISH_TYPES = ['Aniversario', 'Cumpleaños', 'Navidad', 'San Valentín', 'Solo porque sí', 'Otro'];
 const FREE_LIMIT = 10;
+// Cuántos regalados ve el plan free en el archivo; premium los ve todos.
+const ARCHIVE_FREE_VISIBLE = 10;
 // Colores de avatar por persona (handoff) — no varían entre claro/oscuro.
 const PARTNER_AVATAR = { bg: '#FFE9EF', text: '#C2374F' };
 const GIFTED_BADGE = { bg: '#E6F3EA', text: '#2E6B47' };
@@ -87,24 +89,49 @@ const WishlistScreen: React.FC = () => {
         return () => unsubscribe();
     }, [user, partnerId]);
 
+    // Sprint 9.7 — un deseo regalado sale de la lista activa y pasa al
+    // archivo, donde YA NO OCUPA CUPO. Esa es la razón por la que no hace
+    // falta bloquear el borrado en el plan free: nadie necesita borrar para
+    // hacer espacio, porque el camino natural —cumplir el deseo— ya lo
+    // libera. Y el archivo completo, que es el registro de todo lo que se
+    // regalaron, queda como motivo para pasar a premium.
+    const activeItems = useMemo(() => allItems.filter(item => !item.isCompleted), [allItems]);
+    const archivedItems = useMemo(() => allItems.filter(item => item.isCompleted), [allItems]);
+
     const sectionData = useMemo(() => {
         if (!user || !partnerData) return [];
 
-        let partnerList = allItems.filter(item => item.authorId === partnerId);
-        let myList = allItems.filter(item => item.authorId === user.uid);
+        const byType = (list: WishItem[]) =>
+            filterType === 'Todos' ? list : list.filter(item => item.type === filterType);
 
-        if (filterType !== 'Todos') {
-            partnerList = partnerList.filter(item => item.type === filterType);
-            myList = myList.filter(item => item.type === filterType);
+        const partnerList = byType(activeItems.filter(item => item.authorId === partnerId));
+        const myList = byType(activeItems.filter(item => item.authorId === user.uid));
+        const archive = byType(archivedItems);
+
+        const sections = [
+            { title: partnerData.displayName || 'Pareja', initial: (partnerData.displayName || '?').charAt(0).toUpperCase(), isMine: false, isArchive: false, hiddenCount: 0, data: partnerList },
+            { title: 'Mi lista', initial: (userData?.displayName || '?').charAt(0).toUpperCase(), isMine: true, isArchive: false, hiddenCount: 0, data: myList },
+        ];
+
+        // El archivo solo aparece cuando hay algo dentro: una sección
+        // "Regalados 0" sería ruido. En free se ven los más recientes.
+        if (archive.length > 0) {
+            const visible = plan === 'free' ? archive.slice(0, ARCHIVE_FREE_VISIBLE) : archive;
+            sections.push({
+                title: 'Regalados',
+                initial: '',
+                isMine: false,
+                isArchive: true,
+                hiddenCount: archive.length - visible.length,
+                data: visible,
+            });
         }
 
-        return [
-            { title: partnerData.displayName || 'Pareja', initial: (partnerData.displayName || '?').charAt(0).toUpperCase(), isMine: false, data: partnerList },
-            { title: 'Mi lista', initial: (userData?.displayName || '?').charAt(0).toUpperCase(), isMine: true, data: myList },
-        ];
-    }, [allItems, user, partnerData, partnerId, filterType, userData?.displayName]);
+        return sections;
+    }, [activeItems, archivedItems, user, partnerData, partnerId, filterType, userData?.displayName, plan]);
 
-    const limitReached = plan === 'free' && allItems.length >= FREE_LIMIT;
+    // El tope cuenta solo lo activo (ver arriba): lo regalado no consume cupo.
+    const limitReached = plan === 'free' && activeItems.length >= FREE_LIMIT;
 
     const openAddItemModal = () => {
         if (limitReached) {
@@ -172,6 +199,15 @@ const WishlistScreen: React.FC = () => {
 
     const handleToggleItem = async (item: WishItem) => {
         if (!user || !userData?.partnerId) return;
+
+        // Desmarcar un regalado lo devuelve a la lista activa, así que puede
+        // pasarse del tope. Sin este control el archivo sería una puerta
+        // trasera para tener más de diez deseos activos en el plan free.
+        if (item.isCompleted && plan === 'free' && activeItems.length >= FREE_LIMIT) {
+            setIsPaywallVisible(true);
+            return;
+        }
+
         const chatId = [user.uid, userData.partnerId].sort().join('_');
         const itemRef = doc(db, 'relationships', chatId, 'wishlist', item.id);
         try {
@@ -239,8 +275,8 @@ const WishlistScreen: React.FC = () => {
                     marginTop: spacing.s4,
                 }}>
                     {plan === 'free'
-                        ? (limitReached ? `${allItems.length} de ${FREE_LIMIT} ítems · límite alcanzado` : `${allItems.length} de ${FREE_LIMIT} ítems del plan free`)
-                        : `${allItems.length} ítems`}
+                        ? (limitReached ? `${activeItems.length} de ${FREE_LIMIT} activos · límite alcanzado` : `${activeItems.length} de ${FREE_LIMIT} activos del plan free`)
+                        : `${activeItems.length} activos`}
                 </Text>
             </View>
 
@@ -289,22 +325,26 @@ const WishlistScreen: React.FC = () => {
                 keyExtractor={(item) => item.id}
                 stickySectionHeadersEnabled={false}
                 renderSectionHeader={({ section }) => (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, marginTop: spacing.s16, marginBottom: spacing.s10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, marginTop: section.isArchive ? spacing.s22 : spacing.s16, marginBottom: spacing.s10 }}>
                         <View style={{
                             width: 26,
                             height: 26,
                             borderRadius: 13,
                             alignItems: 'center',
                             justifyContent: 'center',
-                            backgroundColor: section.isMine ? theme.primarySoft : PARTNER_AVATAR.bg,
+                            backgroundColor: section.isArchive ? theme.surfaceAlt : (section.isMine ? theme.primarySoft : PARTNER_AVATAR.bg),
                         }}>
-                            <Text style={{
-                                fontFamily: fontFamilies.bodyBold,
-                                fontSize: 12,
-                                color: section.isMine ? theme.primary : PARTNER_AVATAR.text,
-                            }}>
-                                {section.initial}
-                            </Text>
+                            {section.isArchive ? (
+                                <Ionicons name="gift-outline" size={14} color={theme.textMuted} />
+                            ) : (
+                                <Text style={{
+                                    fontFamily: fontFamilies.bodyBold,
+                                    fontSize: 12,
+                                    color: section.isMine ? theme.primary : PARTNER_AVATAR.text,
+                                }}>
+                                    {section.initial}
+                                </Text>
+                            )}
                         </View>
                         <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 13.5, color: theme.text }}>
                             {section.title}
@@ -314,6 +354,35 @@ const WishlistScreen: React.FC = () => {
                             {section.data.length}
                         </Text>
                     </View>
+                )}
+                renderSectionFooter={({ section }) => (
+                    // El archivo recortado es el gancho a premium: el registro
+                    // completo de lo que se han regalado es justamente lo que
+                    // se cobra en el modelo de "memoria", no el candado.
+                    section.isArchive && section.hiddenCount > 0 ? (
+                        <TouchableOpacity
+                            onPress={() => setIsPaywallVisible(true)}
+                            style={{
+                                flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
+                                borderWidth: 1, borderStyle: 'dashed', borderColor: theme.primary,
+                                backgroundColor: theme.primaryTint, borderRadius: radii.card,
+                                padding: spacing.s14, marginTop: spacing.s4,
+                            }}
+                        >
+                            <Ionicons name="lock-closed" size={16} color={theme.premium} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: theme.text }}>
+                                    {section.hiddenCount} {section.hiddenCount === 1 ? 'regalo más' : 'regalos más'} en el archivo
+                                </Text>
+                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
+                                    Free guarda los {ARCHIVE_FREE_VISIBLE} más recientes
+                                </Text>
+                            </View>
+                            <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 12, color: theme.primary }}>
+                                Ver todo
+                            </Text>
+                        </TouchableOpacity>
+                    ) : null
                 )}
                 renderItem={({ item }) => (
                     <TouchableOpacity
