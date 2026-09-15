@@ -50,3 +50,4 @@ app-example
 /android
 tests/.tmp-pricing/
 tests/.tmp-milestones/
+tests/.tmp-questions/

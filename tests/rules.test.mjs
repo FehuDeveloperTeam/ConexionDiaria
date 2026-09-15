@@ -341,6 +341,62 @@ await check(
     assertFails(setDoc(doc(eve.firestore(), 'users', 'nuevoUsuarioXXXXXXXXXXXXXX9'), { plan: 'free', premiumSince: null, founderNumber: 1 }))
 );
 
+console.log('\nPregunta del día (Firestore) — Sprint 9.21');
+
+// Las dos respuestas del día viven en un mismo documento, así que lo que hay
+// que comprobar es que ese formato no le regale a nadie la respuesta del otro.
+await check(
+    'LEGÍTIMO: Alice responde la pregunta de hoy',
+    assertSucceeds(setDoc(doc(alice.firestore(), 'relationships', REL, 'dailyQuestions', '2026-09-15'), {
+        questionIndex: 4,
+        answers: { [ALICE]: 'Lo mejor fue el almuerzo' },
+    }))
+);
+await check(
+    'ATAQUE: Alice NO puede crear el documento respondiendo por Bob',
+    assertFails(setDoc(doc(alice.firestore(), 'relationships', REL, 'dailyQuestions', '2026-09-20'), {
+        questionIndex: 9,
+        answers: { [BOB]: 'esto lo escribió Alice' },
+    }))
+);
+await check(
+    'LEGÍTIMO: Bob agrega la suya sin tocar la de Alice',
+    assertSucceeds(updateDoc(doc(bob.firestore(), 'relationships', REL, 'dailyQuestions', '2026-09-15'), {
+        [`answers.${BOB}`]: 'A mí me gustó la tarde',
+    }))
+);
+await check(
+    'ATAQUE: Bob NO puede reescribir la respuesta de Alice',
+    assertFails(updateDoc(doc(bob.firestore(), 'relationships', REL, 'dailyQuestions', '2026-09-15'), {
+        [`answers.${ALICE}`]: 'texto puesto por Bob',
+    }))
+);
+await check(
+    'ATAQUE: Bob NO puede borrar la respuesta de Alice reemplazando el mapa',
+    assertFails(setDoc(doc(bob.firestore(), 'relationships', REL, 'dailyQuestions', '2026-09-15'), {
+        questionIndex: 4,
+        answers: { [BOB]: 'solo la mía' },
+    }))
+);
+await check(
+    'LEGÍTIMO: Alice sí puede corregir su propia respuesta',
+    assertSucceeds(updateDoc(doc(alice.firestore(), 'relationships', REL, 'dailyQuestions', '2026-09-15'), {
+        [`answers.${ALICE}`]: 'Pensándolo bien, lo mejor fue la caminata',
+    }))
+);
+await check(
+    'LEGÍTIMO: Bob puede leer el archivo de respuestas de su relación',
+    assertSucceeds(getDocs(collection(bob.firestore(), 'relationships', REL, 'dailyQuestions')))
+);
+await check(
+    'ATAQUE: Eve NO puede leer las respuestas de otra pareja',
+    assertFails(getDocs(collection(eve.firestore(), 'relationships', REL, 'dailyQuestions')))
+);
+await check(
+    'ATAQUE: lo respondido no se puede borrar',
+    assertFails(deleteDoc(doc(alice.firestore(), 'relationships', REL, 'dailyQuestions', '2026-09-15')))
+);
+
 await testEnv.cleanup();
 
 console.log(`\n${'='.repeat(58)}`);

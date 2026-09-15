@@ -286,6 +286,9 @@ const TabLayout: React.FC = () => {
                 del grupo para conservar el riel, fuera de la barra. */}
             <Tabs.Screen name="measurements" options={{ href: null, headerShown: false }} />
 
+            {/* Archivo de la pregunta del día — Sprint 9.21. */}
+            <Tabs.Screen name="questions" options={{ href: null, headerShown: false }} />
+
             {/* Ocultamos las pantallas que no son pestañas (como login, register, etc.) */}
             {/* Expo Router lo maneja automáticamente si no están en esta lista */}
 

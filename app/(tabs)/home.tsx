@@ -36,6 +36,7 @@ import { registerPushToken } from '../../src/services/notifications';
 // las secciones que 7.3b todavía no re-skinea (historial, extrañómetro).
 import { Button as AppButton } from '../../src/components/Button';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
+import { DailyQuestionCard } from '../../src/components/DailyQuestionCard';
 import { countFilled, fieldsFor, normalizeMeasurements } from '../../src/config/measurements';
 import type { Gender } from '../../src/types/models';
 import { TextField } from '../../src/components/TextField';
@@ -299,6 +300,7 @@ const Home: React.FC = () => {
     // que apareció, y el de los ánimos habla de emojis.
     const [isGiftPaywallVisible, setIsGiftPaywallVisible] = useState(false);
     const [isHistoryPaywallVisible, setIsHistoryPaywallVisible] = useState(false);
+    const [isQuestionsPaywallVisible, setIsQuestionsPaywallVisible] = useState(false);
     const [isEmailVerified, setIsEmailVerified] = useState(true);
     const [isResendingVerification, setIsResendingVerification] = useState(false);
     const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -958,6 +960,19 @@ const Home: React.FC = () => {
                     </Modal>
 
                     <PaywallSheet
+                        visible={isQuestionsPaywallVisible}
+                        onClose={() => setIsQuestionsPaywallVisible(false)}
+                        onUpgradePress={() => { setIsQuestionsPaywallVisible(false); router.push('/(tabs)/config'); }}
+                        icon="chatbubble-ellipses"
+                        title="Guarda todas sus respuestas"
+                        description="La pregunta de hoy siempre es gratis. Con Conexión Total quedan guardadas todas, y con el tiempo son un diario escrito entre los dos."
+                        benefits={[
+                            'Archivo completo de preguntas y respuestas',
+                            'Ficha de la pareja con tallas y notas privadas',
+                            'Aviso de regalo antes de cada fecha importante',
+                        ]}
+                    />
+                    <PaywallSheet
                         visible={isHistoryPaywallVisible}
                         onClose={() => setIsHistoryPaywallVisible(false)}
                         onUpgradePress={() => { setIsHistoryPaywallVisible(false); router.push('/(tabs)/config'); }}
@@ -1086,6 +1101,14 @@ const Home: React.FC = () => {
                                 </TouchableOpacity>
                             )}
                         </View>
+                    )}
+
+                    {/* Sprint 9.21 — la pregunta del día. Va después del
+                        aviso de regalo, que tiene fecha de vencimiento, y
+                        antes de todo lo demás: es lo que da una razón para
+                        abrir la app un día en que no pasó nada. */}
+                    {!!userData?.partnerId && (
+                        <DailyQuestionCard onArchiveBlocked={() => setIsQuestionsPaywallVisible(true)} />
                     )}
 
                     {/* Sprint 9.24 — invitación a declarar MIS tallas.

@@ -98,6 +98,28 @@ service cloud.firestore {
           && !('founderNumber' in request.resource.data);
     }
 
+    // El OTRO miembro de la relación, derivado del id 'uid1_uid2'. Se usa
+    // para proteger su respuesta en la pregunta del día (Sprint 9.21).
+    function otherMemberOf(relationshipId) {
+      return relationshipId.split('_')[0] == request.auth.uid
+        ? relationshipId.split('_')[1]
+        : relationshipId.split('_')[0];
+    }
+
+    // ¿La escritura deja intacta la respuesta de la otra persona? La pregunta
+    // del día guarda las dos respuestas en un mismo documento (un documento
+    // por día, que es lo que hace barato el archivo de premium), así que sin
+    // esto cualquiera de los dos podría reescribir —o borrar— lo que
+    // respondió el otro. La gracia de la sección es justamente que lo que uno
+    // contesta es suyo.
+    function partnerAnswerUnchanged(relationshipId) {
+      let other = otherMemberOf(relationshipId);
+      let before = resource.data.get('answers', {});
+      let after = request.resource.data.get('answers', {});
+      return (other in before) == (other in after)
+          && (!(other in before) || before[other] == after[other]);
+    }
+
     // ¿La escritura toca 'usedStorage' del documento de relación? Ese campo
     // es de solo lectura para cualquier cliente — lo escribe exclusivamente
     // la Cloud Function de contabilidad de Storage, a partir de los propios
@@ -289,6 +311,26 @@ service cloud.firestore {
 
         // [Deseos] Solo el autor puede borrar su propio deseo
         allow delete: if isInRelationship(relationshipId) && isAuthorOfExistingData();
+      }
+
+      // --- SUB-COLECCIÓN: Pregunta del día ('dailyQuestions') — Sprint 9.21 ---
+      // Un documento por día, con las respuestas de los dos adentro. Ese
+      // formato es el que hace barato el archivo de premium (una consulta
+      // ordenada por fecha en vez de dos por día), pero obliga a cuidar en las
+      // reglas algo que con un documento por persona salía gratis: que nadie
+      // pueda tocar la respuesta del otro.
+      match /dailyQuestions/{dateKey} {
+        allow read: if isInRelationship(relationshipId);
+
+        // Al crear el documento del día solo puede venir la respuesta propia.
+        allow create: if isInRelationship(relationshipId)
+          && request.resource.data.get('answers', {}).keys().hasOnly([request.auth.uid]);
+
+        // Al actualizarlo, la respuesta de la otra persona queda como estaba.
+        allow update: if isInRelationship(relationshipId) && partnerAnswerUnchanged(relationshipId);
+
+        // Lo respondido no se borra: es justamente el archivo que se paga.
+        allow delete: if false;
       }
 
       // --- SUB-COLECCIÓN: Historial "Te Extraño" ---
