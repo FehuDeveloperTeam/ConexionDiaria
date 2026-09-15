@@ -3,12 +3,12 @@
 // compartiendo el lenguaje visual del resto de la app.
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-    View, Text, TextInput, SectionList,
+    View, Text, TextInput, SectionList, ActivityIndicator,
     KeyboardAvoidingView, Platform, Modal, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { db } from '../../src/config/firebaseConfig';
+import { db, storage } from '../../src/config/firebaseConfig';
 import { noteColors, noteRotations, radii, shadows, spacing } from '../../src/config/theme';
 import { collection, addDoc, onSnapshot, query, orderBy, doc, limit, DocumentData, serverTimestamp, deleteDoc, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
@@ -23,6 +23,10 @@ import { ContextMenuRow } from '../../src/components/ContextMenuRow';
 import { RowActions } from '../../src/components/RowActions';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
 import { formatDate } from '../../src/services/dateFormat';
+import { useSingleAudioPlayer, formatAudioDuration } from '../../src/hooks/useSingleAudioPlayer';
+import { useAudioRecording } from '../../src/screens/chat/hooks/useAudioRecording';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import * as Crypto from 'expo-crypto';
 import { useRouter } from 'expo-router';
 
 interface EditingNote { id: string; text: string; }
@@ -38,7 +42,7 @@ const NotesScreen: React.FC = () => {
     const { theme, isDarkMode: isDark, fontFamilies } = useTheme();
     const router = useRouter();
 
-    const { user, userData, plan } = usePlan();
+    const { user, userData, plan, relationshipData } = usePlan();
     const [notes, setNotes] = useState<DocumentData[]>([]);
     const [newNote, setNewNote] = useState('');
     const [loading, setLoading] = useState(true);
@@ -48,6 +52,8 @@ const NotesScreen: React.FC = () => {
     const [contextMenuNote, setContextMenuNote] = useState<DocumentData | null>(null);
     const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
     const [isPaywallVisible, setIsPaywallVisible] = useState(false);
+    const [isUploadingVoice, setIsUploadingVoice] = useState(false);
+    const audioPlayer = useSingleAudioPlayer();
 
     const partnerId = userData?.partnerId as string | undefined;
 
@@ -116,6 +122,72 @@ const NotesScreen: React.FC = () => {
             Toast.show({ type: 'error', text1: 'Error al archivar' });
         }
     }, [user, userData, plan, activeNotes.length]);
+
+    // Sprint 9.15 — notas de voz. Se sube a
+    // relationships/{rel}/notesAudio/, cubierto por la regla comodín de
+    // Storage que ya existe, y la contabilidad de almacenamiento la cuenta
+    // igual que un adjunto del chat, que es lo correcto: ocupa lo mismo.
+    const uploadVoiceNote = useCallback(async (uri: string, durationMillis?: number) => {
+        if (!user || !userData?.partnerId) return;
+
+        try {
+            setIsUploadingVoice(true);
+            const response = await fetch(uri);
+            const blob = await response.blob();
+
+            const chatId = [user.uid, userData.partnerId].sort().join('_');
+            const filename = `${Crypto.randomUUID()}.m4a`;
+            const storageRef = ref(storage, `relationships/${chatId}/notesAudio/${filename}`);
+            const uploadTask = uploadBytesResumable(storageRef, blob);
+
+            await new Promise<void>((resolve, reject) => {
+                uploadTask.on('state_changed', undefined, reject, () => resolve());
+            });
+
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            await addDoc(collection(db, 'relationships', chatId, 'notes'), {
+                text: '',
+                audio: url,
+                audioDuration: durationMillis ?? null,
+                authorId: user.uid,
+                authorName: userData.displayName,
+                createdAt: serverTimestamp(),
+            });
+
+            Toast.show({ type: 'success', text1: 'Nota de voz añadida' });
+        } catch (error) {
+            console.error('Error subiendo la nota de voz:', error);
+            Toast.show({ type: 'error', text1: 'No se pudo guardar la nota de voz' });
+        } finally {
+            setIsUploadingVoice(false);
+        }
+    }, [user, userData]);
+
+    const {
+        isRecording,
+        recordingDuration,
+        startRecording,
+        stopRecording,
+        cancelRecording,
+        formatRecordingTime,
+    } = useAudioRecording({
+        plan,
+        usedStorage: relationshipData?.usedStorage || 0,
+        maxStorage: plan === 'premium' ? 25 * 1024 * 1024 * 1024 : 100 * 1024 * 1024,
+        uploadAudio: uploadVoiceNote,
+        onNeedUpgrade: () => setIsPaywallVisible(true),
+    });
+
+    const handleStartVoiceNote = () => {
+        // Dos motivos distintos para no dejar grabar, y cada uno abre el
+        // paywall con su propio texto: la función es premium, y además el
+        // cupo de notas se respeta igual que con las escritas.
+        if (plan !== 'premium' || limitReached) {
+            setIsPaywallVisible(true);
+            return;
+        }
+        startRecording();
+    };
 
     const handleAddNote = useCallback(async () => {
         const noteText = newNote.trim();
@@ -294,9 +366,45 @@ const NotesScreen: React.FC = () => {
                                 }}
                             >
                                 <View style={{ backgroundColor: bg, borderRadius: 14, padding: spacing.s16, ...depthProps }}>
-                                    <Text style={{ fontFamily: fontFamilies.body, fontSize: 15, lineHeight: 22.5, color: textColor }}>
-                                        {item.text}
-                                    </Text>
+                                    {item.audio ? (
+                                        <TouchableOpacity
+                                            onPress={() => audioPlayer.toggle(item.id, item.audio)}
+                                            disabled={audioPlayer.loadingId === item.id}
+                                            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s12 }}
+                                        >
+                                            <View style={{
+                                                width: 34, height: 34, borderRadius: 17,
+                                                backgroundColor: theme.primary,
+                                                alignItems: 'center', justifyContent: 'center',
+                                            }}>
+                                                {audioPlayer.loadingId === item.id ? (
+                                                    <ActivityIndicator size="small" color={theme.white} />
+                                                ) : (
+                                                    <Ionicons
+                                                        name={audioPlayer.playingId === item.id ? 'pause' : 'play'}
+                                                        size={17}
+                                                        color={theme.white}
+                                                    />
+                                                )}
+                                            </View>
+                                            <View style={{ flex: 1, gap: spacing.s6 }}>
+                                                <View style={{ height: 3, backgroundColor: theme.borderSoft, borderRadius: 1.5, overflow: 'hidden' }}>
+                                                    <View style={{
+                                                        height: '100%',
+                                                        width: `${(audioPlayer.progress[item.id] || 0) * 100}%`,
+                                                        backgroundColor: theme.primary,
+                                                    }} />
+                                                </View>
+                                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 11.5, color: authorColor }}>
+                                                    {item.audioDuration ? formatAudioDuration(item.audioDuration) : 'Nota de voz'}
+                                                </Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    ) : (
+                                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 15, lineHeight: 22.5, color: textColor }}>
+                                            {item.text}
+                                        </Text>
+                                    )}
                                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.s10 }}>
                                         {/* Editar, archivar y eliminar son escrituras, y las
                                             reglas de Firestore solo se las permiten al autor
@@ -343,6 +451,44 @@ const NotesScreen: React.FC = () => {
                     borderTopColor: theme.borderSoft,
                     backgroundColor: theme.bg,
                 }}>
+                    {isRecording && (
+                        <>
+                            <TouchableOpacity
+                                onPress={cancelRecording}
+                                style={{ width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}
+                                accessibilityLabel="Descartar la grabación"
+                            >
+                                <Ionicons name="trash-outline" size={22} color={theme.danger} />
+                            </TouchableOpacity>
+
+                            <View style={{
+                                flex: 1, flexDirection: 'row', alignItems: 'center',
+                                backgroundColor: theme.dangerBg, borderRadius: radii.pill,
+                                paddingHorizontal: spacing.s14, height: 44, gap: spacing.s10,
+                            }}>
+                                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.danger }} />
+                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 13, color: theme.danger }}>
+                                    {formatRecordingTime(recordingDuration)}
+                                </Text>
+                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.danger, opacity: 0.8 }}>
+                                    Grabando…
+                                </Text>
+                            </View>
+
+                            <TouchableOpacity
+                                onPress={stopRecording}
+                                style={{
+                                    width: 42, height: 42, borderRadius: 14,
+                                    backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center',
+                                }}
+                                accessibilityLabel="Guardar la nota de voz"
+                            >
+                                <Ionicons name="checkmark" size={24} color={theme.white} />
+                            </TouchableOpacity>
+                        </>
+                    )}
+
+                    {!isRecording && (
                     <TextInput
                         style={{
                             flex: 1,
@@ -365,20 +511,46 @@ const NotesScreen: React.FC = () => {
                         multiline
                         maxLength={200}
                     />
-                    <TouchableOpacity
-                        onPress={handleAddNote}
-                        disabled={newNote.trim() === ''}
-                        style={{
-                            width: 42,
-                            height: 42,
-                            borderRadius: 14,
-                            backgroundColor: newNote.trim() === '' ? theme.borderSoft : theme.primary,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}
-                    >
-                        <Ionicons name="add" size={24} color={theme.white} />
-                    </TouchableOpacity>
+                    )}
+                    {/* Con el campo vacío el botón graba; al escribir pasa a
+                        guardar. La barra no crece con dos botones que nunca
+                        sirven a la vez. */}
+                    {!isRecording && (newNote.trim() === '' ? (
+                        <TouchableOpacity
+                            onPress={handleStartVoiceNote}
+                            disabled={isUploadingVoice}
+                            style={{
+                                width: 42, height: 42, borderRadius: 14,
+                                backgroundColor: plan === 'premium' ? theme.primary : theme.surfaceAlt,
+                                alignItems: 'center', justifyContent: 'center',
+                            }}
+                        >
+                            {isUploadingVoice ? (
+                                <ActivityIndicator size="small" color={plan === 'premium' ? theme.white : theme.textFaint} />
+                            ) : (
+                                <Ionicons
+                                    name={plan === 'premium' ? 'mic' : 'lock-closed'}
+                                    size={plan === 'premium' ? 22 : 18}
+                                    color={plan === 'premium' ? theme.white : theme.textFaint}
+                                />
+                            )}
+                        </TouchableOpacity>
+                    ) : (
+                        <TouchableOpacity
+                            onPress={handleAddNote}
+                            disabled={newNote.trim() === ''}
+                            style={{
+                                width: 42,
+                                height: 42,
+                                borderRadius: 14,
+                                backgroundColor: newNote.trim() === '' ? theme.borderSoft : theme.primary,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            }}
+                        >
+                            <Ionicons name="add" size={24} color={theme.white} />
+                        </TouchableOpacity>
+                    ))}
                 </View>
             </KeyboardAvoidingView>
             </DesktopContentWrap>
