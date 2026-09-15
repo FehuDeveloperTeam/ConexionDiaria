@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { createUserWithEmailAndPassword, sendEmailVerification, User } from 'firebase/auth';
-import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { doc, writeBatch, serverTimestamp, Timestamp } from 'firebase/firestore';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import { formatDate } from '../src/services/dateFormat';
 import { auth, db } from '../src/config/firebaseConfig';
-import { themes, spacing, FontFamilies } from '../src/config/theme';
+import { themes, spacing, radii, FontFamilies } from '../src/config/theme';
 import { useTheme } from '../src/contexts/themeContext';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
@@ -18,6 +20,24 @@ const getStyles = (theme: typeof themes.light, fontFamilies: FontFamilies) => St
     backButton: { paddingVertical: spacing.s10, marginBottom: spacing.s10 },
     title: { fontFamily: fontFamilies.display, fontSize: 34, lineHeight: 36, color: theme.text, marginBottom: spacing.s26 },
     footer: { marginTop: spacing.s26, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.s4 },
+
+    // --- Sprint 9.11: fecha de nacimiento. Calcado del lenguaje visual de
+    // TextField (etiqueta en mayúsculas, campo de 50 de alto) para que no se
+    // note que es otro componente. ---
+    fieldBlock: { marginBottom: spacing.s20, width: '100%' },
+    fieldLabel: {
+        fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 0.9,
+        textTransform: 'uppercase', color: theme.textMuted, marginBottom: spacing.s8,
+    },
+    dateField: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        width: '100%', height: 50, paddingHorizontal: spacing.s16 - 1,
+        borderWidth: 1, borderColor: theme.borderSoft, borderRadius: radii.field,
+        backgroundColor: theme.inputBackground,
+    },
+    dateValue: { fontFamily: fontFamilies.body, fontSize: 16, color: theme.text },
+    datePlaceholder: { fontFamily: fontFamilies.body, fontSize: 16, color: theme.placeholder },
+    fieldHint: { fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint, marginTop: spacing.s6 },
     footerText: { fontFamily: fontFamilies.body, color: theme.textMuted, fontSize: 13.5 },
     link: { fontFamily: fontFamilies.bodyBold, color: theme.primary, fontSize: 13.5 },
 });
@@ -31,6 +51,8 @@ const Register: React.FC = () => {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [displayName, setDisplayName] = useState('');
+    const [birthDate, setBirthDate] = useState<Date | null>(null);
+    const [isBirthPickerVisible, setIsBirthPickerVisible] = useState(false);
     const [loading, setLoading] = useState(false);
 
     // Validación en vivo: apenas hay algo escrito en "confirmar", si no
@@ -41,6 +63,7 @@ const Register: React.FC = () => {
     const handleRegister = async () => {
         if (password !== confirmPassword) return Toast.show({ type: 'error', text1: 'Error', text2: 'Las contraseñas no coinciden.' });
         if (!email || !password || !displayName) return Toast.show({ type: 'error', text1: 'Error', text2: 'Por favor, completa todos los campos.' });
+        if (!birthDate) return Toast.show({ type: 'error', text1: 'Falta tu fecha de nacimiento', text2: 'La usamos para avisarle a tu pareja de tu cumpleaños.' });
 
         setLoading(true);
         // Se guarda apenas se crea la cuenta de Auth, para poder revertirla
@@ -62,6 +85,7 @@ const Register: React.FC = () => {
                 createdAt: serverTimestamp(),
                 partnerId: null,
                 relationshipStartDate: null,
+                birthDate: Timestamp.fromDate(birthDate),
                 invitationCode,
                 gender: null,
                 currentMood: { emoji: '😊', name: 'Neutral', status: '' },
@@ -116,6 +140,34 @@ const Register: React.FC = () => {
                 <Text style={styles.title}>Crea tu Cuenta</Text>
 
                 <TextField label="Nombre" value={displayName} onChangeText={setDisplayName} placeholder="Tu nombre" returnKeyType="next" />
+
+                {/* Sprint 9.11: obligatoria desde el registro, antes de
+                    emparejarse, para que no queden cuentas sin el dato. */}
+                <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Fecha de nacimiento</Text>
+                    <TouchableOpacity style={styles.dateField} onPress={() => setIsBirthPickerVisible(true)}>
+                        <Text style={birthDate ? styles.dateValue : styles.datePlaceholder}>
+                            {birthDate ? formatDate(birthDate) : 'dd/mm/aaaa'}
+                        </Text>
+                        <Ionicons name="calendar-outline" size={20} color={theme.textFaint} />
+                    </TouchableOpacity>
+                    <Text style={styles.fieldHint}>
+                        Para avisarle a tu pareja de tu cumpleaños.
+                    </Text>
+                </View>
+
+                <DateTimePickerModal
+                    isVisible={isBirthPickerVisible}
+                    mode="date"
+                    date={birthDate ?? new Date(1995, 0, 1)}
+                    // Nadie nace mañana; el selector no deja elegir el futuro.
+                    maximumDate={new Date()}
+                    onConfirm={(date) => { setBirthDate(date); setIsBirthPickerVisible(false); }}
+                    onCancel={() => setIsBirthPickerVisible(false)}
+                    locale="es_ES"
+                    confirmTextIOS="Confirmar"
+                    cancelTextIOS="Cancelar"
+                />
                 <TextField
                     label="Email"
                     value={email}

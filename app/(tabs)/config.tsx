@@ -12,7 +12,9 @@ import { useRouter } from 'expo-router';
 import { auth, db, storage } from '../../src/config/firebaseConfig';
 import { radii, spacing } from '../../src/config/theme';
 import { signOut } from 'firebase/auth';
-import { doc, updateDoc, writeBatch } from 'firebase/firestore';
+import { doc, updateDoc, writeBatch, Timestamp } from 'firebase/firestore';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import { formatDate } from '../../src/services/dateFormat';
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -115,6 +117,21 @@ const ConfigScreen: React.FC = () => {
     const [isNotificationsSheetVisible, setIsNotificationsSheetVisible] = useState(false);
     const [isPaywallVisible, setIsPaywallVisible] = useState(false);
     const [isDisconnectConfirmVisible, setIsDisconnectConfirmVisible] = useState(false);
+    const [isBirthPickerVisible, setIsBirthPickerVisible] = useState(false);
+
+    const birthDate: Date | null = userData?.birthDate?.toDate ? userData.birthDate.toDate() : null;
+
+    const handleSaveBirthDate = async (date: Date) => {
+        setIsBirthPickerVisible(false);
+        if (!user) return;
+        try {
+            await updateDoc(doc(db, 'users', user.uid), { birthDate: Timestamp.fromDate(date) });
+            Toast.show({ type: 'success', text1: 'Fecha de nacimiento guardada' });
+        } catch (error) {
+            console.error('Error guardando la fecha de nacimiento:', error);
+            Toast.show({ type: 'error', text1: 'No se pudo guardar la fecha' });
+        }
+    };
 
     useEffect(() => {
         if (userData) {
@@ -420,6 +437,16 @@ const ConfigScreen: React.FC = () => {
                         onPress={() => setIsNotificationsSheetVisible(true)}
                         right={<Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
                     />
+                    {/* Sprint 9.11: desde el registro es obligatoria, pero las
+                        cuentas anteriores la traen vacía y necesitan un lugar
+                        donde completarla. */}
+                    <PrefRow
+                        icon="gift-outline"
+                        label="Fecha de nacimiento"
+                        subcopy={birthDate ? formatDate(birthDate) : 'Sin definir · tu pareja no verá tu cumpleaños'}
+                        onPress={() => setIsBirthPickerVisible(true)}
+                        right={<Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
+                    />
                     <PrefRow
                         icon="color-palette-outline"
                         label="Personalizar tema"
@@ -489,6 +516,18 @@ const ConfigScreen: React.FC = () => {
                     </View>
                 </View>
             </Modal>
+
+            <DateTimePickerModal
+                isVisible={isBirthPickerVisible}
+                mode="date"
+                date={birthDate ?? new Date(1995, 0, 1)}
+                maximumDate={new Date()}
+                onConfirm={handleSaveBirthDate}
+                onCancel={() => setIsBirthPickerVisible(false)}
+                locale="es_ES"
+                confirmTextIOS="Confirmar"
+                cancelTextIOS="Cancelar"
+            />
 
             <PaywallSheet
                 visible={isPaywallVisible}

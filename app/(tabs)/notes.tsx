@@ -22,6 +22,7 @@ import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 import { ContextMenuRow } from '../../src/components/ContextMenuRow';
 import { RowActions } from '../../src/components/RowActions';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
+import { formatDate } from '../../src/services/dateFormat';
 import { useRouter } from 'expo-router';
 
 interface EditingNote { id: string; text: string; }
@@ -274,9 +275,7 @@ const NotesScreen: React.FC = () => {
                         // instante posterior a crear la nota todavía llega nulo:
                         // hasta que el servidor lo resuelve se muestra solo el autor.
                         const created = item.createdAt?.toDate ? item.createdAt.toDate() : null;
-                        const createdLabel = created
-                            ? `${String(created.getDate()).padStart(2, '0')}/${String(created.getMonth() + 1).padStart(2, '0')}/${created.getFullYear()}`
-                            : null;
+                        const createdLabel = created ? formatDate(created) : null;
 
                         const isOwn = item.authorId === user.uid;
 

@@ -25,6 +25,12 @@ export interface UserDoc {
   partnerId: string | null;
   relationshipStartDate: Timestamp | null;
 
+  // Sprint 9.11 — obligatoria al crear la cuenta, antes de emparejarse. La
+  // necesitan el aviso de regalo de cumpleaños y su ventana de descuento, y
+  // de paso habilita el saludo del día. Las cuentas anteriores a esta sesión
+  // la traen nula hasta que la completen desde Ajustes.
+  birthDate: Timestamp | null;
+
   // Código corto para emparejar sin necesitar leer el perfil ajeno
   // (el UID ya no se usa como código — ver Sprint 2).
   invitationCode: string;
