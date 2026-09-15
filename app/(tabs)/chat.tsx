@@ -23,9 +23,10 @@ import { VideoViewerModal } from '../../src/screens/chat/components/VideoViewerM
 import { FileViewerModal } from '../../src/screens/chat/components/FileViewerModal';
 import { SoundWaveAnimation } from '../../src/screens/chat/components/SoundWaveAnimation';
 import { ProfilePhotoModal } from '../../src/screens/chat/components/ProfilePhotoModal';
-import { AudioWaveAnimation } from '../../src/screens/chat/components/AudioWaveAnimation';
 import { useChatMessages } from '../../src/screens/chat/hooks/useChatMessages';
 import { useAudioPlayback } from '../../src/screens/chat/hooks/useAudioPlayback';
+import { AudioPlaybackProvider } from '../../src/screens/chat/context/audioPlaybackContext';
+import { AudioBubble } from '../../src/screens/chat/components/AudioBubble';
 import { useChatUploads } from '../../src/screens/chat/hooks/useChatUploads';
 import { useAudioRecording } from '../../src/screens/chat/hooks/useAudioRecording';
 import { usePartnerPresence } from '../../src/screens/chat/hooks/usePartnerPresence';
@@ -129,14 +130,9 @@ const ChatScreen = () => {
         onNeedUpgrade: () => setShowUpgradeModal(true),
     });
 
-    const {
-        currentlyPlayingId,
-        audioProgress,
-        audioDurations,
-        isLoadingAudio,
-        toggleAudioPlayback,
-        formatAudioDuration,
-    } = useAudioPlayback(currentUser, userData?.partnerId);
+    // Se pasa entero al AudioPlaybackProvider en vez de desarmarlo acá: las
+    // burbujas de audio lo consumen por contexto (ver AudioBubble).
+    const audioPlayback = useAudioPlayback(currentUser, userData?.partnerId);
 
     const { partnerInfo } = usePartnerPresence({
         currentUser,
@@ -202,101 +198,17 @@ const ChatScreen = () => {
             );
         }
 
-        // Renderizar mensaje de audio
+        // Renderizar mensaje de audio. Vive en su propio componente para que
+        // pueda leer el estado de reproducción por contexto: GiftedChat
+        // memoiza las filas mirando solo el mensaje, así que desde acá el
+        // botón nunca se enteraba de que el audio había arrancado.
         if (message.audio) {
-            const messageId = message._id.toString();
-            const isPlaying = currentlyPlayingId === messageId;
-            const progress = audioProgress[messageId] || 0;
-            const duration = message.audioDuration ?? audioDurations[messageId];
-            const isLoadingThisAudio = isLoadingAudio === messageId;
-            const waveColor = isDark ? '#5B4A79' : '#C9C4EC';
-
             return (
-                <TouchableOpacity
-                    activeOpacity={1}
+                <AudioBubble
+                    message={message}
+                    isOwn={isOwn}
                     onLongPress={() => handleMessageLongPress(null, message)}
-                    style={{
-                        marginVertical: 4,
-                        marginHorizontal: 8,
-                        alignSelf: isOwn ? 'flex-end' : 'flex-start',
-                    }}>
-                    <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        backgroundColor: isOwn ? ownBubbleBg : theme.surface,
-                        borderWidth: isOwn ? 0 : 1,
-                        borderColor: theme.borderSoft,
-                        borderRadius: 20,
-                        borderBottomRightRadius: isOwn ? 6 : 20,
-                        borderBottomLeftRadius: isOwn ? 20 : 6,
-                        padding: 11,
-                        minWidth: 200,
-                        maxWidth: 280,
-                    }}>
-                        <TouchableOpacity
-                            onPress={() => toggleAudioPlayback(message)}
-                            disabled={isLoadingThisAudio}
-                            style={{
-                                width: 34,
-                                height: 34,
-                                borderRadius: 17,
-                                backgroundColor: theme.primary,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                marginRight: 12,
-                            }}
-                        >
-                            {isLoadingThisAudio ? (
-                                <ActivityIndicator size="small" color={theme.white} />
-                            ) : (
-                                <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color={theme.white} />
-                            )}
-                        </TouchableOpacity>
-
-                        <View style={{ flex: 1, marginRight: 8 }}>
-                            {/* Ondas de audio animadas cuando está reproduciendo */}
-                            {isPlaying ? (
-                                <View style={{ height: 24, justifyContent: 'center' }}>
-                                    <AudioWaveAnimation color={waveColor} />
-                                </View>
-                            ) : (
-                                /* Barra de progreso cuando está pausado */
-                                <View style={{ height: 24, justifyContent: 'center' }}>
-                                    <View style={{ height: 3, backgroundColor: waveColor, borderRadius: 1.5, overflow: 'hidden' }}>
-                                        <View style={{ height: '100%', width: `${progress * 100}%`, backgroundColor: theme.primary }} />
-                                    </View>
-                                </View>
-                            )}
-
-                            <Text style={{
-                                fontSize: 11.5,
-                                fontWeight: '600',
-                                color: isOwn ? ownBubbleTextColor : theme.textMuted,
-                                marginTop: 4,
-                            }}>
-                                {duration ? formatAudioDuration(duration) : '0:00'}
-                            </Text>
-                        </View>
-
-                        {/* Punto de "no escuchado" */}
-                        {!isOwn && !message.audioPlayed && (
-                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.affection }} />
-                        )}
-                    </View>
-
-                    <View style={{
-                        flexDirection: 'row',
-                        justifyContent: isOwn ? 'flex-end' : 'flex-start',
-                        alignItems: 'center',
-                        marginTop: 3,
-                        paddingHorizontal: 4,
-                    }}>
-                        <Text style={{ fontSize: 10, color: theme.textFaint }}>
-                            {formatMessageTime(message.createdAt)}
-                        </Text>
-                        {isOwn && <MessageStatus message={message} isOwn={isOwn} />}
-                    </View>
-                </TouchableOpacity>
+                />
             );
         }
 
@@ -667,6 +579,7 @@ const ChatScreen = () => {
                     </View>
                 )}
 
+                <AudioPlaybackProvider value={audioPlayback}>
                 <GiftedChat
                     messages={messages}
                     onSend={onSend}
@@ -965,6 +878,7 @@ const ChatScreen = () => {
                         </View>
                     )}
                 />
+                </AudioPlaybackProvider>
 
             {/* Profile Photo Modal */}
             <ProfilePhotoModal
