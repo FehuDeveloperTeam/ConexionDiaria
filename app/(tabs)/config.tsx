@@ -15,6 +15,7 @@ import { signOut } from 'firebase/auth';
 import { doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { formatDate } from '../../src/services/dateFormat';
 import { countFilled, fieldsFor, normalizeMeasurements } from '../../src/config/measurements';
+import { usePricing } from '../../src/hooks/usePricing';
 import type { Gender } from '../../src/types/models';
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import * as ImagePicker from 'expo-image-picker';
@@ -24,7 +25,6 @@ import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlan } from '../../src/contexts/planContext';
 import { useTheme } from '../../src/contexts/themeContext';
-import Purchases from 'react-native-purchases';
 import { Button } from '../../src/components/Button';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
@@ -117,6 +117,7 @@ const ConfigScreen: React.FC = () => {
     const router = useRouter();
     const { theme, isDarkMode, setDarkMode, fontFamilies, borderStyle } = useTheme();
     const { plan, user, userData, relationshipData, isLoading } = usePlan();
+    const pricing = usePricing();
 
     const [displayName, setDisplayName] = useState('');
     const [isSaving, setIsSaving] = useState(false);
@@ -140,21 +141,35 @@ const ConfigScreen: React.FC = () => {
         }
     }, [userData]);
 
-    const handleUpgrade = async () => {
+    // Sprint 9.18: antes esto compraba 'availablePackages[0]', el primer
+    // paquete que devolviera RevenueCat. Con un solo precio funcionaba de
+    // casualidad; con cinco escalones cobraba el que quedara primero, que no
+    // tiene por qué ser el que la persona vio en el cartel. Ahora el paquete
+    // sale de usePricing(), que es quien decide el escalón — el mismo del que
+    // el cartel saca el precio, así que lo mostrado y lo cobrado no se pueden
+    // separar.
+    const handleUpgrade = async (period: 'monthly' | 'annual' = 'monthly') => {
         if (!user) return;
-        try {
-            const offerings = await Purchases.getOfferings();
-            if (offerings.current && offerings.current.availablePackages.length > 0) {
-                const packageToPurchase = offerings.current.availablePackages[0];
-                const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
 
-                // Ya NO escribimos 'plan' acá. Las reglas de Firestore bloquean
-                // que el cliente toque ese campo — lo hace exclusivamente la
-                // Cloud Function que valida el webhook de RevenueCat. El
-                // listener de PlanContext refleja el cambio solo.
-                if (customerInfo.entitlements.active["premium_entitlement"]) {
-                    Toast.show({ type: 'success', text1: '¡Compra exitosa!', text2: 'Activando tu Premium...' });
-                }
+        const packageToPurchase = period === 'annual' ? pricing.annual : pricing.monthly;
+        if (!packageToPurchase) {
+            Toast.show({
+                type: 'error',
+                text1: 'No hay planes disponibles',
+                text2: 'Inténtalo de nuevo en un momento.',
+            });
+            return;
+        }
+
+        try {
+            // Ya NO escribimos 'plan' acá. Las reglas de Firestore bloquean
+            // que el cliente toque ese campo — lo hace exclusivamente la
+            // Cloud Function que valida el webhook de RevenueCat, que además
+            // es quien reparte el cupo de fundador (9.17). El listener de
+            // PlanContext refleja el cambio solo.
+            const granted = await pricing.purchase(packageToPurchase);
+            if (granted) {
+                Toast.show({ type: 'success', text1: '¡Compra exitosa!', text2: 'Activando tu Premium...' });
             }
         } catch (e: any) {
             if (!e.userCancelled) {
@@ -370,7 +385,7 @@ const ConfigScreen: React.FC = () => {
                             <Text style={{ fontFamily: fontFamilies.body, fontSize: 13, color: 'rgba(255,255,255,0.75)' }}>/ mes</Text>
                         </View>
                         <TouchableOpacity
-                            onPress={handleUpgrade}
+                            onPress={() => handleUpgrade('monthly')}
                             style={{ backgroundColor: theme.premium, borderRadius: 15, paddingVertical: spacing.s14, alignItems: 'center' }}
                         >
                             <Text style={{ fontFamily: fontFamilies.actionBold, fontSize: 15, color: theme.premiumTextOnFill }}>

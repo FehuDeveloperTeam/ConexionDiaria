@@ -1,0 +1,16 @@
+{
+  // Compilación mínima para poder probar la escalera de precios desde node
+  // (ver tests/pricing.test.mjs). "types": [] es lo importante: sin eso, tsc
+  // carga TODOS los @types del proyecto y los de react-native chocan con
+  // lib.dom, aunque este archivo no use ninguno de los dos.
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "es2020",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": [],
+    "outDir": ".tmp-pricing"
+  },
+  "files": ["../src/services/pricing.ts"]
+}
