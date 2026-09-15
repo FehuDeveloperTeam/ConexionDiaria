@@ -99,6 +99,7 @@ export const onNewChatMessage = onDocumentCreated(
 
     let body = 'Nuevo mensaje';
     if (message.text) body = message.text;
+    else if (message.video) body = '🎥 Video';
     else if (message.image) body = '📷 Foto';
     else if (message.audio) body = '🎤 Nota de voz';
     else if (message.file) body = `📎 ${message.fileName || 'Archivo'}`;

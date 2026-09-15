@@ -27,6 +27,8 @@ import { useAudioPlayback } from '../../src/screens/chat/hooks/useAudioPlayback'
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AudioPlaybackProvider } from '../../src/screens/chat/context/audioPlaybackContext';
 import { AudioBubble } from '../../src/screens/chat/components/AudioBubble';
+import { VideoBubble } from '../../src/screens/chat/components/VideoBubble';
+import { VideoViewerModal } from '../../src/screens/chat/components/VideoViewerModal';
 import { useChatUploads } from '../../src/screens/chat/hooks/useChatUploads';
 import { useAudioRecording } from '../../src/screens/chat/hooks/useAudioRecording';
 import { usePartnerPresence } from '../../src/screens/chat/hooks/usePartnerPresence';
@@ -122,6 +124,7 @@ const ChatScreen = () => {
     const [profilePhotoSize, setProfilePhotoSize] = useState<'medium' | 'full'>('medium');
 
     // Hoja de adjuntar propia (Sprint 7.4b) — reemplaza el action sheet nativo.
+    const [videoViewerUri, setVideoViewerUri] = useState<string | null>(null);
     const [isAttachSheetVisible, setIsAttachSheetVisible] = useState(false);
 
     // Estado para manejar el teclado
@@ -167,6 +170,7 @@ const ChatScreen = () => {
         uploadAudio,
         pickFromCamera,
         pickFromGallery,
+        pickVideo,
         pickDocument,
     } = useChatUploads({
         currentUser,
@@ -282,6 +286,21 @@ const ChatScreen = () => {
                 <AudioBubble
                     message={message}
                     isOwn={isOwn}
+                    onLongPress={() => handleMessageLongPress(null, message)}
+                />
+            );
+        }
+
+        // Sprint 9.23: video. Va antes que el archivo porque un video
+        // también llega con 'file' vacío, y después del audio por el mismo
+        // motivo: cada tipo de adjunto reclama su burbuja en orden.
+        if (message.video) {
+            return (
+                <VideoBubble
+                    message={message}
+                    isOwn={isOwn}
+                    protected={photoBlur > 0}
+                    onPress={() => setVideoViewerUri(message.video ?? null)}
                     onLongPress={() => handleMessageLongPress(null, message)}
                 />
             );
@@ -1036,6 +1055,12 @@ const ChatScreen = () => {
             />
 
             {/* Image Viewer Modal */}
+            <VideoViewerModal
+                visible={!!videoViewerUri}
+                videoUri={videoViewerUri ?? ''}
+                onClose={() => setVideoViewerUri(null)}
+            />
+
             <ImageViewerModal
                 images={chatImages}
                 index={imageViewerIndex}
@@ -1167,6 +1192,30 @@ const ChatScreen = () => {
                                     marginTop: spacing.s8,
                                 }}>
                                     Galería
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={{
+                                    flex: 1,
+                                    alignItems: 'center',
+                                    paddingVertical: spacing.s16,
+                                    borderRadius: 16,
+                                    backgroundColor: theme.surfaceAlt,
+                                }}
+                                onPress={() => {
+                                    setIsAttachSheetVisible(false);
+                                    pickVideo();
+                                }}
+                            >
+                                <Ionicons name="videocam" size={26} color={theme.primary} />
+                                <Text style={{
+                                    fontFamily: fontFamilies.bodySemiBold,
+                                    fontSize: 11,
+                                    color: theme.text,
+                                    marginTop: spacing.s8,
+                                }}>
+                                    Video
                                 </Text>
                             </TouchableOpacity>
 

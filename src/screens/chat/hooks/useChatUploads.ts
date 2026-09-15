@@ -24,7 +24,16 @@ const uriToBlob = (uri: string): Promise<Blob> => {
     });
 };
 
-// Subida de imágenes, audios y archivos al chat, con control de
+// El tope por archivo que impone la regla de Storage. Vive acá además de en
+// storage.rules para poder avisar ANTES de subir: el servidor rechaza la
+// subida al final y sin explicar por qué.
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+
+// Tope que se le pide al selector del sistema. Con 50 MB por archivo, pasado
+// ese largo el video no va a caber casi nunca.
+const MAX_VIDEO_SECONDS = 120;
+
+// Subida de imágenes, audios, videos y archivos al chat, con control de
 // almacenamiento (checkStorage) y el menú de adjuntos que los dispara.
 export function useChatUploads({
     currentUser,
@@ -232,6 +241,101 @@ export function useChatUploads({
         }
     };
 
+    // Sprint 9.23: video. Es el adjunto que de verdad llena los 100 MB del
+    // plan gratuito, así que pasa por el mismo checkStorage que el resto y no
+    // por una excepción: un minuto de video pesa lo que cien fotos.
+    //
+    // No se comprime acá. ImageManipulator no toca video y meter una
+    // transcodificación en el cliente es otra sesión completa; lo que sí se
+    // hace es pedirle al selector una calidad más baja y avisar cuando el
+    // archivo no cabe, en vez de subir 200 MB y fallar al final.
+    const uploadVideo = async (uri: string, durationMillis?: number) => {
+        if (!currentUser || !userData?.partnerId) return;
+
+        try {
+            setIsUploading(true);
+            setUploadProgress(0);
+
+            const blob = await uriToBlob(uri);
+            const fileSize = blob.size;
+
+            // El tope de la regla de Storage (50 MB por archivo). Se
+            // comprueba acá también para no gastar la subida entera antes de
+            // que el servidor la rechace sin decir por qué.
+            if (fileSize > MAX_VIDEO_BYTES) {
+                setIsUploading(false);
+                Toast.show({
+                    type: 'error',
+                    text1: 'El video es muy pesado',
+                    text2: 'El máximo por video son 50 MB. Prueba con uno más corto.',
+                });
+                return;
+            }
+
+            const hasSpace = await checkStorage(fileSize);
+            if (!hasSpace) {
+                setIsUploading(false);
+                return;
+            }
+
+            const filename = `${Crypto.randomUUID()}.mp4`;
+            const relationshipId = [currentUser.uid, userData.partnerId].sort().join('_');
+            const storageRef = ref(storage, `relationships/${relationshipId}/videos/${filename}`);
+
+            const uploadTask = uploadBytesResumable(storageRef, blob);
+
+            uploadTask.on(
+                'state_changed',
+                (snapshot) => {
+                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                    setUploadProgress(progress);
+                },
+                (error) => {
+                    console.error('Error subiendo video:', error);
+                    setIsUploading(false);
+                    Toast.show({
+                        type: 'error',
+                        text1: 'Error',
+                        text2: 'No se pudo subir el video',
+                    });
+                },
+                async () => {
+                    const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+
+                    await addDoc(collection(db, 'relationships', relationshipId, 'messages'), {
+                        video: downloadURL,
+                        ...(durationMillis != null ? { videoDuration: durationMillis } : {}),
+                        text: '',
+                        createdAt: Timestamp.now(),
+                        authorId: currentUser.uid,
+                        user: {
+                            _id: currentUser.uid,
+                            name: userData.name || 'Usuario',
+                        },
+                        delivered: false,
+                        read: false,
+                        sentAt: Timestamp.now(),
+                    });
+
+                    // 'usedStorage' lo cuenta la Cloud Function a partir del
+                    // evento de subida (F-04, F-05), igual que con el resto.
+                    setIsUploading(false);
+                    setUploadProgress(0);
+
+                    Toast.show({ type: 'success', text1: 'Video enviado' });
+                }
+            );
+        } catch (error) {
+            console.error('Error en uploadVideo:', error);
+            setIsUploading(false);
+            Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'No se pudo procesar el video',
+            });
+        }
+    };
+
     // Función para subir archivo
     const uploadFile = async (fileUri: string, fileName: string, fileSize: number) => {
         if (!currentUser || !userData?.partnerId) return;
@@ -343,6 +447,24 @@ export function useChatUploads({
         }
     };
 
+    const pickVideo = async () => {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) return;
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+            // Sin recorte: 'allowsEditing' en video abre el recortador del
+            // sistema, que en Android devuelve a veces el original sin avisar.
+            // Mejor pedir calidad media, que es la palanca que de verdad baja
+            // el peso, y dejar el video como está.
+            quality: 0.7,
+            videoMaxDuration: MAX_VIDEO_SECONDS,
+        });
+        if (!result.canceled && result.assets[0]) {
+            const asset = result.assets[0];
+            await uploadVideo(asset.uri, asset.duration ?? undefined);
+        }
+    };
+
     const pickDocument = async () => {
         const result = await DocumentPicker.getDocumentAsync({
             type: '*/*',
@@ -360,9 +482,11 @@ export function useChatUploads({
         checkStorage,
         uploadImage,
         uploadAudio,
+        uploadVideo,
         uploadFile,
         pickFromCamera,
         pickFromGallery,
+        pickVideo,
         pickDocument,
     };
 }

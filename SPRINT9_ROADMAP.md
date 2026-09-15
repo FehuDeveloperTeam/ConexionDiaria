@@ -32,7 +32,14 @@ con 22 rutas) y pusheadas a `claude/conexiondiaria-app-review-o9tn7y`.
 | 9.15 | Notas de voz, con el mismo cupo que las escritas | `50f32bf` |
 | 9.16 | Categorías propias en Deseos | `aeb46ac` |
 
-**Fases A, B, C, D y E cerradas.** Queda el video del chat (9.23). La fase D quedó lista del lado del código;
+**Sprint 9 cerrado.** Las cinco fases (A a E) y el video del chat están
+implementadas. Queda pendiente, y no se puede hacer desde acá: crear las cinco
+ofertas en el dashboard de RevenueCat y desplegar reglas y funciones.
+
+Del 9.23 quedó fuera el video en el ÁLBUM (el plan lo mencionaba como "y
+quizás en el álbum"): el álbum asume imágenes en la grilla, el visor y la
+descarga, y mezclarlos ahí es una sesión propia, no un agregado. El chat, que
+era el requisito firme, sí lo tiene. La fase D quedó lista del lado del código;
 falta crear las cinco ofertas en el dashboard de RevenueCat (founders,
 anniversary, birthday, seasonal, default) y desplegar reglas y funciones.
 
@@ -109,7 +116,7 @@ Aquí se vuelve real la separación entre los planes.
 | 9.15 | Notas de voz | Con las mismas reglas de cupo que las notas escritas. Premium. |
 | 9.16 | Deseos: categorías propias | En free las predeterminadas; en premium el usuario escribe las suyas. |
 | 9.24 | Catálogo de tallas y «Mis tallas» | Agregado después de escribir el plan, a partir de la revisión visual del 9.12. Las tres tallas sueltas de la ficha pasan a un catálogo por tipo (prendas, a la medida, ropa interior, accesorios) en `src/config/measurements.ts`, con campos que aparecen según el género declarado. Suma el lado espejo: cada persona declara **sus** tallas en `users/{uid}.measurements`, que su pareja sí lee, y un asistente de una pregunta a la vez las recoge sin bloquear nada. Tick verde por dato guardado, gris por dato pendiente. |
-| 9.23 | Video en chat y álbum | Agregado después de escribir el plan; por prioridad pertenece a esta fase, conserva el número alto para no renumerar el resto. Hoy no se puede enviar video: `useChatUploads` solo toma imágenes y el mensaje no tiene campo de video. Implica selector, subida, contabilidad de almacenamiento, miniatura y visor. El componente `VideoViewerModal` ya existe sin usar. Refuerza la separación de planes, porque el video es lo que de verdad llena los 100 MB del free. |
+| 9.23 ✅ | Video en chat | Agregado después de escribir el plan; por prioridad pertenece a esta fase, conserva el número alto para no renumerar el resto. Hoy no se puede enviar video: `useChatUploads` solo toma imágenes y el mensaje no tiene campo de video. Implica selector, subida, contabilidad de almacenamiento, miniatura y visor. El componente `VideoViewerModal` ya existe sin usar. Refuerza la separación de planes, porque el video es lo que de verdad llena los 100 MB del free. |
 
 ## Fase D — Monetización real
 

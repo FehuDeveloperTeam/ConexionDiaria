@@ -82,6 +82,7 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const st = ctx.storage();
     await uploadBytes(ref(st, `relationships/${REL}/images/foto.jpg`), new Uint8Array([1, 2, 3]));
     await uploadBytes(ref(st, `relationships/${REL}/audios/nota.m4a`), new Uint8Array([1, 2, 3]));
+    await uploadBytes(ref(st, `relationships/${REL}/videos/clip.mp4`), new Uint8Array([1, 2, 3]));
     await uploadBytes(ref(st, `albums/${REL}/recuerdo.jpg`), new Uint8Array([1, 2, 3]));
     await uploadBytes(ref(st, `avatars/${ALICE}/perfil.jpg`), new Uint8Array([1, 2, 3]));
 });
@@ -395,6 +396,30 @@ await check(
 await check(
     'ATAQUE: lo respondido no se puede borrar',
     assertFails(deleteDoc(doc(alice.firestore(), 'relationships', REL, 'dailyQuestions', '2026-09-15')))
+);
+
+console.log('\nVideo del chat (Storage) — Sprint 9.23');
+
+// Los videos van por la misma ruta comodín que imágenes y audios
+// (relationships/{rel}/{tipo}/{archivo}), así que ya estaban cubiertos por la
+// regla existente. Estas pruebas lo dejan escrito: si algún día alguien
+// reemplaza el comodín por rutas explícitas, el video no puede quedarse fuera
+// sin que falle algo.
+await check(
+    'ATAQUE: Eve NO puede descargar un video del chat ajeno',
+    assertFails(getBytes(ref(eve.storage(), `relationships/${REL}/videos/clip.mp4`)))
+);
+await check(
+    'ATAQUE: Eve NO puede borrar un video del chat ajeno',
+    assertFails(deleteObject(ref(eve.storage(), `relationships/${REL}/videos/clip.mp4`)))
+);
+await check(
+    'LEGÍTIMO: Alice sí puede subir un video a su relación',
+    assertSucceeds(uploadBytes(ref(alice.storage(), `relationships/${REL}/videos/otro.mp4`), new Uint8Array([1, 2, 3])))
+);
+await check(
+    'LEGÍTIMO: Bob sí puede leer el video que subió Alice',
+    assertSucceeds(getBytes(ref(bob.storage(), `relationships/${REL}/videos/clip.mp4`)))
 );
 
 await testEnv.cleanup();
