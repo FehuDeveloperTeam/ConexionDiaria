@@ -18,22 +18,7 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { useTheme } from '../contexts/themeContext';
 import { radii, spacing } from '../config/theme';
 import { formatDate } from '../services/dateFormat';
-
-// Formato que exige <input type="date">: siempre aaaa-mm-dd, sin importar el
-// idioma del equipo. Lo que ve la persona lo decide el navegador.
-const toInputValue = (date: Date) => {
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${date.getFullYear()}-${month}-${day}`;
-};
-
-// Se construye a mano y no con new Date('aaaa-mm-dd'): esa forma se
-// interpreta como medianoche UTC y en Chile devuelve el día anterior.
-const fromInputValue = (value: string): Date | null => {
-    const [year, month, day] = value.split('-').map(Number);
-    if (!year || !month || !day) return null;
-    return new Date(year, month - 1, day);
-};
+import { fromDateInputValue, toDateInputValue } from '../services/dateInput';
 
 export const DateField: React.FC<{
     value: Date | null;
@@ -47,10 +32,10 @@ export const DateField: React.FC<{
     if (Platform.OS === 'web') {
         return React.createElement('input', {
             type: 'date',
-            value: value ? toInputValue(value) : '',
-            max: maximumDate ? toInputValue(maximumDate) : undefined,
+            value: value ? toDateInputValue(value) : '',
+            max: maximumDate ? toDateInputValue(maximumDate) : undefined,
             onChange: (event: { target: { value: string } }) => {
-                const picked = fromInputValue(event.target.value);
+                const picked = fromDateInputValue(event.target.value);
                 if (picked) onChange(picked);
             },
             style: {

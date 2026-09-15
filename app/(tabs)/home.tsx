@@ -24,7 +24,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
-import DateTimePickerModal from "react-native-modal-datetime-picker";
+import { DateTimeModal } from '../../src/components/DateTimeModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 
@@ -986,13 +986,13 @@ const Home: React.FC = () => {
                         ]}
                     />
 
-                    <DateTimePickerModal
+                    {/* Sprint 9.25: en web no abría nada. Ver DateTimeModal. */}
+                    <DateTimeModal
                         isVisible={isDatePickerVisible}
                         mode="date"
                         onConfirm={handleConfirmDate}
                         onCancel={hideDatePicker}
                         maximumDate={new Date()}
-                        locale="es_ES"
                     />
 
                     {/* Sprint 7.3a: hero de aniversario — jerarquía máxima de la pantalla. */}

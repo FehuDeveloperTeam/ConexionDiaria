@@ -17,7 +17,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Calendar, LocaleConfig, DateData } from 'react-native-calendars';
 import Toast from 'react-native-toast-message';
-import DateTimePickerModal from "react-native-modal-datetime-picker";
+import { DateTimeModal } from '../../src/components/DateTimeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlan } from '../../src/contexts/planContext';
 import { useTheme } from '../../src/contexts/themeContext';
@@ -853,16 +853,14 @@ const CalendarScreen: React.FC = () => {
                 </View>
             </Modal>
 
-            <DateTimePickerModal
+            {/* Sprint 9.25: desde el computador esto no abría nada — el
+                selector nativo no existe en web. Ver DateTimeModal. */}
+            <DateTimeModal
                 isVisible={isDateTimePickerVisible}
                 mode={dateTimePickerMode}
                 date={eventDateTime}
                 onConfirm={handleConfirmDateTime}
                 onCancel={hideDateTimePicker}
-                locale="es_ES"
-                confirmTextIOS="Confirmar"
-                cancelTextIOS="Cancelar"
-                minuteInterval={5}
             />
 
             <PaywallSheet
