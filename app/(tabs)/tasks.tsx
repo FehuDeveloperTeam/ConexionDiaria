@@ -23,6 +23,7 @@ import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructive
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 import { ContextMenuRow } from '../../src/components/ContextMenuRow';
+import { RowActions } from '../../src/components/RowActions';
 import { useRouter } from 'expo-router';
 
 interface EditingTask { id: string; text: string; authorId: string; }
@@ -266,6 +267,11 @@ const TasksScreen: React.FC = () => {
                                         {metaText}
                                     </Text>
                                 </View>
+
+                                <RowActions
+                                    onEdit={() => openEditModal(item)}
+                                    onDelete={item.authorId === user.uid ? () => setDeletingTask(item) : undefined}
+                                />
                             </TouchableOpacity>
                         );
                     }}

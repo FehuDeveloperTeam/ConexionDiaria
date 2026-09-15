@@ -20,6 +20,7 @@ import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructive
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 import { ContextMenuRow } from '../../src/components/ContextMenuRow';
+import { RowActions } from '../../src/components/RowActions';
 import { useRouter } from 'expo-router';
 
 interface EditingNote { id: string; text: string; }
@@ -171,16 +172,22 @@ const NotesScreen: React.FC = () => {
                                     <Text style={{ fontFamily: fontFamilies.body, fontSize: 15, lineHeight: 22.5, color: textColor }}>
                                         {item.text}
                                     </Text>
-                                    <Text style={{
-                                        fontFamily: fontFamilies.body,
-                                        fontStyle: 'italic',
-                                        fontSize: 11.5,
-                                        color: authorColor,
-                                        textAlign: 'right',
-                                        marginTop: spacing.s10,
-                                    }}>
-                                        — {item.authorName}
-                                    </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.s10 }}>
+                                        <RowActions
+                                            onEdit={() => openEditModal(item)}
+                                            onDelete={item.authorId === user.uid ? () => setDeletingNoteId(item.id) : undefined}
+                                        />
+                                        <Text style={{
+                                            fontFamily: fontFamilies.body,
+                                            fontStyle: 'italic',
+                                            fontSize: 11.5,
+                                            color: authorColor,
+                                            textAlign: 'right',
+                                            flex: 1,
+                                        }}>
+                                            — {item.authorName}
+                                        </Text>
+                                    </View>
                                 </View>
                             </TouchableOpacity>
                         );

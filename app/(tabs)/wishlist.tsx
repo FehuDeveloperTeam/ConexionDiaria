@@ -26,6 +26,7 @@ import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 import { ContextMenuRow } from '../../src/components/ContextMenuRow';
+import { RowActions } from '../../src/components/RowActions';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
 const WISH_TYPES = ['Aniversario', 'Cumpleaños', 'Navidad', 'San Valentín', 'Solo porque sí', 'Otro'];
@@ -373,6 +374,11 @@ const WishlistScreen: React.FC = () => {
                                 </TouchableOpacity>
                             )}
                         </View>
+
+                        <RowActions
+                            onEdit={() => openEditItemModal(item)}
+                            onDelete={item.authorId === user?.uid ? () => setDeletingItem(item) : undefined}
+                        />
 
                         <TouchableOpacity
                             onPress={() => handleToggleItem(item)}
