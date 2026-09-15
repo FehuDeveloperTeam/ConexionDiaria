@@ -11,7 +11,7 @@ import { useRouter } from 'expo-router';
 // import { onAuthStateChanged, User } from 'firebase/auth'; // <--- Ya no es necesario
 import {
     doc, DocumentData, writeBatch, onSnapshot,
-    updateDoc, collection, query, orderBy, Timestamp, setDoc,
+    updateDoc, collection, query, orderBy, where, Timestamp, setDoc,
     increment,
     limit // --- AÑADIDO: Importamos 'limit' para el paywall ---
 } from 'firebase/firestore';
@@ -137,8 +137,22 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
 
     // --- Sprint 7.3a: hero de aniversario ---
     heroCard: { width: '100%', borderRadius: radii.card, padding: spacing.s20, gap: spacing.s6 },
-    heroEyebrow: { fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 1.1, color: '#FFFFFF', opacity: 0.85 },
-    heroNumber: { fontFamily: fontFamilies.display, fontSize: 32, lineHeight: 36, color: '#FFFFFF' },
+    // Sprint 9.5: centrados para que el contador se lea como el título de la
+    // pantalla y no como una etiqueta arrinconada a la izquierda.
+    heroEyebrow: { fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 1.1, color: '#FFFFFF', opacity: 0.85, textAlign: 'center' },
+    heroNumber: { fontFamily: fontFamilies.display, fontSize: 32, lineHeight: 36, color: '#FFFFFF', textAlign: 'center' },
+
+    // --- Sprint 9.5: "Lo próximo" — puente entre Inicio y Calendario ---
+    nextCard: {
+        flexDirection: 'row', alignItems: 'center', gap: spacing.s12, width: '100%',
+        backgroundColor: theme.surface, borderRadius: radii.card - 2,
+        borderWidth: 1, borderColor: theme.borderSoft,
+        padding: spacing.s14, marginTop: spacing.s12,
+    },
+    nextIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: theme.primaryTint, alignItems: 'center', justifyContent: 'center' },
+    nextLabel: { fontFamily: fontFamilies.bodyBold, fontSize: 10, letterSpacing: 0.9, color: theme.textFaint },
+    nextTitle: { fontFamily: fontFamilies.bodySemiBold, fontSize: 14.5, color: theme.text, marginTop: 2 },
+    nextWhen: { fontFamily: fontFamilies.bodyBold, fontSize: 12.5, color: theme.primary },
 
     // --- Sprint 7.3a: selector rápido de ánimo ---
     quickMoodLabel: { fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 0.9, textTransform: 'uppercase', color: theme.textMuted, marginTop: spacing.s16 },
@@ -226,6 +240,8 @@ const Home: React.FC = () => {
 
     // --- Estados Locales (Solo para UI e historial) ---
     const [missYouHistory, setMissYouHistory] = useState<DocumentData[]>([]);
+    // Sprint 9.5: el evento de calendario más cercano, o null si no hay ninguno.
+    const [nextEvent, setNextEvent] = useState<{ title: string; date: Date } | null>(null);
     const [partnerCode, setPartnerCode] = useState('');
     const [isMoodSelectorVisible, setIsMoodSelectorVisible] = useState(false);
     const [isHistoryVisible, setIsHistoryVisible] = useState(false);
@@ -322,6 +338,42 @@ const Home: React.FC = () => {
     }, []);
 
     // --- Efectos ---
+
+    // Sprint 9.5: el próximo evento del calendario, para el bloque "Lo
+    // próximo". Se pide SOLO el siguiente (where + limit 1) en vez de traer
+    // la agenda completa como hace Calendario: es una lectura por pareja, no
+    // quinientas. El filtro de rango y el orden van sobre el mismo campo, así
+    // que no necesita un índice compuesto.
+    useEffect(() => {
+        if (!user || !userData?.partnerId) {
+            setNextEvent(null);
+            return;
+        }
+
+        const relationshipId = [user.uid, userData.partnerId].sort().join('_');
+        const eventsRef = collection(db, 'relationships', relationshipId, 'events');
+        const q = query(
+            eventsRef,
+            where('dateTime', '>=', Timestamp.now()),
+            orderBy('dateTime', 'asc'),
+            limit(1)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const first = snapshot.docs[0];
+            if (!first) {
+                setNextEvent(null);
+                return;
+            }
+            const data = first.data();
+            setNextEvent({ title: data.title, date: (data.dateTime as Timestamp).toDate() });
+        }, (error) => {
+            console.error('Error cargando el próximo evento:', error);
+            setNextEvent(null);
+        });
+
+        return () => unsubscribe();
+    }, [user, userData?.partnerId]);
 
     // useEffect para cargar el Historial (ACTUALIZADO CON LÍMITE FREEMIUM)
     const missYouPartnerId = userData?.partnerId as string | undefined;
@@ -790,6 +842,33 @@ const Home: React.FC = () => {
                             )}
                         </TouchableOpacity>
                     </LinearGradient>
+
+                    {/* Sprint 9.5: "Lo próximo". Se compara a medianoche y no con la
+                        hora exacta, para que un evento de esta tarde diga "Hoy" y uno
+                        de mañana temprano diga "Mañana". Solo aparece si hay algo
+                        próximo: sin eventos no se muestra un hueco vacío. */}
+                    {nextEvent && (() => {
+                        const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+                        const days = Math.round((startOfDay(nextEvent.date) - startOfDay(new Date())) / 86400000);
+                        const whenLabel = days <= 0 ? 'Hoy' : days === 1 ? 'Mañana' : `En ${days} días`;
+
+                        return (
+                            <TouchableOpacity
+                                style={styles.nextCard}
+                                activeOpacity={0.85}
+                                onPress={() => router.push('/(tabs)/calendar')}
+                            >
+                                <View style={styles.nextIcon}>
+                                    <Ionicons name="calendar-outline" size={18} color={theme.primary} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.nextLabel}>LO PRÓXIMO</Text>
+                                    <Text style={styles.nextTitle} numberOfLines={1}>{nextEvent.title}</Text>
+                                </View>
+                                <Text style={styles.nextWhen}>{whenLabel}</Text>
+                            </TouchableOpacity>
+                        );
+                    })()}
 
                     {/* Sprint 7.3a: selector rápido de ánimo — tocar un círculo abre
                         directo el modal de mensaje (ya no hay un paso intermedio). */}
