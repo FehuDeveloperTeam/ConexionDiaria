@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View, Platform, KeyboardAvoidingView, StyleSheet,
     ActivityIndicator, Text, TouchableOpacity, Image, UIManager,
@@ -24,6 +24,7 @@ import { SoundWaveAnimation } from '../../src/screens/chat/components/SoundWaveA
 import { ProfilePhotoModal } from '../../src/screens/chat/components/ProfilePhotoModal';
 import { useChatMessages } from '../../src/screens/chat/hooks/useChatMessages';
 import { useAudioPlayback } from '../../src/screens/chat/hooks/useAudioPlayback';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AudioPlaybackProvider } from '../../src/screens/chat/context/audioPlaybackContext';
 import { AudioBubble } from '../../src/screens/chat/components/AudioBubble';
 import { useChatUploads } from '../../src/screens/chat/hooks/useChatUploads';
@@ -31,6 +32,9 @@ import { useAudioRecording } from '../../src/screens/chat/hooks/useAudioRecordin
 import { usePartnerPresence } from '../../src/screens/chat/hooks/usePartnerPresence';
 
 // Habilitar LayoutAnimation en Android
+// Preferencia local de si el carril derecho va plegado (Sprint 9.6).
+const RAIL_COLLAPSED_KEY = 'chat.railCollapsed';
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -49,6 +53,24 @@ const ChatScreen = () => {
     // Estados de UI
     // Índice dentro de 'chatImages'; null = visor cerrado.
     const [imageViewerIndex, setImageViewerIndex] = useState<number | null>(null);
+
+    // Sprint 9.6: el carril derecho muestra las fotos compartidas, y la app
+    // puede estar abierta en una oficina con gente alrededor. Se puede plegar,
+    // y la preferencia se recuerda: si alguien lo cierra por privacidad, no
+    // tiene sentido que vuelva a abrirse solo en la próxima visita.
+    const [isRailCollapsed, setIsRailCollapsed] = useState(false);
+
+    useEffect(() => {
+        AsyncStorage.getItem(RAIL_COLLAPSED_KEY)
+            .then(stored => { if (stored === '1') setIsRailCollapsed(true); })
+            .catch(() => { /* sin preferencia guardada se queda abierto */ });
+    }, []);
+
+    const toggleRail = () => {
+        const next = !isRailCollapsed;
+        setIsRailCollapsed(next);
+        AsyncStorage.setItem(RAIL_COLLAPSED_KEY, next ? '1' : '0').catch(() => {});
+    };
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
     // Estados para el modal de archivos
@@ -557,6 +579,24 @@ const ChatScreen = () => {
                         ) : null}
                     </View>
                 </TouchableOpacity>
+
+                {/* Plegar/desplegar el carril derecho. Solo existe donde el
+                    carril cabe (>=1080px); en pantallas menores no hay nada
+                    que plegar. */}
+                {isWide && (
+                    <TouchableOpacity
+                        onPress={toggleRail}
+                        style={{ padding: 6, marginLeft: spacing.s8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={isRailCollapsed ? 'Mostrar el panel de la conversación' : 'Ocultar el panel de la conversación'}
+                    >
+                        <Ionicons
+                            name={isRailCollapsed ? 'information-circle-outline' : 'information-circle'}
+                            size={24}
+                            color={theme.primary}
+                        />
+                    </TouchableOpacity>
+                )}
             </View>
 
             <KeyboardAvoidingView
@@ -1049,8 +1089,9 @@ const ChatScreen = () => {
             </KeyboardAvoidingView>
             </DesktopContentWrap>
 
-            {/* Carril derecho — Sprint 8.8, solo en escritorio ancho (>=1080px) */}
-            {isWide && (
+            {/* Carril derecho — Sprint 8.8, solo en escritorio ancho (>=1080px).
+                Al plegarlo (9.6) la conversación se queda con todo el ancho. */}
+            {isWide && !isRailCollapsed && (
                 <ChatDesktopRail
                     partnerInfo={partnerInfo}
                     messages={messages}
