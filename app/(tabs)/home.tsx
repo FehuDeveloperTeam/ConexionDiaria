@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     View, Text, StyleSheet,
     ActivityIndicator, TextInput, TouchableOpacity,
@@ -10,7 +10,7 @@ import {
 import { useRouter } from 'expo-router';
 // import { onAuthStateChanged, User } from 'firebase/auth'; // <--- Ya no es necesario
 import {
-    doc, DocumentData, writeBatch, onSnapshot,
+    doc, DocumentData, writeBatch, onSnapshot, getDoc, getDocs,
     updateDoc, collection, query, orderBy, where, Timestamp, setDoc,
     increment,
     limit // --- AÑADIDO: Importamos 'limit' para el paywall ---
@@ -95,6 +95,9 @@ const getTodayDateKey = (): string => {
 // Sprint 7.3a. Es un texto ilustrativo, no un campo numérico, así que no
 // aplica la convención dd/mm/aaaa del resto de la app.
 const MESES_ABREV = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+
+// Sprint 9.13 — con cuántos días de anticipación aparece el aviso de regalo.
+const GIFT_ALERT_DAYS = 14;
 const formatAnniversaryEyebrow = (date: Date): string =>
     `JUNTOS DESDE EL ${date.getDate()} DE ${MESES_ABREV[date.getMonth()]}, ${date.getFullYear()}`;
 
@@ -153,6 +156,34 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
     nextLabel: { fontFamily: fontFamilies.bodyBold, fontSize: 10, letterSpacing: 0.9, color: theme.textFaint },
     nextTitle: { fontFamily: fontFamilies.bodySemiBold, fontSize: 14.5, color: theme.text, marginTop: 2 },
     nextWhen: { fontFamily: fontFamilies.bodyBold, fontSize: 12.5, color: theme.primary },
+
+    // --- Sprint 9.13: aviso de regalo (Calendario -> Deseos -> tallas) ---
+    giftCard: {
+        width: '100%', backgroundColor: theme.surface, borderRadius: radii.card,
+        borderWidth: 1.5, borderColor: theme.affection,
+        padding: spacing.s16, marginTop: spacing.s12, gap: spacing.s10,
+    },
+    giftHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.s10 },
+    giftTitle: { fontFamily: fontFamilies.bodyBold, fontSize: 14.5, color: theme.text, flex: 1 },
+    giftWhen: { fontFamily: fontFamilies.bodyBold, fontSize: 12.5, color: theme.affectionInk },
+    giftLine: { fontFamily: fontFamilies.body, fontSize: 13.5, color: theme.textMuted, lineHeight: 20 },
+    giftWishRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.s8 },
+    giftWish: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: theme.text, flex: 1 },
+    giftSizes: {
+        flexDirection: 'row', flexWrap: 'wrap', gap: spacing.s8,
+        borderTopWidth: 1, borderTopColor: theme.divider, paddingTop: spacing.s10,
+    },
+    giftSizeChip: {
+        backgroundColor: theme.surfaceAlt, borderRadius: 8,
+        paddingVertical: 3, paddingHorizontal: 8,
+    },
+    giftSizeText: { fontFamily: fontFamilies.bodySemiBold, fontSize: 11.5, color: theme.textMuted },
+    giftLockRow: {
+        flexDirection: 'row', alignItems: 'center', gap: spacing.s8,
+        borderTopWidth: 1, borderTopColor: theme.divider, paddingTop: spacing.s10,
+    },
+    giftLockText: { fontFamily: fontFamilies.body, fontSize: 12.5, color: theme.textFaint, flex: 1 },
+    giftLockCta: { fontFamily: fontFamilies.bodyBold, fontSize: 12, color: theme.primary },
 
     // --- Sprint 7.3a: selector rápido de ánimo ---
     quickMoodLabel: { fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 0.9, textTransform: 'uppercase', color: theme.textMuted, marginTop: spacing.s16 },
@@ -242,6 +273,15 @@ const Home: React.FC = () => {
     const [missYouHistory, setMissYouHistory] = useState<DocumentData[]>([]);
     // Sprint 9.5: el evento de calendario más cercano, o null si no hay ninguno.
     const [nextEvent, setNextEvent] = useState<{ title: string; date: Date } | null>(null);
+
+    // Sprint 9.13: lo que hay que saber para el regalo — qué pidió y qué tallas
+    // usa. Solo se carga cuando una fecha está cerca (ver más abajo).
+    const [giftIntel, setGiftIntel] = useState<{
+        wishes: string[];
+        clothingSize: string;
+        shoeSize: string;
+        ringSize: string;
+    } | null>(null);
     const [partnerCode, setPartnerCode] = useState('');
     const [isMoodSelectorVisible, setIsMoodSelectorVisible] = useState(false);
     const [isHistoryVisible, setIsHistoryVisible] = useState(false);
@@ -252,6 +292,9 @@ const Home: React.FC = () => {
     const [relationshipDuration, setRelationshipDuration] = useState<string | null>(null);
     const [anniversaryEyebrow, setAnniversaryEyebrow] = useState<string | null>(null);
     const [isMoodPaywallVisible, setIsMoodPaywallVisible] = useState(false);
+    // Propio y no reutilizado: un paywall tiene que explicar el motivo por el
+    // que apareció, y el de los ánimos habla de emojis.
+    const [isGiftPaywallVisible, setIsGiftPaywallVisible] = useState(false);
     const [isHistoryPaywallVisible, setIsHistoryPaywallVisible] = useState(false);
     const [isEmailVerified, setIsEmailVerified] = useState(true);
     const [isResendingVerification, setIsResendingVerification] = useState(false);
@@ -374,6 +417,91 @@ const Home: React.FC = () => {
 
         return () => unsubscribe();
     }, [user, userData?.partnerId]);
+
+    // Sprint 9.13 — la ocasión de regalo más cercana: su cumpleaños o el
+    // aniversario, lo que caiga primero dentro de la ventana. Se compara solo
+    // día y mes, porque lo que se repite cada año es la fecha, no el año.
+    const giftOccasion = useMemo(() => {
+        const candidates: { label: string; date: Date }[] = [];
+
+        const nextYearly = (source: Date) => {
+            const today = new Date();
+            const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            let next = new Date(today.getFullYear(), source.getMonth(), source.getDate());
+            if (next < todayMidnight) next = new Date(today.getFullYear() + 1, source.getMonth(), source.getDate());
+            return next;
+        };
+
+        const partnerBirth = partnerData?.birthDate?.toDate ? partnerData.birthDate.toDate() : null;
+        if (partnerBirth) {
+            candidates.push({ label: `el cumpleaños de ${partnerData?.displayName || 'tu pareja'}`, date: nextYearly(partnerBirth) });
+        }
+
+        const start = userData?.relationshipStartDate?.toDate ? userData.relationshipStartDate.toDate() : null;
+        if (start) {
+            candidates.push({ label: 'su aniversario', date: nextYearly(start) });
+        }
+
+        if (candidates.length === 0) return null;
+
+        candidates.sort((a, b) => a.date.getTime() - b.date.getTime());
+        const soonest = candidates[0];
+
+        const today = new Date();
+        const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const days = Math.round((soonest.date.getTime() - todayMidnight.getTime()) / 86400000);
+
+        // Dos semanas: suficiente para comprar algo sin que el aviso viva
+        // encima todo el año y deje de mirarse.
+        return days <= GIFT_ALERT_DAYS ? { ...soonest, days } : null;
+    }, [partnerData?.birthDate, partnerData?.displayName, userData?.relationshipStartDate]);
+
+    // Los deseos y las tallas se piden SOLO cuando la fecha ya está cerca y el
+    // plan lo permite: el resto del año esto no cuesta ninguna lectura.
+    useEffect(() => {
+        const partnerUid = userData?.partnerId as string | undefined;
+        if (!giftOccasion || plan !== 'premium' || !user || !partnerUid) {
+            setGiftIntel(null);
+            return;
+        }
+
+        let cancelled = false;
+        const relationshipId = [user.uid, partnerUid].sort().join('_');
+
+        (async () => {
+            try {
+                // Un solo filtro de igualdad, para no depender de un índice
+                // compuesto; lo cumplido se descarta acá.
+                const wishSnap = await getDocs(query(
+                    collection(db, 'relationships', relationshipId, 'wishlist'),
+                    where('authorId', '==', partnerUid),
+                    limit(20)
+                ));
+                const wishes = wishSnap.docs
+                    .map(d => d.data())
+                    .filter(w => !w.isCompleted)
+                    .slice(0, 3)
+                    .map(w => w.title as string);
+
+                // La ficha es privada de quien mira: vive bajo su propio uid.
+                const sheet = await getDoc(doc(db, 'users', user.uid, 'private', 'partnerProfile'));
+                const data = sheet.exists() ? sheet.data() : {};
+
+                if (cancelled) return;
+                setGiftIntel({
+                    wishes,
+                    clothingSize: data.clothingSize || '',
+                    shoeSize: data.shoeSize || '',
+                    ringSize: data.ringSize || '',
+                });
+            } catch (error) {
+                console.error('Error preparando el aviso de regalo:', error);
+                if (!cancelled) setGiftIntel(null);
+            }
+        })();
+
+        return () => { cancelled = true; };
+    }, [giftOccasion, plan, user, userData?.partnerId]);
 
     // useEffect para cargar el Historial (ACTUALIZADO CON LÍMITE FREEMIUM)
     const missYouPartnerId = userData?.partnerId as string | undefined;
@@ -843,6 +971,81 @@ const Home: React.FC = () => {
                         </TouchableOpacity>
                     </LinearGradient>
 
+                    {/* Sprint 9.13 — el aviso de regalo, el encadenado que une
+                        Calendario, Deseos y la ficha de la pareja. Va antes de
+                        "Lo próximo" porque tiene fecha de vencimiento.
+
+                        En free se muestra igual la fecha: su cumpleaños no es
+                        un secreto que haya que cobrar. Lo que se reserva es la
+                        ayuda — qué pidió y qué tallas usa. */}
+                    {giftOccasion && (
+                        <View style={styles.giftCard}>
+                            <View style={styles.giftHeader}>
+                                <Ionicons name="gift" size={20} color={theme.affection} />
+                                <Text style={styles.giftTitle}>
+                                    Se acerca {giftOccasion.label}
+                                </Text>
+                                <Text style={styles.giftWhen}>
+                                    {giftOccasion.days <= 0 ? 'Hoy' : giftOccasion.days === 1 ? 'Mañana' : `En ${giftOccasion.days} días`}
+                                </Text>
+                            </View>
+
+                            {plan === 'premium' ? (
+                                <>
+                                    {giftIntel && giftIntel.wishes.length > 0 ? (
+                                        <View style={{ gap: spacing.s6 }}>
+                                            <Text style={styles.giftLine}>Lo que pidió:</Text>
+                                            {giftIntel.wishes.map((wish, i) => (
+                                                <View key={`${wish}-${i}`} style={styles.giftWishRow}>
+                                                    <Ionicons name="star" size={13} color={theme.premium} style={{ marginTop: 3 }} />
+                                                    <Text style={styles.giftWish}>{wish}</Text>
+                                                </View>
+                                            ))}
+                                        </View>
+                                    ) : (
+                                        <Text style={styles.giftLine}>
+                                            No tiene deseos anotados. Puedes preguntarle sin que se note.
+                                        </Text>
+                                    )}
+
+                                    {giftIntel && (giftIntel.clothingSize || giftIntel.shoeSize || giftIntel.ringSize) ? (
+                                        <View style={styles.giftSizes}>
+                                            {!!giftIntel.clothingSize && (
+                                                <View style={styles.giftSizeChip}>
+                                                    <Text style={styles.giftSizeText}>Ropa {giftIntel.clothingSize}</Text>
+                                                </View>
+                                            )}
+                                            {!!giftIntel.shoeSize && (
+                                                <View style={styles.giftSizeChip}>
+                                                    <Text style={styles.giftSizeText}>Calza {giftIntel.shoeSize}</Text>
+                                                </View>
+                                            )}
+                                            {!!giftIntel.ringSize && (
+                                                <View style={styles.giftSizeChip}>
+                                                    <Text style={styles.giftSizeText}>Anillo {giftIntel.ringSize}</Text>
+                                                </View>
+                                            )}
+                                        </View>
+                                    ) : (
+                                        <TouchableOpacity style={styles.giftLockRow} onPress={() => router.push('/partner')}>
+                                            <Ionicons name="create-outline" size={15} color={theme.textFaint} />
+                                            <Text style={styles.giftLockText}>Anota sus tallas para tenerlas a mano</Text>
+                                            <Text style={styles.giftLockCta}>Abrir ficha</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </>
+                            ) : (
+                                <TouchableOpacity style={styles.giftLockRow} onPress={() => setIsGiftPaywallVisible(true)}>
+                                    <Ionicons name="lock-closed" size={15} color={theme.premium} />
+                                    <Text style={styles.giftLockText}>
+                                        Conexión Total te muestra qué pidió y sus tallas
+                                    </Text>
+                                    <Text style={styles.giftLockCta}>Ver</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    )}
+
                     {/* Sprint 9.5: "Lo próximo". Se compara a medianoche y no con la
                         hora exacta, para que un evento de esta tarde diga "Hoy" y uno
                         de mañana temprano diga "Mañana". Solo aparece si hay algo
@@ -929,6 +1132,20 @@ const Home: React.FC = () => {
                             '22 emojis adicionales, incluida una categoría atrevida',
                             'Historial completo del extrañómetro',
                             'Personalización de tema para los dos',
+                        ]}
+                    />
+
+                    <PaywallSheet
+                        visible={isGiftPaywallVisible}
+                        onClose={() => setIsGiftPaywallVisible(false)}
+                        onUpgradePress={() => { setIsGiftPaywallVisible(false); router.push('/(tabs)/config'); }}
+                        icon="gift"
+                        title="Llega preparado a la fecha"
+                        description="Conexión Total te avisa antes de cada fecha importante con lo que pidió y las tallas que anotaste, para que no tengas que preguntar."
+                        benefits={[
+                            'Sus deseos pendientes, a la vista antes de la fecha',
+                            'Ficha privada con tallas y gustos, que solo ves tú',
+                            'Recordatorios de calendario',
                         ]}
                     />
 
