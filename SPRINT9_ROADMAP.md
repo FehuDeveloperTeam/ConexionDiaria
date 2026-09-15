@@ -124,7 +124,7 @@ Aquí se vuelve real la separación entre los planes.
 
 | # | Sesión | Notas |
 |---|---|---|
-| 9.20 | Calendario: aniversario anclado y mesversarios | El aniversario fijo entre los primeros eventos con cuenta regresiva, y los meses cumplidos generados solos. Ambos planes. |
+| 9.20 ✅ | Calendario: aniversario anclado y mesversarios | El aniversario fijo entre los primeros eventos con cuenta regresiva, y los meses cumplidos generados solos. Ambos planes. |
 | 9.21 | Inicio: pregunta del día | Una pregunta distinta cada día para los dos. Es el motor de retención: da una razón para abrir la app a diario. Free ve la de hoy; premium, el archivo de todas las respuestas. |
 | 9.22 | Calendario: línea de tiempo de la relación | Hitos y fotos en una sola vista. Premium. |
 

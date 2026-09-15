@@ -22,6 +22,10 @@ import { usePlan } from '../../src/contexts/planContext';
 import { useTheme } from '../../src/contexts/themeContext';
 import { scheduleEventReminder, cancelEventReminder } from '../../src/services/notifications';
 import { getChileanHolidaysForYears } from '../../src/services/holidays';
+import {
+    isAnniversaryDay, isMonthiversaryDay, monthiversaryTitle, monthsElapsed,
+    nextAnniversary as computeNextAnniversary, nextMonthiversary as computeNextMonthiversary,
+} from '../../src/services/milestones';
 import { Button } from '../../src/components/Button';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
@@ -124,31 +128,39 @@ const CalendarScreen: React.FC = () => {
         return () => unsubscribeEvents();
     }, [user, partnerId]);
 
-    const nextAnniversary = useMemo(() => {
-        if (!userData?.relationshipStartDate) return null;
+    // Sprint 9.20: la aritmética de aniversarios y meses cumplidos se fue a
+    // services/milestones.ts. Acá estaba escrita a mano y sin pruebas, y los
+    // meses cumplidos no existían: para una pareja joven eso deja el
+    // calendario vacío hasta el primer año.
+    const relationshipStart: Date | null = userData?.relationshipStartDate?.toDate
+        ? userData.relationshipStartDate.toDate()
+        : null;
 
-        const startDate = userData.relationshipStartDate.toDate();
-        const today = new Date();
-        const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const currentYear = today.getFullYear();
+    const nextAnniversary = useMemo(
+        () => (relationshipStart ? computeNextAnniversary(relationshipStart, new Date()) : null),
+        // El objeto Date cambia de identidad en cada render del listener, así
+        // que la dependencia es su valor.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [relationshipStart?.getTime()]
+    );
 
-        let nextAnnivDate = new Date(currentYear, startDate.getMonth(), startDate.getDate());
-        if (nextAnnivDate < todayMidnight) {
-            nextAnnivDate = new Date(currentYear + 1, startDate.getMonth(), startDate.getDate());
-        }
-
-        const yearsCount = nextAnnivDate.getFullYear() - startDate.getFullYear();
-        const daysUntil = Math.round((nextAnnivDate.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
-
-        return { date: nextAnnivDate, years: yearsCount, daysUntil };
-    }, [userData]);
+    const nextMonthiversary = useMemo(
+        () => (relationshipStart ? computeNextMonthiversary(relationshipStart, new Date()) : null),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [relationshipStart?.getTime()]
+    );
 
     const isAnniversaryDate = useCallback((dateString: string) => {
-        if (!userData?.relationshipStartDate) return false;
-        const startDate = userData.relationshipStartDate.toDate();
-        const d = parseDateString(dateString);
-        return d.getMonth() === startDate.getMonth() && d.getDate() === startDate.getDate();
-    }, [userData]);
+        if (!relationshipStart) return false;
+        return isAnniversaryDay(relationshipStart, parseDateString(dateString));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [relationshipStart?.getTime()]);
+
+    const isMonthiversaryDate = useCallback((dateString: string) => {
+        if (!relationshipStart) return false;
+        return isMonthiversaryDay(relationshipStart, parseDateString(dateString));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [relationshipStart?.getTime()]);
 
     const visibleYears = useMemo(() => {
         const currentYear = new Date().getFullYear();
@@ -184,26 +196,49 @@ const CalendarScreen: React.FC = () => {
     }, [allEvents, selectedDate]);
 
     const selectedIsAnniversary = isAnniversaryDate(selectedDate);
-    const selectedAnniversaryYears = selectedIsAnniversary && userData?.relationshipStartDate
-        ? parseDateString(selectedDate).getFullYear() - userData.relationshipStartDate.toDate().getFullYear()
+    const selectedAnniversaryYears = selectedIsAnniversary && relationshipStart
+        ? parseDateString(selectedDate).getFullYear() - relationshipStart.getFullYear()
+        : null;
+
+    const selectedIsMonthiversary = isMonthiversaryDate(selectedDate);
+    const selectedMonthsTogether = selectedIsMonthiversary && relationshipStart
+        ? monthsElapsed(relationshipStart, parseDateString(selectedDate))
         : null;
 
     const upcomingRows = useMemo(() => {
         type Row = { key: string; date: Date; title: string; isAnniversary: boolean; original?: CalendarEvent };
-        const rows: Row[] = allEvents
-            .filter(e => e.dateTime.toDate() >= new Date())
-            .map(e => ({ key: e.id, date: e.dateTime.toDate(), title: e.title, isAnniversary: false, original: e }));
+
+        // Sprint 9.20: antes esto ordenaba todo por fecha y cortaba en cinco,
+        // así que con cinco eventos cercanos el aniversario desaparecía de la
+        // lista — justo la fecha que nadie quiere que se le pase. Ahora el
+        // aniversario y el próximo mes cumplido van anclados y los eventos
+        // llenan lo que queda.
+        const pinned: Row[] = [];
         if (nextAnniversary) {
-            rows.push({
+            pinned.push({
                 key: 'anniversary',
                 date: nextAnniversary.date,
-                title: `Aniversario · ${nextAnniversary.years} ${nextAnniversary.years === 1 ? 'año' : 'años'}`,
+                title: nextAnniversary.title,
                 isAnniversary: true,
             });
         }
+        if (nextMonthiversary) {
+            pinned.push({
+                key: 'monthiversary',
+                date: nextMonthiversary.date,
+                title: nextMonthiversary.title,
+                isAnniversary: true,
+            });
+        }
+
+        const eventRows: Row[] = allEvents
+            .filter(e => e.dateTime.toDate() >= new Date())
+            .map(e => ({ key: e.id, date: e.dateTime.toDate(), title: e.title, isAnniversary: false, original: e }));
+
+        const rows = [...pinned, ...eventRows.slice(0, Math.max(0, 5 - pinned.length))];
         rows.sort((a, b) => a.date.getTime() - b.date.getTime());
-        return rows.slice(0, 5);
-    }, [allEvents, nextAnniversary]);
+        return rows;
+    }, [allEvents, nextAnniversary, nextMonthiversary]);
 
     const openEventModal = () => {
         setEventTitle('');
@@ -377,6 +412,9 @@ const CalendarScreen: React.FC = () => {
         const isOtherMonth = state === 'disabled' || state === 'inactive';
         const isSelected = !!marking?.selected;
         const isAnniversary = isAnniversaryDate(date.dateString);
+        // Marca propia y más discreta que el corazón del aniversario: un mes
+        // cumplido se celebra, pero no es el aniversario.
+        const isMonthiversary = !isAnniversary && isMonthiversaryDate(date.dateString);
         const isHoliday = !!marking?.isHoliday;
         const hasEvent = !!marking?.marked;
 
@@ -397,8 +435,8 @@ const CalendarScreen: React.FC = () => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     backgroundColor: isSelected ? theme.primary : (isAnniversary ? theme.affection + '22' : 'transparent'),
-                    borderWidth: isAnniversary && !isSelected ? 1.5 : 0,
-                    borderColor: theme.affection,
+                    borderWidth: !isSelected && (isAnniversary || isMonthiversary) ? 1.5 : 0,
+                    borderColor: isAnniversary ? theme.affection : theme.affection + '55',
                 }}>
                     {isAnniversary && !isSelected ? (
                         <Ionicons name="heart" size={14} color={theme.affection} />
@@ -507,6 +545,25 @@ const CalendarScreen: React.FC = () => {
                     </View>
                 )}
 
+                {selectedIsMonthiversary && selectedMonthsTogether !== null && (
+                    <View style={{
+                        backgroundColor: theme.surface,
+                        borderRadius: 16,
+                        borderLeftWidth: 3,
+                        borderLeftColor: theme.affection,
+                        padding: spacing.s14,
+                        marginBottom: spacing.s10,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: spacing.s10,
+                    }}>
+                        <Ionicons name="heart-outline" size={18} color={theme.affection} />
+                        <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 14.5, color: theme.text }}>
+                            {monthiversaryTitle(selectedMonthsTogether)}
+                        </Text>
+                    </View>
+                )}
+
                 {eventsForSelectedDate.length > 0 ? (
                     eventsForSelectedDate.map((event) => (
                         <TouchableOpacity
@@ -528,7 +585,7 @@ const CalendarScreen: React.FC = () => {
                         </TouchableOpacity>
                     ))
                 ) : (
-                    !selectedIsAnniversary && (
+                    !selectedIsAnniversary && !selectedIsMonthiversary && (
                         <Text style={{ fontFamily: fontFamilies.body, fontSize: 14, color: theme.textFaint }}>
                             No hay eventos para esta fecha
                         </Text>

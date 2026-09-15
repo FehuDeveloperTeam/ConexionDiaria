@@ -49,3 +49,4 @@ app-example
 /ios
 /android
 tests/.tmp-pricing/
+tests/.tmp-milestones/
