@@ -14,6 +14,7 @@ import {
     collection, addDoc, onSnapshot, query, doc, orderBy, limit,
     serverTimestamp, Timestamp, deleteDoc, updateDoc,
 } from 'firebase/firestore';
+import { useRouter } from 'expo-router';
 import { Calendar, LocaleConfig, DateData } from 'react-native-calendars';
 import Toast from 'react-native-toast-message';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
@@ -76,6 +77,7 @@ const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', '
 const MESES_ABREV = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
 
 const CalendarScreen: React.FC = () => {
+    const router = useRouter();
     const { theme, isDarkMode: isDark, fontFamilies } = useTheme();
     const { isDesktop } = useResponsive();
 
@@ -102,6 +104,9 @@ const CalendarScreen: React.FC = () => {
     const [pendingDateTimeSelection, setPendingDateTimeSelection] = useState(false);
 
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+    // Propio y no reutilizado: un paywall tiene que explicar por qué apareció,
+    // y el de los eventos habla de cupos.
+    const [showTimelinePaywall, setShowTimelinePaywall] = useState(false);
 
     const partnerId = userData?.partnerId as string | undefined;
 
@@ -631,6 +636,29 @@ const CalendarScreen: React.FC = () => {
                                 </Text>
                             </TouchableOpacity>
                         ))}
+
+                        {/* Sprint 9.22: la entrada a la línea de tiempo vive
+                            acá, al final de lo que viene, porque es
+                            exactamente el movimiento contrario — lo que ya
+                            pasó. */}
+                        <TouchableOpacity
+                            onPress={() => plan === 'premium' ? router.push('/timeline') : setShowTimelinePaywall(true)}
+                            accessibilityRole="button"
+                            style={{
+                                flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
+                                paddingVertical: spacing.s12, paddingHorizontal: spacing.s14,
+                                marginTop: spacing.s8,
+                                borderRadius: radii.field, backgroundColor: theme.surfaceAlt,
+                            }}
+                        >
+                            <Ionicons name="git-commit-outline" size={16} color={theme.textMuted} />
+                            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: theme.text, flex: 1 }}>
+                                Su historia
+                            </Text>
+                            {plan === 'free'
+                                ? <Ionicons name="lock-closed" size={14} color={theme.premium} />
+                                : <Ionicons name="chevron-forward" size={16} color={theme.textFaint} />}
+                        </TouchableOpacity>
                     </>
                 )}
             </ScrollView>
@@ -837,6 +865,19 @@ const CalendarScreen: React.FC = () => {
                 minuteInterval={5}
             />
 
+            <PaywallSheet
+                visible={showTimelinePaywall}
+                onClose={() => setShowTimelinePaywall(false)}
+                onUpgradePress={() => { setShowTimelinePaywall(false); router.push('/(tabs)/config'); }}
+                icon="git-commit"
+                title="Su historia en una sola vista"
+                description="Los hitos que fueron cumpliendo, las fotos que subieron y lo que vivieron, en orden y en un solo lugar."
+                benefits={[
+                    'Línea de tiempo con hitos, eventos y fotos',
+                    'Archivo completo de la pregunta del día',
+                    'Ficha de la pareja con tallas y notas privadas',
+                ]}
+            />
             <PaywallSheet
                 visible={showUpgradeModal}
                 onClose={() => setShowUpgradeModal(false)}

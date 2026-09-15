@@ -289,6 +289,9 @@ const TabLayout: React.FC = () => {
             {/* Archivo de la pregunta del día — Sprint 9.21. */}
             <Tabs.Screen name="questions" options={{ href: null, headerShown: false }} />
 
+            {/* Línea de tiempo de la relación — Sprint 9.22. */}
+            <Tabs.Screen name="timeline" options={{ href: null, headerShown: false }} />
+
             {/* Ocultamos las pantallas que no son pestañas (como login, register, etc.) */}
             {/* Expo Router lo maneja automáticamente si no están en esta lista */}
 

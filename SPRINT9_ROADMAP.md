@@ -32,8 +32,7 @@ con 22 rutas) y pusheadas a `claude/conexiondiaria-app-review-o9tn7y`.
 | 9.15 | Notas de voz, con el mismo cupo que las escritas | `50f32bf` |
 | 9.16 | Categorías propias en Deseos | `aeb46ac` |
 
-**Fases A, B, C y D cerradas.** Queda la fase E (calendario y hábito: 9.20 a
-9.22) y el video del chat (9.23). La fase D quedó lista del lado del código;
+**Fases A, B, C, D y E cerradas.** Queda el video del chat (9.23). La fase D quedó lista del lado del código;
 falta crear las cinco ofertas en el dashboard de RevenueCat (founders,
 anniversary, birthday, seasonal, default) y desplegar reglas y funciones.
 
@@ -126,7 +125,7 @@ Aquí se vuelve real la separación entre los planes.
 |---|---|---|
 | 9.20 ✅ | Calendario: aniversario anclado y mesversarios | El aniversario fijo entre los primeros eventos con cuenta regresiva, y los meses cumplidos generados solos. Ambos planes. |
 | 9.21 ✅ | Inicio: pregunta del día | Una pregunta distinta cada día para los dos. Es el motor de retención: da una razón para abrir la app a diario. Free ve la de hoy; premium, el archivo de todas las respuestas. |
-| 9.22 | Calendario: línea de tiempo de la relación | Hitos y fotos en una sola vista. Premium. |
+| 9.22 ✅ | Calendario: línea de tiempo de la relación | Hitos y fotos en una sola vista. Premium. |
 
 ---
 
