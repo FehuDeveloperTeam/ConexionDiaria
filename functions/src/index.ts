@@ -52,6 +52,68 @@ const REVENUECAT_WEBHOOK_SECRET = defineSecret('REVENUECAT_WEBHOOK_SECRET');
 // RevenueCat y con app/(tabs)/config.tsx.
 const PREMIUM_ENTITLEMENT_ID = 'premium_entitlement';
 
+// --- Contador de fundadores (Sprint 9.17) ---
+//
+// Los primeros 500 en pagar se llevan el precio de fundador para siempre. El
+// cupo se reparte ACÁ y en ninguna otra parte: en el cliente, el contador
+// sería una variable que cualquiera puede dejar en 499 para siempre.
+//
+// Vive en appConfig/founders, que el cliente puede leer (para mostrar
+// "quedan 340 cupos") pero no escribir: la regla de Firestore le prohíbe
+// cualquier escritura, y esta función usa el Admin SDK, que no pasa por las
+// reglas.
+const FOUNDERS_DOC = 'appConfig/founders';
+const DEFAULT_FOUNDER_LIMIT = 500;
+
+// Entrega el premium y, si corresponde, un número de fundador. Todo en una
+// transacción: sin ella, dos compras simultáneas en el cupo 500 leerían el
+// mismo contador y se irían las dos con el mismo número.
+//
+// El número se otorga UNA vez por cuenta. Quien ya lo tiene y vuelve a
+// suscribirse no consume otro cupo, y quien se da de baja no lo devuelve: el
+// cupo se gastó cuando pagó, y la cohorte fundadora no se recicla.
+async function grantPremium(uid: string): Promise<number | null> {
+  const userRef = db.collection('users').doc(uid);
+  const foundersRef = db.doc(FOUNDERS_DOC);
+
+  return db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists) return null;
+
+    const userData = userSnap.data() ?? {};
+    const alreadyPremium = userData.plan === 'premium';
+    const existingFounderNumber: number | null = userData.founderNumber ?? null;
+
+    const foundersSnap = await tx.get(foundersRef);
+    const foundersData = foundersSnap.data() ?? {};
+    const claimed: number = foundersData.claimed ?? 0;
+    // El tope es un dato, no una constante compilada: si algún día se decide
+    // abrir 100 cupos más, se cambia el documento y no hay que desplegar.
+    const limit: number = foundersData.limit ?? DEFAULT_FOUNDER_LIMIT;
+
+    let founderNumber = existingFounderNumber;
+    if (founderNumber === null && claimed < limit) {
+      founderNumber = claimed + 1;
+      tx.set(
+        foundersRef,
+        { claimed: founderNumber, limit, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+    }
+
+    tx.update(userRef, {
+      plan: 'premium',
+      // No pisar 'premiumSince' si ya era premium (renovación, cambio de
+      // producto, etc.): es la fecha desde la que ESTA cuenta paga, no la
+      // del último evento.
+      ...(alreadyPremium ? {} : { premiumSince: FieldValue.serverTimestamp() }),
+      ...(founderNumber !== existingFounderNumber ? { founderNumber } : {}),
+    });
+
+    return founderNumber;
+  });
+}
+
 // Eventos que otorgan el entitlement premium.
 const GRANTING_EVENTS = new Set([
   'INITIAL_PURCHASE',
@@ -136,15 +198,11 @@ export const revenuecatWebhook = onRequest(
     }
 
     if (GRANTING_EVENTS.has(event.type)) {
-      const alreadyPremium = userSnap.data()?.plan === 'premium';
-      await userRef.update({
-        plan: 'premium',
-        // No pisar 'premiumSince' si ya era premium (renovación, cambio de
-        // producto, etc.): es la fecha desde la que ESTA cuenta paga, no la
-        // del último evento.
-        ...(alreadyPremium ? {} : { premiumSince: FieldValue.serverTimestamp() }),
-      });
-      logger.info(`revenuecatWebhook: ${uid} -> premium (${event.type})`);
+      const founderNumber = await grantPremium(uid);
+      logger.info(
+        `revenuecatWebhook: ${uid} -> premium (${event.type})`,
+        founderNumber !== null ? { founderNumber } : { founder: false }
+      );
     } else if (REVOKING_EVENTS.has(event.type)) {
       await userRef.update({ plan: 'free', premiumSince: null });
       logger.info(`revenuecatWebhook: ${uid} -> free (${event.type})`);

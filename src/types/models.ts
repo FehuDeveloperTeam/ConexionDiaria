@@ -69,6 +69,12 @@ export interface UserDoc {
   plan: Plan;
   premiumSince: Timestamp | null;
 
+  // Sprint 9.17 — número de fundador (1 a 500), si esta cuenta alcanzó cupo
+  // al pagar por primera vez. Lo reparte el webhook en una transacción y no
+  // se devuelve al darse de baja: la cohorte fundadora no se recicla.
+  // Ausente en quien no alcanzó cupo o nunca pagó.
+  founderNumber?: number;
+
   // Push remoto (Sprint 5.2): token de Expo Push de este dispositivo, y
   // preferencia de qué avisos quiere recibir. Ambos opcionales — sin
   // permiso concedido, o antes de tener un proyecto EAS configurado, no

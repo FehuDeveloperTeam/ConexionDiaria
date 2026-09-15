@@ -73,6 +73,9 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
     // la Cloud Function de contabilidad de Storage (F-04, F-05).
     await setDoc(doc(db, 'relationships', REL), { usedStorage: 1000 });
 
+    // Contador de fundadores, como lo dejaría el webhook (Sprint 9.17).
+    await setDoc(doc(db, 'appConfig', 'founders'), { claimed: 12, limit: 500 });
+
     // Token de push de Alice en su subcolección privada (F-06).
     await setDoc(doc(db, 'users', ALICE, 'private', 'push'), { expoPushToken: 'tok-alice' });
 
@@ -299,6 +302,43 @@ await check(
 await check(
     'ATAQUE: Alice NO puede colarse a premium de paso al guardar sus tallas',
     assertFails(updateDoc(doc(alice.firestore(), 'users', ALICE), { measurements: { topSize: 'M' }, plan: 'premium' }))
+);
+
+console.log('\nContador de fundadores (Firestore) — Sprint 9.17');
+
+// El cupo de fundador es lo primero que alguien querría falsificar: dejarlo
+// en 499 para siempre significa comprar a US$2,99 el resto de la vida. Por eso
+// la colección entera es de solo lectura para el cliente.
+await check(
+    'LEGÍTIMO: Alice sí puede leer cuántos cupos de fundador quedan',
+    assertSucceeds(getDoc(doc(alice.firestore(), 'appConfig', 'founders')))
+);
+await check(
+    'ATAQUE: Alice NO puede bajar el contador de fundadores',
+    assertFails(updateDoc(doc(alice.firestore(), 'appConfig', 'founders'), { claimed: 0 }))
+);
+await check(
+    'ATAQUE: Alice NO puede subir el tope de cupos',
+    assertFails(updateDoc(doc(alice.firestore(), 'appConfig', 'founders'), { limit: 999999 }))
+);
+await check(
+    'ATAQUE: Eve NO puede inventar otro documento de configuración',
+    assertFails(setDoc(doc(eve.firestore(), 'appConfig', 'inventado'), { claimed: 0 }))
+);
+await check(
+    'ATAQUE: nadie puede enumerar appConfig',
+    assertFails(getDocs(collection(alice.firestore(), 'appConfig')))
+);
+await check(
+    'ATAQUE: Alice NO puede darse un número de fundador a sí misma',
+    // Sin 'plan' en la misma escritura: lo que se comprueba es que
+    // 'founderNumber' esté bloqueado POR SÍ SOLO. Con el plan al lado, la
+    // prueba pasaba por el motivo equivocado y el hueco seguía abierto.
+    assertFails(updateDoc(doc(alice.firestore(), 'users', ALICE), { founderNumber: 1 }))
+);
+await check(
+    'ATAQUE: nadie puede registrarse ya con número de fundador',
+    assertFails(setDoc(doc(eve.firestore(), 'users', 'nuevoUsuarioXXXXXXXXXXXXXX9'), { plan: 'free', premiumSince: null, founderNumber: 1 }))
 );
 
 await testEnv.cleanup();

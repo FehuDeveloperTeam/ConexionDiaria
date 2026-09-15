@@ -73,21 +73,29 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
     }
 
-    // ¿La escritura toca 'plan' o 'premiumSince'? Esos dos campos son de
-    // solo lectura para cualquier cliente — los escribe exclusivamente la
-    // Cloud Function que valida el webhook de RevenueCat, vía Admin SDK
+    // ¿La escritura toca 'plan', 'premiumSince' o 'founderNumber'? Los tres
+    // son de solo lectura para cualquier cliente — los escribe exclusivamente
+    // la Cloud Function que valida el webhook de RevenueCat, vía Admin SDK
     // (que nunca pasa por estas reglas, así que no necesita una excepción
     // aquí). Antes de esto, cualquier usuario podía autoasignarse premium.
+    //
+    // 'founderNumber' (Sprint 9.17) entra en la lista por lo mismo: es la
+    // prueba de haber pagado entre los primeros 500, y sin bloquearlo
+    // cualquiera podía ponerse el número 1 y lucirlo ante su pareja. El
+    // contador vive aparte, en appConfig/founders, igual de cerrado.
     function touchesLockedFields() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['plan', 'premiumSince']);
+      return request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['plan', 'premiumSince', 'founderNumber']);
     }
 
     // Mismo espíritu que touchesLockedFields(), pero para 'create': ahí no
     // existe 'resource' (el documento previo) para hacer diff, así que se
     // valida el valor inicial directamente — nadie puede crear su propio
-    // perfil ya en premium.
+    // perfil ya en premium, ni nacer con número de fundador.
     function createsWithoutPremium() {
-      return request.resource.data.plan == 'free' && request.resource.data.premiumSince == null;
+      return request.resource.data.plan == 'free'
+          && request.resource.data.premiumSince == null
+          && !('founderNumber' in request.resource.data);
     }
 
     // ¿La escritura toca 'usedStorage' del documento de relación? Ese campo
@@ -137,6 +145,23 @@ service cloud.firestore {
       match /private/{docId} {
         allow read, write: if isUser(userId);
       }
+    }
+
+    // --- REGLAS PARA LA COLECCIÓN 'appConfig' — Sprint 9.17 ---
+    // Datos de configuración que la app necesita leer pero que ningún cliente
+    // puede escribir. Hoy solo 'appConfig/founders', el contador de los 500
+    // cupos de fundador, que la app lee para decidir si todavía muestra ese
+    // precio y para el cartel de "quedan N cupos".
+    //
+    // El contador es justamente lo que alguien querría falsificar, así que la
+    // escritura queda cerrada para TODO cliente: lo reparte en exclusiva el
+    // webhook de RevenueCat, vía Admin SDK, que no pasa por estas reglas (ver
+    // functions/src/index.ts, grantPremium()).
+    match /appConfig/{docId} {
+      allow get: if isAuthenticated();
+      // Nada que enumerar: la app pide el documento que necesita por nombre.
+      allow list: if false;
+      allow write: if false;
     }
 
     // --- REGLAS PARA LA COLECCIÓN 'invitationCodes' ---

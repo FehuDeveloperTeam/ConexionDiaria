@@ -114,7 +114,7 @@ Aquí se vuelve real la separación entre los planes.
 
 | # | Sesión | Notas |
 |---|---|---|
-| 9.17 | Contador de fundadores en el servidor | Va en el webhook de RevenueCat que ya existe (`functions/src/index.ts`), que es quien hoy escribe el plan del usuario y el único componente que puede validar una compra. En el cliente sería falsificable. |
+| 9.17 ✅ | Contador de fundadores en el servidor | Va en el webhook de RevenueCat que ya existe (`functions/src/index.ts`), que es quien hoy escribe el plan del usuario y el único componente que puede validar una compra. En el cliente sería falsificable. |
 | 9.18 | Ofertas por escalón y selección por fecha | Hoy la compra usa `availablePackages[0]`, el primer paquete que devuelva RevenueCat: con cinco escalones eso deja de servir. Una oferta por escalón y que la app elija según la fecha de la pareja y el contador. Antes de implementar, verificar si las tiendas permiten cinco ventanas o si cada escalón debe ser un producto propio. |
 | 9.19 | Paywall dinámico | El precio mostrado sale de la oferta que se va a cobrar, nunca de un texto fijo. El cartel de descuento aparece solo cuando aplica de verdad y dice por qué: «quedan 340 cupos», «faltan 3 días para su aniversario». |
 
