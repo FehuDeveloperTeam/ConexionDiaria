@@ -8,6 +8,42 @@ Cada sesión se cierra como veníamos trabajando: una tarea a la vez, validada
 con `npx tsc --noEmit`, `npm run lint` (línea base: 4 warnings) y
 `expo export --platform web` (22 rutas), commit y push antes de la siguiente.
 
+## Avance
+
+Fase A completa y 9.7 cerrada. Todas validadas (tsc, lint y `expo export`
+con 22 rutas) y pusheadas a `claude/conexiondiaria-app-review-o9tn7y`.
+
+| # | Sesión | Commit |
+|---|---|---|
+| 9.1 | Audios del chat: pausa real, sin superposición y con avisos | `0c94c47` + `836cf58` |
+| 9.2 | El visor de fotos del chat recorre todas las del hilo | `80d86ce` |
+| 9.3 | Editar y eliminar visibles en escritorio | `aa310aa` |
+| 9.4 | Fecha de creación en cada nota | `a406e25` |
+| 9.5 | Hero centrado y bloque "Lo próximo" en Inicio | `de837bf` |
+| 9.6 | El carril derecho del chat se puede plegar | `059050c` |
+| 9.7 | Archivo de Deseos: lo regalado deja de ocupar cupo | `1edd880` |
+
+De paso, el lint bajó de 4 a 3 warnings en 9.1 (nueva línea base) y se
+retiró de `chat.tsx` el cableado del visor de video, que era inalcanzable.
+
+### Bifurcación pendiente en 9.8
+
+El plan dice que Notas usa "el mismo mecanismo que 9.7", pero el mecanismo
+no se traslada solo: un deseo tiene estado de cumplido (`isCompleted`, el
+"regalado") y una nota no tiene ningún equivalente. Sin un estado que saque
+la nota de la lista activa, un tope de diez obliga a borrar para escribir
+otra, que es justo la dinámica que el archivo venía a evitar.
+
+Opciones, en orden de preferencia:
+
+1. **Archivar a mano** (recomendada): se agrega la acción "Archivar" a la
+   nota. Lo archivado no ocupa cupo y en free se ven los diez más recientes.
+   Mantiene el modelo coherente y le da a la nota un ciclo de vida propio.
+2. **Notas sin tope**: se deja el número libre y se monetiza por las notas
+   de voz (9.15). Más simple, pero deja a Notas fuera de la separación de
+   planes.
+3. Tope sin archivo: contradice lo acordado, no se recomienda.
+
 ## Por qué la monetización va al final
 
 Los 500 cupos de fundador son un activo de una sola vez, y quien entra por esa
