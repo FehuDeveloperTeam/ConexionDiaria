@@ -23,6 +23,12 @@ con 22 rutas) y pusheadas a `claude/conexiondiaria-app-review-o9tn7y`.
 | 9.6 | El carril derecho del chat se puede plegar | `059050c` |
 | 9.7 | Archivo de Deseos: lo regalado deja de ocupar cupo | `1edd880` |
 | 9.8 | Archivo y tope de Notas, con archivado manual | `6b9d194` |
+| 9.9 | Grupos de tareas, con reglas propias y sus pruebas | `377cda9` |
+
+> **Pendiente de despliegue:** 9.9 agrega la subcolección `taskGroups` a
+> `firestore.rules`. Hasta que se despliegue (`firebase deploy --only
+> firestore:rules`), el proyecto real rechaza crear y leer grupos. Las reglas
+> están verificadas contra el emulador: `npm run test:rules`, 35 pruebas.
 
 De paso, el lint bajó de 4 a 3 warnings en 9.1 (nueva línea base) y se
 retiró de `chat.tsx` el cableado del visor de video, que era inalcanzable.
@@ -33,23 +39,12 @@ Se resolvió con **archivado manual**: una nota no tiene estado de cumplida
 como el "regalado" de un deseo, así que archivar es una acción explícita.
 Lo archivado no ocupa cupo, de modo que nadie necesita borrar para escribir.
 
-### A decidir antes de 9.9
+### Decidido en 9.9
 
-Los grupos de tareas son una entidad nueva, y ahí aparece un obstáculo: las
-reglas de Firestore solo contemplan las subcolecciones que ya existen
-(`notes`, `tasks`, `wishlist`, `events`…). Una subcolección nueva
-`taskGroups` quedaría denegada por defecto y **obligaría a desplegar reglas**,
-que es tu proyecto de Firebase y no algo que convenga hacer sin avisar.
-
-Opciones:
-
-1. **Grupo como campo de texto en la tarea** (recomendada): la tarea guarda
-   `group: 'Compras del finde'` y la lista de grupos se deduce de los valores
-   que existen. No agrega subcolección ni necesita desplegar reglas. La
-   limitación es que un grupo vacío no puede existir: al borrar su última
-   tarea, el grupo desaparece.
-2. **Subcolección `taskGroups`**: permite grupos vacíos y renombrarlos en un
-   solo lugar, pero exige escribir y desplegar reglas nuevas.
+Se optó por la subcolección `taskGroups` con reglas propias, descartando la
+alternativa de guardar el grupo como texto suelto en la tarea. Cuesta un
+despliegue de reglas, pero permite grupos vacíos, renombrar en un solo lugar
+y deja la puerta abierta a darle más atributos al grupo más adelante.
 
 ## Por qué la monetización va al final
 
