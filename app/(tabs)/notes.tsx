@@ -1,9 +1,9 @@
 // Sprint 7.5 — re-skin de Notas según el sistema de diseño: notas adhesivas
 // rotadas con paleta propia, menú contextual flotante y modal de edición
 // compartiendo el lenguaje visual del resto de la app.
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-    View, Text, TextInput, FlatList,
+    View, Text, TextInput, SectionList,
     KeyboardAvoidingView, Platform, Modal, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,15 +21,23 @@ import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 import { ContextMenuRow } from '../../src/components/ContextMenuRow';
 import { RowActions } from '../../src/components/RowActions';
+import { PaywallSheet } from '../../src/components/PaywallSheet';
 import { useRouter } from 'expo-router';
 
 interface EditingNote { id: string; text: string; }
+
+// Sprint 9.8 — mismo modelo que Deseos: lo archivado no ocupa cupo, así
+// nadie tiene que borrar una nota para poder escribir otra. Como una nota no
+// tiene un estado natural de "cumplida" (a diferencia del "regalado" de un
+// deseo), archivar es una acción explícita del usuario.
+const FREE_LIMIT = 10;
+const ARCHIVE_FREE_VISIBLE = 10;
 
 const NotesScreen: React.FC = () => {
     const { theme, isDarkMode: isDark, fontFamilies } = useTheme();
     const router = useRouter();
 
-    const { user, userData } = usePlan();
+    const { user, userData, plan } = usePlan();
     const [notes, setNotes] = useState<DocumentData[]>([]);
     const [newNote, setNewNote] = useState('');
     const [loading, setLoading] = useState(true);
@@ -38,8 +46,31 @@ const NotesScreen: React.FC = () => {
     const [editedText, setEditedText] = useState('');
     const [contextMenuNote, setContextMenuNote] = useState<DocumentData | null>(null);
     const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
+    const [isPaywallVisible, setIsPaywallVisible] = useState(false);
 
     const partnerId = userData?.partnerId as string | undefined;
+
+    // Las notas creadas antes de esta sesión no traen el campo 'archived';
+    // al llegar indefinido cuentan como activas, así que no hace falta migrar.
+    const activeNotes = useMemo(() => notes.filter(note => !note.archived), [notes]);
+    const archivedNotes = useMemo(() => notes.filter(note => note.archived), [notes]);
+    const limitReached = plan === 'free' && activeNotes.length >= FREE_LIMIT;
+
+    const noteSections = useMemo(() => {
+        const sections = [{ title: 'Notas', isArchive: false, hiddenCount: 0, data: activeNotes }];
+
+        if (archivedNotes.length > 0) {
+            const visible = plan === 'free' ? archivedNotes.slice(0, ARCHIVE_FREE_VISIBLE) : archivedNotes;
+            sections.push({
+                title: 'Archivadas',
+                isArchive: true,
+                hiddenCount: archivedNotes.length - visible.length,
+                data: visible,
+            });
+        }
+
+        return sections;
+    }, [activeNotes, archivedNotes, plan]);
 
     useEffect(() => {
         if (!user || !partnerId) {
@@ -61,9 +92,39 @@ const NotesScreen: React.FC = () => {
         return () => unsubscribeNotes();
     }, [user, partnerId]);
 
+    // Archivar y desarchivar son escrituras sobre la nota, y las reglas de
+    // Firestore solo dejan actualizar al autor (a diferencia de Tareas y
+    // Deseos, donde cualquiera de los dos puede). Por eso la acción se ofrece
+    // únicamente sobre las notas propias.
+    const handleToggleArchived = useCallback(async (note: DocumentData) => {
+        if (!user || !userData?.partnerId) return;
+
+        // Devolver una nota a la lista activa puede pasarse del tope; sin este
+        // control el archivo sería una puerta trasera para el plan free.
+        if (note.archived && plan === 'free' && activeNotes.length >= FREE_LIMIT) {
+            setIsPaywallVisible(true);
+            return;
+        }
+
+        const chatId = [user.uid, userData.partnerId].sort().join('_');
+        const noteDocRef = doc(db, 'relationships', chatId, 'notes', note.id);
+        try {
+            await updateDoc(noteDocRef, { archived: !note.archived });
+            Toast.show({ type: 'success', text1: note.archived ? 'Nota de vuelta en el muro' : 'Nota archivada' });
+        } catch {
+            Toast.show({ type: 'error', text1: 'Error al archivar' });
+        }
+    }, [user, userData, plan, activeNotes.length]);
+
     const handleAddNote = useCallback(async () => {
         const noteText = newNote.trim();
         if (noteText === '' || !userData || !userData.partnerId || !user) return;
+
+        if (limitReached) {
+            setIsPaywallVisible(true);
+            return;
+        }
+
         const chatId = [user.uid, userData.partnerId].sort().join('_');
         const notesCollectionRef = collection(db, 'relationships', chatId, 'notes');
         try {
@@ -71,7 +132,7 @@ const NotesScreen: React.FC = () => {
             setNewNote('');
             Toast.show({ type: 'success', text1: 'Nota añadida' });
         } catch { Toast.show({ type: 'error', text1: 'Error al guardar la nota' }); }
-    }, [newNote, userData, user]);
+    }, [newNote, userData, user, limitReached]);
 
     const confirmDeleteNote = async () => {
         if (!deletingNoteId || !userData || !userData.partnerId || !user) return;
@@ -136,18 +197,70 @@ const NotesScreen: React.FC = () => {
                     paddingBottom: spacing.s10,
                 }}>
                     <Text style={{ fontFamily: fontFamilies.display, fontSize: 30, color: theme.text }}>Notas</Text>
-                    <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 12, color: theme.textMuted }}>
-                        {notes.length} notas
+                    <Text style={{
+                        fontFamily: fontFamilies.bodySemiBold,
+                        fontSize: 12,
+                        color: limitReached ? theme.premium : theme.textMuted,
+                    }}>
+                        {plan === 'free'
+                            ? (limitReached ? `${activeNotes.length} de ${FREE_LIMIT} activas · límite alcanzado` : `${activeNotes.length} de ${FREE_LIMIT} activas del plan free`)
+                            : `${activeNotes.length} activas`}
                     </Text>
                 </View>
 
-                <FlatList
-                    style={{ flex: 1 }}
+                <SectionList
+                    style={{ flex: 1, minHeight: 0 }}
                     contentContainerStyle={{ paddingTop: spacing.s4, paddingBottom: spacing.s22 }}
-                    data={notes}
+                    sections={noteSections}
                     keyExtractor={item => item.id}
                     extraData={user}
-                    renderItem={({ item, index }) => {
+                    stickySectionHeadersEnabled={false}
+                    // La sección de activas no lleva encabezado: es el muro, y
+                    // rotularlo sobraría. Solo se anuncia el archivo.
+                    renderSectionHeader={({ section }) => (
+                        section.isArchive ? (
+                            <View style={{
+                                flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
+                                marginHorizontal: spacing.s22, marginTop: spacing.s16, marginBottom: spacing.s14,
+                            }}>
+                                <Ionicons name="archive-outline" size={15} color={theme.textFaint} />
+                                <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 13, color: theme.textMuted }}>
+                                    {section.title}
+                                </Text>
+                                <View style={{ flex: 1, height: 1, backgroundColor: theme.divider }} />
+                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
+                                    {section.data.length}
+                                </Text>
+                            </View>
+                        ) : null
+                    )}
+                    renderSectionFooter={({ section }) => (
+                        section.isArchive && section.hiddenCount > 0 ? (
+                            <TouchableOpacity
+                                onPress={() => setIsPaywallVisible(true)}
+                                style={{
+                                    flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
+                                    marginHorizontal: spacing.s22, marginTop: spacing.s4,
+                                    borderWidth: 1, borderStyle: 'dashed', borderColor: theme.primary,
+                                    backgroundColor: theme.primaryTint, borderRadius: radii.card, padding: spacing.s14,
+                                }}
+                            >
+                                <Ionicons name="lock-closed" size={16} color={theme.premium} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: theme.text }}>
+                                        {section.hiddenCount} {section.hiddenCount === 1 ? 'nota más' : 'notas más'} en el archivo
+                                    </Text>
+                                    <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
+                                        Free guarda las {ARCHIVE_FREE_VISIBLE} más recientes
+                                    </Text>
+                                </View>
+                                <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 12, color: theme.primary }}>
+                                    Ver todo
+                                </Text>
+                            </TouchableOpacity>
+                        ) : null
+                    )}
+                    renderItem={({ item, index, section }) => {
                         const palette = noteColors[index % noteColors.length];
                         const rotation = noteRotations[index % noteRotations.length];
                         const bg = isDark ? palette.dark.bg : palette.light.bg;
@@ -165,6 +278,8 @@ const NotesScreen: React.FC = () => {
                             ? `${String(created.getDate()).padStart(2, '0')}/${String(created.getMonth() + 1).padStart(2, '0')}/${created.getFullYear()}`
                             : null;
 
+                        const isOwn = item.authorId === user.uid;
+
                         return (
                             <TouchableOpacity
                                 activeOpacity={0.9}
@@ -173,7 +288,10 @@ const NotesScreen: React.FC = () => {
                                 style={{
                                     marginHorizontal: spacing.s22,
                                     marginBottom: spacing.s14,
-                                    transform: [{ rotate: rotation }],
+                                    // Lo archivado se muestra derecho y atenuado: una nota
+                                    // guardada ya no está pegada en el muro.
+                                    transform: section.isArchive ? [] : [{ rotate: rotation }],
+                                    opacity: section.isArchive ? 0.62 : 1,
                                 }}
                             >
                                 <View style={{ backgroundColor: bg, borderRadius: 14, padding: spacing.s16, ...depthProps }}>
@@ -181,9 +299,16 @@ const NotesScreen: React.FC = () => {
                                         {item.text}
                                     </Text>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.s10 }}>
+                                        {/* Editar, archivar y eliminar son escrituras, y las
+                                            reglas de Firestore solo se las permiten al autor
+                                            de la nota. Antes se ofrecía "Editar" sobre las
+                                            notas de la pareja y el servidor rechazaba el
+                                            cambio sin explicación. */}
                                         <RowActions
-                                            onEdit={() => openEditModal(item)}
-                                            onDelete={item.authorId === user.uid ? () => setDeletingNoteId(item.id) : undefined}
+                                            onEdit={isOwn ? () => openEditModal(item) : undefined}
+                                            onArchive={isOwn ? () => handleToggleArchived(item) : undefined}
+                                            isArchived={!!item.archived}
+                                            onDelete={isOwn ? () => setDeletingNoteId(item.id) : undefined}
                                         />
                                         <Text style={{
                                             fontFamily: fontFamilies.body,
@@ -273,24 +398,36 @@ const NotesScreen: React.FC = () => {
                         minWidth: 190,
                         ...(isDark ? { borderWidth: 1, borderColor: theme.border } : shadows.contextMenu),
                     }}>
-                        <ContextMenuRow
-                            icon="create-outline"
-                            label="Editar"
-                            onPress={() => {
-                                if (contextMenuNote) openEditModal(contextMenuNote);
-                                setContextMenuNote(null);
-                            }}
-                        />
+                        {/* Las tres son escrituras, y las reglas de Firestore solo
+                            dejan actualizar una nota a quien la escribió. */}
                         {contextMenuNote?.authorId === user.uid && (
-                            <ContextMenuRow
-                                icon="trash-outline"
-                                label="Eliminar"
-                                color={theme.danger}
-                                onPress={() => {
-                                    setDeletingNoteId(contextMenuNote?.id ?? null);
-                                    setContextMenuNote(null);
-                                }}
-                            />
+                            <>
+                                <ContextMenuRow
+                                    icon="create-outline"
+                                    label="Editar"
+                                    onPress={() => {
+                                        if (contextMenuNote) openEditModal(contextMenuNote);
+                                        setContextMenuNote(null);
+                                    }}
+                                />
+                                <ContextMenuRow
+                                    icon={contextMenuNote?.archived ? 'arrow-undo-outline' : 'archive-outline'}
+                                    label={contextMenuNote?.archived ? 'Devolver al muro' : 'Archivar'}
+                                    onPress={() => {
+                                        if (contextMenuNote) handleToggleArchived(contextMenuNote);
+                                        setContextMenuNote(null);
+                                    }}
+                                />
+                                <ContextMenuRow
+                                    icon="trash-outline"
+                                    label="Eliminar"
+                                    color={theme.danger}
+                                    onPress={() => {
+                                        setDeletingNoteId(contextMenuNote?.id ?? null);
+                                        setContextMenuNote(null);
+                                    }}
+                                />
+                            </>
                         )}
                     </View>
                 </TouchableOpacity>
@@ -336,6 +473,16 @@ const NotesScreen: React.FC = () => {
                 message="Se borrará para los dos y no se puede deshacer."
                 onConfirm={confirmDeleteNote}
                 onCancel={() => setDeletingNoteId(null)}
+            />
+
+            <PaywallSheet
+                visible={isPaywallVisible}
+                onClose={() => setIsPaywallVisible(false)}
+                onUpgradePress={() => { setIsPaywallVisible(false); router.push('/(tabs)/config'); }}
+                icon="document-text"
+                title="Notas ilimitadas"
+                description={`El plan free deja ${FREE_LIMIT} notas en el muro y guarda las ${ARCHIVE_FREE_VISIBLE} archivadas más recientes. Archivar libera espacio sin borrar nada.`}
+                benefits={['Notas ilimitadas en el muro', 'Archivo completo, sin perder ninguna', 'Historial completo del chat']}
             />
         </SafeAreaView>
     );

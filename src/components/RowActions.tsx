@@ -48,20 +48,35 @@ const ActionIcon: React.FC<{
     );
 };
 
+// Cada acción es opcional porque el permiso cambia según la pantalla y según
+// quién creó el ítem: en Notas las reglas de Firestore dejan actualizar solo
+// al autor, mientras que en Tareas y Deseos cualquiera de los dos puede.
 export const RowActions: React.FC<{
-    onEdit: () => void;
-    // Sin 'onDelete' solo se ofrece editar — las tres pantallas reservan
-    // eliminar para quien creó el ítem.
+    onEdit?: () => void;
+    onArchive?: () => void;
     onDelete?: () => void;
-}> = ({ onEdit, onDelete }) => {
+    // Invierte el ícono de archivar, para devolver el ítem a la lista activa.
+    isArchived?: boolean;
+}> = ({ onEdit, onArchive, onDelete, isArchived }) => {
     const { theme } = useTheme();
     const { isDesktop } = useResponsive();
 
     if (!isDesktop) return null;
+    if (!onEdit && !onArchive && !onDelete) return null;
 
     return (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-            <ActionIcon icon="create-outline" label="Editar" tint={theme.text} onPress={onEdit} />
+            {onEdit && (
+                <ActionIcon icon="create-outline" label="Editar" tint={theme.text} onPress={onEdit} />
+            )}
+            {onArchive && (
+                <ActionIcon
+                    icon={isArchived ? 'arrow-undo-outline' : 'archive-outline'}
+                    label={isArchived ? 'Devolver a la lista' : 'Archivar'}
+                    tint={theme.text}
+                    onPress={onArchive}
+                />
+            )}
             {onDelete && (
                 <ActionIcon icon="trash-outline" label="Eliminar" tint={theme.danger} onPress={onDelete} />
             )}
