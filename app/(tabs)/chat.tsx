@@ -19,7 +19,6 @@ import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { ChatDesktopRail } from '../../src/screens/chat/components/ChatDesktopRail';
 import { ImageViewerModal } from '../../src/screens/chat/components/ImageViewerModal';
-import { VideoViewerModal } from '../../src/screens/chat/components/VideoViewerModal';
 import { FileViewerModal } from '../../src/screens/chat/components/FileViewerModal';
 import { SoundWaveAnimation } from '../../src/screens/chat/components/SoundWaveAnimation';
 import { ProfilePhotoModal } from '../../src/screens/chat/components/ProfilePhotoModal';
@@ -48,9 +47,8 @@ const ChatScreen = () => {
     const [inputText, setInputText] = useState('');
 
     // Estados de UI
-    const [imageViewerVisible, setImageViewerVisible] = useState(false);
-    const [videoViewerVisible, setVideoViewerVisible] = useState(false);
-    const [selectedMediaUri, setSelectedMediaUri] = useState('');
+    // Índice dentro de 'chatImages'; null = visor cerrado.
+    const [imageViewerIndex, setImageViewerIndex] = useState<number | null>(null);
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
     // Estados para el modal de archivos
@@ -133,6 +131,19 @@ const ChatScreen = () => {
     // Se pasa entero al AudioPlaybackProvider en vez de desarmarlo acá: las
     // burbujas de audio lo consumen por contexto (ver AudioBubble).
     const audioPlayback = useAudioPlayback(currentUser, userData?.partnerId);
+
+    // Todas las fotos del hilo, para que el visor pueda recorrerlas (9.2).
+    // Se arma con los mensajes YA cargados en memoria — mismo criterio que el
+    // carril de escritorio: no agrega ni una lectura a Firestore.
+    const chatImages = React.useMemo(
+        () => messages.filter(m => !!m.image && !m.deleted).map(m => m.image as string),
+        [messages]
+    );
+
+    const openImageViewer = (uri: string) => {
+        const found = chatImages.indexOf(uri);
+        setImageViewerIndex(found >= 0 ? found : 0);
+    };
 
     const { partnerInfo } = usePartnerPresence({
         currentUser,
@@ -335,8 +346,7 @@ const ChatScreen = () => {
                     <TouchableOpacity
                         onPress={() => {
                             if (imageProps.currentMessage.image) {
-                                setSelectedMediaUri(imageProps.currentMessage.image);
-                                setImageViewerVisible(true);
+                                openImageViewer(imageProps.currentMessage.image);
                             }
                         }}
                     >
@@ -892,17 +902,12 @@ const ChatScreen = () => {
 
             {/* Image Viewer Modal */}
             <ImageViewerModal
-                visible={imageViewerVisible}
-                imageUri={selectedMediaUri}
-                onClose={() => setImageViewerVisible(false)}
+                images={chatImages}
+                index={imageViewerIndex}
+                onIndexChange={setImageViewerIndex}
+                onClose={() => setImageViewerIndex(null)}
             />
 
-            {/* Video Viewer Modal */}
-            <VideoViewerModal
-                visible={videoViewerVisible}
-                videoUri={selectedMediaUri}
-                onClose={() => setVideoViewerVisible(false)}
-            />
 
             {/* File Viewer Modal */}
             {selectedFile && (
@@ -1051,10 +1056,7 @@ const ChatScreen = () => {
                     messages={messages}
                     usedStorage={usedStorage}
                     maxStorage={maxStorage}
-                    onOpenImage={(uri) => {
-                        setSelectedMediaUri(uri);
-                        setImageViewerVisible(true);
-                    }}
+                    onOpenImage={openImageViewer}
                     onOpenFile={(file) => {
                         setSelectedFile(file);
                         setFileViewerVisible(true);
