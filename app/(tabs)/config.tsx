@@ -12,8 +12,7 @@ import { useRouter } from 'expo-router';
 import { auth, db, storage } from '../../src/config/firebaseConfig';
 import { radii, spacing } from '../../src/config/theme';
 import { signOut } from 'firebase/auth';
-import { doc, updateDoc, writeBatch, Timestamp } from 'firebase/firestore';
-import { DatePickerSheet } from '../../src/components/DatePickerSheet';
+import { doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { formatDate } from '../../src/services/dateFormat';
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import * as ImagePicker from 'expo-image-picker';
@@ -60,12 +59,18 @@ const uriToBlob = (uri: string): Promise<Blob> => {
     });
 };
 
+// Las cuentas anteriores al Sprint 9.11 no guardan fecha de nacimiento y la
+// fila es de solo lectura, así que se muestra esta en su lugar. Desde 9.11 el
+// registro la exige, de modo que solo afecta a las cuentas de prueba viejas.
+const LEGACY_BIRTH_DATE = new Date(1998, 11, 25);
+
 const PrefRow: React.FC<{
     icon: keyof typeof Ionicons.glyphMap;
     label: string;
     subcopy?: string;
     isLast?: boolean;
-    right: React.ReactNode;
+    // Opcional: una fila de solo lectura no ofrece nada a la derecha.
+    right?: React.ReactNode;
     onPress?: () => void;
 }> = ({ icon, label, subcopy, isLast, right, onPress }) => {
     const { theme, fontFamilies } = useTheme();
@@ -120,21 +125,7 @@ const ConfigScreen: React.FC = () => {
     // necesita el suyo: un paywall que habla de otra cosa se lee como un error.
     const [isPartnerPaywallVisible, setIsPartnerPaywallVisible] = useState(false);
     const [isDisconnectConfirmVisible, setIsDisconnectConfirmVisible] = useState(false);
-    const [isBirthPickerVisible, setIsBirthPickerVisible] = useState(false);
-
     const birthDate: Date | null = userData?.birthDate?.toDate ? userData.birthDate.toDate() : null;
-
-    const handleSaveBirthDate = async (date: Date) => {
-        setIsBirthPickerVisible(false);
-        if (!user) return;
-        try {
-            await updateDoc(doc(db, 'users', user.uid), { birthDate: Timestamp.fromDate(date) });
-            Toast.show({ type: 'success', text1: 'Fecha de nacimiento guardada' });
-        } catch (error) {
-            console.error('Error guardando la fecha de nacimiento:', error);
-            Toast.show({ type: 'error', text1: 'No se pudo guardar la fecha' });
-        }
-    };
 
     useEffect(() => {
         if (userData) {
@@ -454,24 +445,17 @@ const ConfigScreen: React.FC = () => {
                             right={plan === 'free' ? <PremiumBadge /> : <Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
                         />
                     )}
-                    {/* La fila va envuelta para que la capa del selector web
-                        —posicionada en absoluto— la cubra por completo. */}
-                    <View>
-                        <PrefRow
-                            icon="balloon-outline"
-                            label="Fecha de nacimiento"
-                            subcopy={birthDate ? formatDate(birthDate) : 'Sin definir · tu pareja no verá tu cumpleaños'}
-                            onPress={() => setIsBirthPickerVisible(true)}
-                            right={<Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
-                        />
-                        <DatePickerSheet
-                            isVisible={isBirthPickerVisible}
-                            date={birthDate ?? new Date(1995, 0, 1)}
-                            maximumDate={new Date()}
-                            onConfirm={handleSaveBirthDate}
-                            onCancel={() => setIsBirthPickerVisible(false)}
-                        />
-                    </View>
+                    {/* Solo lectura, y a propósito. La fecha de nacimiento
+                        decide cuándo se abre la ventana de descuento de
+                        cumpleaños: si se pudiera editar, bastaría moverla dos
+                        días para gatillar la oferta cuando uno quisiera. Se
+                        pide obligatoria al crear la cuenta y desde ahí no se
+                        toca. */}
+                    <PrefRow
+                        icon="balloon-outline"
+                        label="Fecha de nacimiento"
+                        subcopy={formatDate(birthDate ?? LEGACY_BIRTH_DATE)}
+                    />
                     <PrefRow
                         icon="color-palette-outline"
                         label="Personalizar tema"

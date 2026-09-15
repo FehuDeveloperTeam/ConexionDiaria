@@ -3,8 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { useRouter, Link } from 'expo-router';
 import { createUserWithEmailAndPassword, sendEmailVerification, User } from 'firebase/auth';
 import { doc, writeBatch, serverTimestamp, Timestamp } from 'firebase/firestore';
-import { DatePickerSheet } from '../src/components/DatePickerSheet';
-import { formatDate } from '../src/services/dateFormat';
+import { DateField } from '../src/components/DateField';
 import { auth, db } from '../src/config/firebaseConfig';
 import { themes, spacing, radii, FontFamilies } from '../src/config/theme';
 import { useTheme } from '../src/contexts/themeContext';
@@ -52,7 +51,6 @@ const Register: React.FC = () => {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [displayName, setDisplayName] = useState('');
     const [birthDate, setBirthDate] = useState<Date | null>(null);
-    const [isBirthPickerVisible, setIsBirthPickerVisible] = useState(false);
     const [loading, setLoading] = useState(false);
 
     // Validación en vivo: apenas hay algo escrito en "confirmar", si no
@@ -145,21 +143,12 @@ const Register: React.FC = () => {
                     emparejarse, para que no queden cuentas sin el dato. */}
                 <View style={styles.fieldBlock}>
                     <Text style={styles.fieldLabel}>Fecha de nacimiento</Text>
-                    <TouchableOpacity style={styles.dateField} onPress={() => setIsBirthPickerVisible(true)}>
-                        <Text style={birthDate ? styles.dateValue : styles.datePlaceholder}>
-                            {birthDate ? formatDate(birthDate) : 'dd/mm/aaaa'}
-                        </Text>
-                        <Ionicons name="calendar-outline" size={20} color={theme.textFaint} />
-                        {/* En web esto es la capa transparente que abre el
-                            selector del navegador; en nativo no dibuja nada. */}
-                        <DatePickerSheet
-                            isVisible={isBirthPickerVisible}
-                            date={birthDate ?? new Date(1995, 0, 1)}
-                            maximumDate={new Date()}
-                            onConfirm={(date) => { setBirthDate(date); setIsBirthPickerVisible(false); }}
-                            onCancel={() => setIsBirthPickerVisible(false)}
-                        />
-                    </TouchableOpacity>
+                    {/* Nadie nace mañana: el selector no deja elegir el futuro. */}
+                    <DateField
+                        value={birthDate}
+                        onChange={setBirthDate}
+                        maximumDate={new Date()}
+                    />
                     <Text style={styles.fieldHint}>
                         Para avisarle a tu pareja de tu cumpleaños.
                     </Text>
