@@ -12,8 +12,9 @@ import { useRouter } from 'expo-router';
 import { radii, shadows, spacing } from '../../src/config/theme';
 import { db } from '../../src/config/firebaseConfig';
 import {
-    collection, addDoc, onSnapshot, Timestamp, query, doc,
+    collection, addDoc, onSnapshot, Timestamp, query, doc, setDoc,
     serverTimestamp, updateDoc, orderBy, deleteDoc, limit,
+    writeBatch, arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { usePlan } from '../../src/contexts/planContext';
 import { useTheme } from '../../src/contexts/themeContext';
@@ -30,6 +31,10 @@ import { RowActions } from '../../src/components/RowActions';
 import { useResponsive } from '../../src/hooks/useResponsive';
 
 const WISH_TYPES = ['Aniversario', 'Cumpleaños', 'Navidad', 'San Valentín', 'Solo porque sí', 'Otro'];
+// Sprint 9.16 — a dónde van los deseos de una categoría propia que se borra.
+// Es uno de los tipos de siempre, así que nunca queda un deseo apuntando a
+// una categoría que ya no existe.
+const FALLBACK_TYPE = 'Otro';
 const FREE_LIMIT = 10;
 // Cuántos regalados ve el plan free en el archivo; premium los ve todos.
 const ARCHIVE_FREE_VISIBLE = 10;
@@ -50,7 +55,7 @@ interface WishItem {
 
 const WishlistScreen: React.FC = () => {
     const router = useRouter();
-    const { plan, user, userData, partnerData, isLoading } = usePlan();
+    const { plan, user, userData, partnerData, relationshipData, isLoading } = usePlan();
     const { theme, isDarkMode: isDark, fontFamilies, borderStyle } = useTheme();
     const { isDesktop } = useResponsive();
 
@@ -61,6 +66,17 @@ const WishlistScreen: React.FC = () => {
     const [editingItem, setEditingItem] = useState<WishItem | null>(null);
     const [isPaywallVisible, setIsPaywallVisible] = useState(false);
     const [contextMenuItem, setContextMenuItem] = useState<WishItem | null>(null);
+    const [isCategoryModalVisible, setIsCategoryModalVisible] = useState(false);
+    const [newCategory, setNewCategory] = useState('');
+
+    // Categorías propias de la pareja. Viven como arreglo en el documento de
+    // la relación y no en una subcolección aparte —a diferencia de los grupos
+    // de tareas— porque acá son etiquetas de texto: el deseo ya guarda su
+    // categoría por nombre en 'type', no por identificador.
+    const customCategories: string[] = Array.isArray(relationshipData?.wishCategories)
+        ? relationshipData.wishCategories
+        : [];
+    const allTypes = [...WISH_TYPES, ...customCategories];
     const [deletingItem, setDeletingItem] = useState<WishItem | null>(null);
 
     const [newTitle, setNewTitle] = useState('');
@@ -232,6 +248,50 @@ const WishlistScreen: React.FC = () => {
         setDeletingItem(null);
     }, [deletingItem, user, userData]);
 
+    const handleAddCategory = async () => {
+        const name = newCategory.trim();
+        if (name === '' || !user || !userData?.partnerId) return;
+
+        if (allTypes.some(t => t.toLowerCase() === name.toLowerCase())) {
+            Toast.show({ type: 'error', text1: 'Esa categoría ya existe' });
+            return;
+        }
+
+        const chatId = [user.uid, userData.partnerId].sort().join('_');
+        try {
+            // setDoc con merge y no updateDoc: si el documento de la relación
+            // todavía no existiera, updateDoc fallaría.
+            await setDoc(doc(db, 'relationships', chatId), { wishCategories: arrayUnion(name) }, { merge: true });
+            setNewCategory('');
+            Toast.show({ type: 'success', text1: 'Categoría creada' });
+        } catch (error) {
+            console.error('Error creando la categoría:', error);
+            Toast.show({ type: 'error', text1: 'No se pudo crear la categoría' });
+        }
+    };
+
+    // Borrar una categoría no borra deseos: los suyos pasan a "Otro". Va en un
+    // solo lote para que no quede ninguno apuntando a algo inexistente.
+    const handleDeleteCategory = async (name: string) => {
+        if (!user || !userData?.partnerId) return;
+
+        const chatId = [user.uid, userData.partnerId].sort().join('_');
+        try {
+            const batch = writeBatch(db);
+            allItems
+                .filter(item => item.type === name)
+                .forEach(item => batch.update(doc(db, 'relationships', chatId, 'wishlist', item.id), { type: FALLBACK_TYPE }));
+            batch.update(doc(db, 'relationships', chatId), { wishCategories: arrayRemove(name) });
+            await batch.commit();
+
+            if (filterType === name) setFilterType('Todos');
+            Toast.show({ type: 'success', text1: 'Categoría eliminada', text2: `Sus deseos pasaron a ${FALLBACK_TYPE}` });
+        } catch (error) {
+            console.error('Error eliminando la categoría:', error);
+            Toast.show({ type: 'error', text1: 'No se pudo eliminar la categoría' });
+        }
+    };
+
     const handleLinkPress = (link: string) => {
         let url = link;
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
@@ -291,7 +351,7 @@ const WishlistScreen: React.FC = () => {
                 style={{ flexGrow: 0, flexShrink: 0 }}
                 contentContainerStyle={{ paddingHorizontal: spacing.s22, gap: spacing.s8, paddingBottom: spacing.s10, alignItems: 'center' }}
             >
-                {['Todos', ...WISH_TYPES].map(type => {
+                {['Todos', ...allTypes].map(type => {
                     const active = filterType === type;
                     return (
                         <TouchableOpacity
@@ -316,6 +376,26 @@ const WishlistScreen: React.FC = () => {
                         </TouchableOpacity>
                     );
                 })}
+
+                {/* Gestionar categorías propias (9.16) */}
+                <TouchableOpacity
+                    onPress={() => plan === 'premium' ? setIsCategoryModalVisible(true) : setIsPaywallVisible(true)}
+                    style={{
+                        flexDirection: 'row', alignItems: 'center', gap: spacing.s6,
+                        paddingHorizontal: spacing.s14, paddingVertical: spacing.s8,
+                        borderRadius: radii.pill, backgroundColor: theme.primaryTint,
+                        borderWidth: 1, borderStyle: 'dashed', borderColor: theme.borderStrong,
+                    }}
+                >
+                    <Ionicons
+                        name={plan === 'free' ? 'lock-closed' : 'add'}
+                        size={13}
+                        color={plan === 'free' ? theme.premium : theme.primary}
+                    />
+                    <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 12, color: theme.primary }}>
+                        Categoría
+                    </Text>
+                </TouchableOpacity>
             </ScrollView>
 
             <SectionList
@@ -600,7 +680,7 @@ const WishlistScreen: React.FC = () => {
                         />
 
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.s8 }}>
-                            {WISH_TYPES.map(type => {
+                            {allTypes.map(type => {
                                 const active = newType === type;
                                 return (
                                     <TouchableOpacity
@@ -640,6 +720,78 @@ const WishlistScreen: React.FC = () => {
                                 />
                             </View>
                         </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Categorías propias — Sprint 9.16 */}
+            <Modal animationType="fade" transparent visible={isCategoryModalVisible} onRequestClose={() => setIsCategoryModalVisible(false)}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(24,22,46,0.5)', justifyContent: 'center', alignItems: 'center', padding: spacing.s20 }}>
+                    <View style={{ backgroundColor: theme.surface, borderRadius: radii.cardLg, padding: spacing.s22, width: '100%', maxWidth: 400, gap: spacing.s14 }}>
+                        <Text style={{ fontFamily: fontFamilies.display, fontSize: 23, color: theme.text }}>
+                            Sus categorías
+                        </Text>
+                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 13.5, color: theme.textMuted }}>
+                            Además de las de siempre, pueden inventar las suyas: «Para la casa», «Viaje a la playa», lo que les sirva.
+                        </Text>
+
+                        <View style={{ flexDirection: 'row', gap: spacing.s10 }}>
+                            <TextInput
+                                style={{
+                                    flex: 1, height: 50, borderWidth: 1, borderColor: theme.borderSoft,
+                                    borderRadius: radii.field, paddingHorizontal: spacing.s16 - 1,
+                                    color: theme.text, fontFamily: fontFamilies.body, fontSize: 15,
+                                    backgroundColor: theme.inputBackground,
+                                }}
+                                placeholder="Nueva categoría"
+                                placeholderTextColor={theme.textFaint}
+                                value={newCategory}
+                                onChangeText={setNewCategory}
+                                maxLength={28}
+                                onSubmitEditing={handleAddCategory}
+                            />
+                            <TouchableOpacity
+                                onPress={handleAddCategory}
+                                disabled={newCategory.trim() === ''}
+                                style={{
+                                    width: 50, height: 50, borderRadius: radii.field,
+                                    backgroundColor: newCategory.trim() === '' ? theme.borderSoft : theme.primary,
+                                    alignItems: 'center', justifyContent: 'center',
+                                }}
+                            >
+                                <Ionicons name="add" size={24} color={theme.white} />
+                            </TouchableOpacity>
+                        </View>
+
+                        {customCategories.length > 0 ? (
+                            <View style={{ gap: spacing.s8 }}>
+                                {customCategories.map(name => (
+                                    <View
+                                        key={name}
+                                        style={{
+                                            flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
+                                            backgroundColor: theme.surfaceAlt, borderRadius: radii.field, padding: spacing.s12,
+                                        }}
+                                    >
+                                        <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.text, flex: 1 }}>
+                                            {name}
+                                        </Text>
+                                        <TouchableOpacity onPress={() => handleDeleteCategory(name)} hitSlop={8}>
+                                            <Ionicons name="trash-outline" size={17} color={theme.danger} />
+                                        </TouchableOpacity>
+                                    </View>
+                                ))}
+                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
+                                    Al borrar una categoría sus deseos no se pierden: pasan a {FALLBACK_TYPE}.
+                                </Text>
+                            </View>
+                        ) : (
+                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 13, color: theme.textFaint }}>
+                                Todavía no han creado ninguna.
+                            </Text>
+                        )}
+
+                        <Button title="Listo" variant="outline" onPress={() => setIsCategoryModalVisible(false)} style={{ marginTop: spacing.s4 }} />
                     </View>
                 </View>
             </Modal>
