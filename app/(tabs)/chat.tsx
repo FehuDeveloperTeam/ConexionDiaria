@@ -35,6 +35,13 @@ import { usePartnerPresence } from '../../src/screens/chat/hooks/usePartnerPrese
 // Preferencia local de si el carril derecho va plegado (Sprint 9.6).
 const RAIL_COLLAPSED_KEY = 'chat.railCollapsed';
 
+// Modo protección (Sprint 9.14): difumina las fotos del chat para que quien
+// pase por detrás de la pantalla no las reconozca. Alto a propósito — con un
+// difuminado suave se siguen distinguiendo los detalles, que es justo lo que
+// se quiere evitar; a este nivel solo quedan siluetas y colores.
+const PROTECTION_KEY = 'chat.protectionMode';
+const PROTECTION_BLUR = 28;
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -71,10 +78,41 @@ const ChatScreen = () => {
         setIsRailCollapsed(next);
         AsyncStorage.setItem(RAIL_COLLAPSED_KEY, next ? '1' : '0').catch(() => {});
     };
+
+    // Sprint 9.14 — igual que el carril, la preferencia se recuerda: si
+    // alguien lo activó porque trabaja rodeado de gente, su situación no
+    // cambia entre una visita y la siguiente.
+    const [isProtectionOn, setIsProtectionOn] = useState(false);
+
+    useEffect(() => {
+        AsyncStorage.getItem(PROTECTION_KEY)
+            .then(stored => { if (stored === '1') setIsProtectionOn(true); })
+            .catch(() => { /* sin preferencia guardada queda apagado */ });
+    }, []);
+
+    const toggleProtection = () => {
+        if (plan !== 'premium') {
+            setIsProtectionPaywallVisible(true);
+            return;
+        }
+        const next = !isProtectionOn;
+        setIsProtectionOn(next);
+        AsyncStorage.setItem(PROTECTION_KEY, next ? '1' : '0').catch(() => {});
+        Toast.show({
+            type: 'success',
+            text1: next ? 'Modo protección activado' : 'Modo protección desactivado',
+            text2: next ? 'Las fotos se ven al abrirlas' : undefined,
+        });
+    };
+
+    // El difuminado solo aplica en premium: si alguien deja de pagar, sus
+    // fotos no se quedan borrosas para siempre.
+    const photoBlur = isProtectionOn && plan === 'premium' ? PROTECTION_BLUR : 0;
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
     // Separado del de almacenamiento: son dos motivos distintos y cada uno
     // tiene que explicar el suyo.
     const [showHistoryPaywall, setShowHistoryPaywall] = useState(false);
+    const [isProtectionPaywallVisible, setIsProtectionPaywallVisible] = useState(false);
 
     // Estados para el modal de archivos
     const [fileViewerVisible, setFileViewerVisible] = useState(false);
@@ -379,7 +417,15 @@ const ChatScreen = () => {
                         <Image
                             source={{ uri: imageProps.currentMessage.image }}
                             style={styles.chatImage}
+                            blurRadius={photoBlur}
                         />
+                        {/* El ojo dice que ahí hay una foto y que se abre para
+                            verla; si no, la mancha borrosa no se entiende. */}
+                        {photoBlur > 0 && (
+                            <View style={styles.protectionHint} pointerEvents="none">
+                                <Ionicons name="eye" size={22} color="#FFFFFF" />
+                            </View>
+                        )}
                     </TouchableOpacity>
                 )}
             />
@@ -582,6 +628,23 @@ const ChatScreen = () => {
                             </Text>
                         ) : null}
                     </View>
+                </TouchableOpacity>
+
+                {/* Modo protección (9.14). Va en el encabezado junto al otro
+                    control de privacidad, y existe en todos los tamaños: la
+                    pantalla se puede mirar por encima del hombro igual en un
+                    teléfono. */}
+                <TouchableOpacity
+                    onPress={toggleProtection}
+                    style={{ padding: 6, marginLeft: spacing.s8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={isProtectionOn ? 'Desactivar el modo protección' : 'Activar el modo protección'}
+                >
+                    <Ionicons
+                        name={photoBlur > 0 ? 'eye-off' : 'eye-outline'}
+                        size={22}
+                        color={photoBlur > 0 ? theme.primary : theme.textFaint}
+                    />
                 </TouchableOpacity>
 
                 {/* Plegar/desplegar el carril derecho. Solo existe donde el
@@ -1018,6 +1081,16 @@ const ChatScreen = () => {
                 benefits={['Historial completo del chat, desde el primer mensaje', 'Buscar recuerdos de cualquier época', '25 GB de almacenamiento compartido']}
             />
 
+            <PaywallSheet
+                visible={isProtectionPaywallVisible}
+                onClose={() => setIsProtectionPaywallVisible(false)}
+                onUpgradePress={() => { setIsProtectionPaywallVisible(false); router.push('/(tabs)/config'); }}
+                icon="eye-off"
+                title="Que solo lo vean ustedes"
+                description="El modo protección difumina las fotos del chat hasta que las abres. Útil cuando trabajas rodeado de gente o alguien pasa por detrás de la pantalla."
+                benefits={['Fotos difuminadas hasta que tú las abras', 'Se mantiene activo entre visitas', 'Carril de la conversación plegable']}
+            />
+
             {/* Hoja de adjuntar — Sprint 7.4b: reemplaza el action sheet nativo */}
             <Modal
                 visible={isAttachSheetVisible}
@@ -1139,6 +1212,7 @@ const ChatScreen = () => {
                     messages={messages}
                     usedStorage={usedStorage}
                     maxStorage={maxStorage}
+                    photoBlur={photoBlur}
                     onOpenImage={openImageViewer}
                     onOpenFile={(file) => {
                         setSelectedFile(file);
@@ -1159,7 +1233,12 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         margin: 5,
         resizeMode: 'cover',
-    }
+    },
+    protectionHint: {
+        ...StyleSheet.absoluteFillObject,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
 });
 
 export default ChatScreen;

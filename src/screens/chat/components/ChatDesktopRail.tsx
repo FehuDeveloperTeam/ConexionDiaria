@@ -32,9 +32,12 @@ export const ChatDesktopRail: React.FC<{
     messages: ExtendedMessage[];
     usedStorage: number;
     maxStorage: number;
+    // Sprint 9.14: el carril es justamente donde las fotos quedan más
+    // expuestas a una mirada de reojo, así que hereda el modo protección.
+    photoBlur: number;
     onOpenImage: (uri: string) => void;
     onOpenFile: (file: { uri: string; name: string; size?: number }) => void;
-}> = ({ partnerInfo, messages, usedStorage, maxStorage, onOpenImage, onOpenFile }) => {
+}> = ({ partnerInfo, messages, usedStorage, maxStorage, photoBlur, onOpenImage, onOpenFile }) => {
     const { theme, fontFamilies } = useTheme();
 
     const sharedImages = messages.filter(m => !!m.image && !m.deleted).slice(0, 9);
@@ -79,7 +82,11 @@ export const ChatDesktopRail: React.FC<{
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                             {sharedImages.map(m => (
                                 <TouchableOpacity key={m._id.toString()} onPress={() => onOpenImage(m.image!)}>
-                                    <Image source={{ uri: m.image }} style={{ width: 88, height: 88, borderRadius: 10 }} />
+                                    <Image
+                                        source={{ uri: m.image }}
+                                        style={{ width: 88, height: 88, borderRadius: 10 }}
+                                        blurRadius={photoBlur}
+                                    />
                                 </TouchableOpacity>
                             ))}
                         </View>
