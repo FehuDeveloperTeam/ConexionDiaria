@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, storage } from '../../src/config/firebaseConfig';
 import { radii, spacing } from '../../src/config/theme';
-import { DocumentData, onSnapshot, collection, query, orderBy, limit, addDoc, doc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { DocumentData, onSnapshot, collection, query, orderBy, limit, where, getDocs, Timestamp, addDoc, doc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
@@ -23,6 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePlan } from '../../src/contexts/planContext';
 import { useTheme } from '../../src/contexts/themeContext';
 import { EmptyState } from '../../src/components/EmptyState';
+import { memoryCandidates } from '../../src/services/memories';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
@@ -75,7 +76,13 @@ const AlbumScreen: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
 
+    // Sprint 9.26: el visor recorre una LISTA, que no siempre es el grid. Un
+    // recuerdo puede ser una foto de hace tres años, o sea fuera de las 150
+    // más nuevas que el grid tiene cargadas — con el visor indexado sobre
+    // 'photos' no había forma de abrirla.
+    const [viewerList, setViewerList] = useState<DocumentData[]>([]);
     const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+    const [memories, setMemories] = useState<{ label: string; photos: DocumentData[] }[]>([]);
     const [viewerBoxSize, setViewerBoxSize] = useState({ width: 0, height: 0 });
     const [deletingPhoto, setDeletingPhoto] = useState<DocumentData | null>(null);
     const [isSharing, setIsSharing] = useState(false);
@@ -102,6 +109,55 @@ const AlbumScreen: React.FC = () => {
 
         return () => unsubscribePhotos();
     }, [user, partnerId]);
+
+    // Sprint 9.26: "Un día como hoy". No se filtra sobre las fotos ya
+    // cargadas: el grid trae las 150 más nuevas y los recuerdos que valen la
+    // pena son justamente los viejos, que quedan fuera de esas 150. Se
+    // consulta cada día candidato por separado (ver services/memories.ts),
+    // una sola vez al abrir el álbum y solo por los años en que esta pareja
+    // ya existía — para una pareja de un año son dos consultas de cuatro
+    // documentos.
+    useEffect(() => {
+        if (!user || !partnerId) {
+            setMemories([]);
+            return;
+        }
+
+        let cancelled = false;
+        const relationshipId = [user.uid, partnerId].sort().join('_');
+        const photosRef = collection(db, 'relationships', relationshipId, 'photos');
+        const since = userData?.relationshipStartDate?.toDate
+            ? userData.relationshipStartDate.toDate()
+            : null;
+
+        (async () => {
+            try {
+                const candidates = memoryCandidates(new Date(), since);
+                const results = await Promise.all(candidates.map(async candidate => {
+                    const snapshot = await getDocs(query(
+                        photosRef,
+                        where('createdAt', '>=', Timestamp.fromDate(candidate.start)),
+                        where('createdAt', '<=', Timestamp.fromDate(candidate.end)),
+                        limit(4)
+                    ));
+                    return {
+                        label: candidate.label,
+                        photos: snapshot.docs.map(d => ({ id: d.id, ...d.data() })),
+                    };
+                }));
+
+                if (cancelled) return;
+                setMemories(results.filter(result => result.photos.length > 0));
+            } catch (error) {
+                // Que falle no puede romper el álbum: es un extra, no el
+                // contenido.
+                console.error('Error buscando recuerdos:', error);
+                if (!cancelled) setMemories([]);
+            }
+        })();
+
+        return () => { cancelled = true; };
+    }, [user, partnerId, userData?.relationshipStartDate]);
 
     const uploadPickedImage = useCallback(async (localId: string, uri: string) => {
         if (!user || !userData?.partnerId) return;
@@ -181,6 +237,11 @@ const AlbumScreen: React.FC = () => {
             await deleteObject(ref(storage, deletingPhoto.imageUrl));
             setDeletingPhoto(null);
             setViewerIndex(null);
+            // Los recuerdos se cargan una sola vez al abrir el álbum, así que
+            // sin esto una foto borrada seguiría apareciendo ahí arriba.
+            setMemories(prev => prev
+                .map(group => ({ ...group, photos: group.photos.filter(p => p.id !== deletingPhoto.id) }))
+                .filter(group => group.photos.length > 0));
             Toast.show({ type: 'success', text1: 'Foto eliminada' });
         } catch (error) {
             console.error("Error eliminando foto:", error);
@@ -281,7 +342,7 @@ const AlbumScreen: React.FC = () => {
         return <FullScreenLoader />;
     }
 
-    const currentPhoto = viewerIndex !== null ? photos[viewerIndex] : null;
+    const currentPhoto = viewerIndex !== null ? viewerList[viewerIndex] : null;
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
@@ -298,6 +359,67 @@ const AlbumScreen: React.FC = () => {
                     <Text style={{ fontFamily: fontFamilies.body, fontSize: 14, color: theme.textFaint, textAlign: 'center', marginTop: spacing.s26 }}>
                         Aún no han añadido fotos a su álbum.
                     </Text>
+                )}
+
+                {/* Sprint 9.26: "Un día como hoy". Solo aparece si hay algo que
+                    mostrar — un hueco vacío que diga "no hay recuerdos" sería
+                    peor que no tener la sección. */}
+                {memories.length > 0 && (
+                    <View style={{
+                        backgroundColor: theme.surface,
+                        borderRadius: radii.card,
+                        borderWidth: 1,
+                        borderColor: theme.borderSoft,
+                        paddingVertical: spacing.s14,
+                        marginBottom: spacing.s20,
+                    }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s8, paddingHorizontal: spacing.s14, marginBottom: spacing.s12 }}>
+                            <Ionicons name="sparkles" size={15} color={theme.affection} />
+                            <Text style={{
+                                fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 0.9,
+                                textTransform: 'uppercase', color: theme.textMuted,
+                            }}>
+                                Un día como hoy
+                            </Text>
+                        </View>
+
+                        {/* flexGrow/flexShrink 0: en react-native-web TODO
+                            ScrollView trae flexGrow:1, y en uno horizontal ese
+                            crecimiento va en el eje del padre — o sea vertical.
+                            Sin esto la tira se come media pantalla. */}
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            style={{ flexGrow: 0, flexShrink: 0 }}
+                            contentContainerStyle={{ gap: spacing.s10, paddingHorizontal: spacing.s14 }}
+                        >
+                            {memories.map(group => group.photos.map((photo, index) => (
+                                <TouchableOpacity
+                                    key={photo.id}
+                                    onPress={() => { setViewerList(group.photos); setViewerIndex(index); }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Foto de ${group.label.toLowerCase()}`}
+                                    style={{ width: 104 }}
+                                >
+                                    <Image
+                                        source={{ uri: photo.imageUrl }}
+                                        style={{ width: 104, height: 104, borderRadius: 12, backgroundColor: theme.surfaceAlt }}
+                                        resizeMode="cover"
+                                    />
+                                    {/* La etiqueta va debajo y no encima de la
+                                        foto: encima hay que oscurecerla para
+                                        que el texto se lea, y la foto es lo
+                                        que se vino a ver. */}
+                                    <Text
+                                        numberOfLines={1}
+                                        style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 11, color: theme.textMuted, marginTop: spacing.s6 }}
+                                    >
+                                        {group.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            )))}
+                        </ScrollView>
+                    </View>
                 )}
 
                 {monthGroups.map(group => (
@@ -369,7 +491,7 @@ const AlbumScreen: React.FC = () => {
                                 return (
                                     <TouchableOpacity
                                         key={photo.id}
-                                        onPress={() => setViewerIndex(flatIndex)}
+                                        onPress={() => { setViewerList(photos); setViewerIndex(flatIndex); }}
                                         style={{ width: CELL_SIZE, height: CELL_SIZE, borderRadius: 12, overflow: 'hidden' }}
                                     >
                                         <Image source={{ uri: photo.imageUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
@@ -464,7 +586,7 @@ const AlbumScreen: React.FC = () => {
                                         <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
                                     </TouchableOpacity>
                                 )}
-                                {viewerIndex! < photos.length - 1 && (
+                                {viewerIndex! < viewerList.length - 1 && (
                                     <TouchableOpacity
                                         onPress={() => setViewerIndex(viewerIndex! + 1)}
                                         style={{
@@ -490,7 +612,7 @@ const AlbumScreen: React.FC = () => {
                                 style={{ flexGrow: 0, flexShrink: 0 }}
                                 contentContainerStyle={{ gap: spacing.s8, paddingHorizontal: spacing.s16, paddingVertical: spacing.s10, alignItems: 'center' }}
                             >
-                                {photos.map((photo, idx) => (
+                                {viewerList.map((photo, idx) => (
                                     <TouchableOpacity key={photo.id} onPress={() => setViewerIndex(idx)}>
                                         <Image
                                             source={{ uri: photo.imageUrl }}

@@ -51,3 +51,4 @@ app-example
 tests/.tmp-pricing/
 tests/.tmp-milestones/
 tests/.tmp-questions/
+tests/.tmp-memories/

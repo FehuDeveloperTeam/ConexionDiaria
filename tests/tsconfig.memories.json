@@ -1,0 +1,18 @@
+{
+  // A diferencia de las otras suites, memories.ts importa milestones.ts, así
+  // que hay que compilar los dos. Y el módulo es commonjs, no es2020: con
+  // módulos ES, tsc emite `from './milestones'` sin extensión y node exige el
+  // '.js'. Poner la extensión en el import del fuente arreglaría la prueba y
+  // rompería el bundler de la app, que es el que de verdad importa; el test
+  // lo carga con createRequire.
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": [],
+    "outDir": ".tmp-memories"
+  },
+  "files": ["../src/services/memories.ts", "../src/services/milestones.ts"]
+}
