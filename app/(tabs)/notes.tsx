@@ -157,6 +157,14 @@ const NotesScreen: React.FC = () => {
                             ? { borderWidth: 1, borderColor: palette.dark.border }
                             : shadows.stickyNote;
 
+                        // 'createdAt' viene de serverTimestamp(), así que en el
+                        // instante posterior a crear la nota todavía llega nulo:
+                        // hasta que el servidor lo resuelve se muestra solo el autor.
+                        const created = item.createdAt?.toDate ? item.createdAt.toDate() : null;
+                        const createdLabel = created
+                            ? `${String(created.getDate()).padStart(2, '0')}/${String(created.getMonth() + 1).padStart(2, '0')}/${created.getFullYear()}`
+                            : null;
+
                         return (
                             <TouchableOpacity
                                 activeOpacity={0.9}
@@ -185,7 +193,7 @@ const NotesScreen: React.FC = () => {
                                             textAlign: 'right',
                                             flex: 1,
                                         }}>
-                                            — {item.authorName}
+                                            — {item.authorName}{createdLabel ? ` · ${createdLabel}` : ''}
                                         </Text>
                                     </View>
                                 </View>
