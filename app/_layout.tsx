@@ -49,15 +49,25 @@ function AuthRedirect() {
     useEffect(() => {
         if (isLoading) return; // Esperar a que el PlanProvider termine de cargar
 
-        const inAppGroup = segments[0] === '(tabs)';
+        // Antes esto miraba si la ruta estaba dentro del grupo '(tabs)' y
+        // mandaba a Inicio cualquier otra. El efecto era que TODA pantalla
+        // fuera de las pestañas quedaba inalcanzable estando con sesión
+        // iniciada: al abrirla, el guardia la devolvía al instante. Eso dejaba
+        // muertas la ficha de la pareja (9.12) y, desde el Sprint 7.8b sin que
+        // se notara, también el editor de tema.
+        //
+        // Lo que de verdad hay que distinguir no es "pestañas o no", sino
+        // pública o privada: el landing, login y registro son las tres
+        // pantallas donde alguien con sesión no tiene nada que hacer. En la
+        // raíz 'segments' viene vacío, así que ese caso se cubre aparte.
+        const root = segments[0];
+        const onPublicRoute = root === undefined || root === 'login' || root === 'register';
 
-        if (user && !inAppGroup) {
-            // Usuario logueado, pero fuera de la app (ej. en 'index' o 'login')
-            // Lo forzamos a entrar
+        if (user && onPublicRoute) {
+            // Con sesión iniciada no tiene sentido quedarse en el landing.
             router.replace('/(tabs)/home');
-        } else if (!user && inAppGroup) {
-            // Usuario no logueado, pero intentando acceder a una ruta protegida
-            // Lo expulsamos al landing (raíz)
+        } else if (!user && !onPublicRoute) {
+            // Sin sesión, cualquier pantalla privada queda fuera de alcance.
             router.replace('/');
         }
         // (Los otros casos son correctos y no se hace nada)
@@ -97,6 +107,7 @@ function AppShell() {
                 <Stack.Screen name="register" />
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="theme-editor" />
+                <Stack.Screen name="partner" />
             </Stack>
 
             {/* Este componente decide si mostrar la carga o redirigir */}
