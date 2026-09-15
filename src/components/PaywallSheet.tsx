@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../contexts/themeContext';
 import { radii, spacing } from '../config/theme';
 import { useResponsive } from '../hooks/useResponsive';
+import { usePricing } from '../hooks/usePricing';
 
 export const PaywallSheet: React.FC<{
     visible: boolean;
@@ -28,9 +29,6 @@ export const PaywallSheet: React.FC<{
     description: string;
     benefits: string[];
     proofSlot?: React.ReactNode;
-    listPrice?: string;
-    offerPrice?: string;
-    offerBadge?: string;
 }> = ({
     visible,
     onClose,
@@ -40,12 +38,20 @@ export const PaywallSheet: React.FC<{
     description,
     benefits,
     proofSlot,
-    listPrice = 'US$9.99',
-    offerPrice = 'US$2.99',
-    offerBadge = '-70% HOY',
 }) => {
     const { theme, fontFamilies } = useTheme();
     const { isDesktop } = useResponsive();
+
+    // Sprint 9.19: el precio salía de tres props con valor por defecto escrito
+    // a mano ('US$9.99', 'US$2.99', '-70% HOY'). Eso decía "-70% HOY" los 365
+    // días del año, aunque no hubiera ningún descuento vigente, y seguiría
+    // diciendo US$2.99 el día que se agoten los cupos de fundador. Un cartel
+    // que miente sobre el precio no es un detalle de diseño.
+    //
+    // Ahora todo sale de la oferta que de verdad se va a cobrar. Solo se
+    // consulta con el cartel abierto (ver 'enabled').
+    const pricing = usePricing({ enabled: visible });
+    const price = pricing.monthly?.product.priceString ?? null;
 
     const cardContent = (
         <>
@@ -77,16 +83,37 @@ export const PaywallSheet: React.FC<{
                 ))}
             </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: spacing.s8, marginTop: spacing.s4, flexWrap: 'wrap' }}>
-                <Text style={{ fontFamily: fontFamilies.body, fontSize: 15, color: theme.textMuted, textDecorationLine: 'line-through' }}>
-                    {listPrice}
-                </Text>
-                <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 26, color: theme.text }}>{offerPrice}</Text>
-                <Text style={{ fontFamily: fontFamilies.body, fontSize: 13, color: theme.textMuted }}>/ mes</Text>
-                <View style={{ backgroundColor: theme.warnBg, borderRadius: 6, paddingHorizontal: spacing.s8, paddingVertical: 3, marginLeft: spacing.s4 }}>
-                    <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 10, color: theme.warnText }}>{offerBadge}</Text>
+            {/* Sin precio que respaldar no se inventa ninguno: mientras
+                carga, o si RevenueCat no respondió, el bloque no aparece y el
+                botón sigue estando. Es preferible un cartel sin precio a un
+                precio que no es el que se va a cobrar. */}
+            {!!price && (
+                <View style={{ gap: spacing.s6, marginTop: spacing.s4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: spacing.s8, flexWrap: 'wrap' }}>
+                        {!!pricing.listMonthlyPrice && (
+                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 15, color: theme.textMuted, textDecorationLine: 'line-through' }}>
+                                {pricing.listMonthlyPrice}
+                            </Text>
+                        )}
+                        <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 26, color: theme.text }}>{price}</Text>
+                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 13, color: theme.textMuted }}>/ mes</Text>
+                        {!!pricing.offer.discountLabel && (
+                            <View style={{ backgroundColor: theme.warnBg, borderRadius: 6, paddingHorizontal: spacing.s8, paddingVertical: 3, marginLeft: spacing.s4 }}>
+                                <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 10, color: theme.warnText }}>
+                                    {pricing.offer.discountLabel}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+                    {/* La otra mitad del trabajo: un descuento sin motivo se
+                        lee como precio inflado el resto del año. */}
+                    {!!pricing.offer.reason && (
+                        <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 12, color: theme.premium }}>
+                            {pricing.offer.reason}
+                        </Text>
+                    )}
                 </View>
-            </View>
+            )}
 
             <TouchableOpacity
                 onPress={onUpgradePress}

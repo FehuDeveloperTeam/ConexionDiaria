@@ -34,7 +34,13 @@ const toDate = (value: any): Date | null =>
 const pickMonthly = (offering: PurchasesOffering | null): PurchasesPackage | null =>
     offering?.monthly ?? offering?.availablePackages?.[0] ?? null;
 
-export const usePricing = (): PricingState & { purchase: (pkg: PurchasesPackage) => Promise<boolean> } => {
+// 'enabled' existe por el paywall: hay una instancia de PaywallSheet montada
+// en casi cada pantalla, casi siempre invisible. Sin esta compuerta, abrir la
+// app dispararía una consulta de ofertas y una lectura de Firestore por cada
+// una de ellas, para carteles que nadie va a ver.
+export const usePricing = (
+    { enabled = true }: { enabled?: boolean } = {}
+): PricingState & { purchase: (pkg: PurchasesPackage) => Promise<boolean> } => {
     const { userData, partnerData } = usePlan();
 
     const [offerings, setOfferings] = useState<Record<string, PurchasesOffering> | null>(null);
@@ -43,6 +49,7 @@ export const usePricing = (): PricingState & { purchase: (pkg: PurchasesPackage)
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+        if (!enabled) return;
         let cancelled = false;
 
         (async () => {
@@ -68,7 +75,7 @@ export const usePricing = (): PricingState & { purchase: (pkg: PurchasesPackage)
         })();
 
         return () => { cancelled = true; };
-    }, []);
+    }, [enabled]);
 
     const offer = resolvePricingOffer({
         foundersLeft,
@@ -103,7 +110,9 @@ export const usePricing = (): PricingState & { purchase: (pkg: PurchasesPackage)
             offer.tier !== 'list' && listMonthly?.product.priceString
                 ? listMonthly.product.priceString
                 : null,
-        isLoading,
+        // Mientras no se haya intentado cargar, "cargando" — así el cartel
+        // sabe que todavía no puede mostrar ningún precio.
+        isLoading: enabled ? isLoading : true,
         purchase,
     };
 };

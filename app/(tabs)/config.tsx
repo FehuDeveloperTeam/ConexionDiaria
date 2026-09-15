@@ -103,6 +103,60 @@ const PrefRow: React.FC<{
     );
 };
 
+// Sprint 9.19: una de las dos opciones de cobro dentro de la tarjeta de plan.
+// Vive sobre el degradado premium, así que sus colores son fijos y no del
+// tema: sobre ese fondo, theme.text sería ilegible en modo claro.
+const PlanOption: React.FC<{
+    label: string;
+    price: string;
+    suffix: string;
+    strikethrough?: string | null;
+    badge?: string;
+    note?: string;
+    selected: boolean;
+    onPress: () => void;
+}> = ({ label, price, suffix, strikethrough, badge, note, selected, onPress }) => {
+    const { fontFamilies } = useTheme();
+    return (
+        <TouchableOpacity
+            onPress={onPress}
+            accessibilityRole="radio"
+            accessibilityState={{ selected }}
+            style={{
+                borderRadius: 14,
+                borderWidth: selected ? 2 : 1,
+                borderColor: selected ? '#FFFFFF' : 'rgba(255,255,255,0.28)',
+                backgroundColor: selected ? 'rgba(255,255,255,0.14)' : 'transparent',
+                paddingVertical: spacing.s12,
+                paddingHorizontal: spacing.s14,
+            }}
+        >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s8 }}>
+                <Ionicons
+                    name={selected ? 'radio-button-on' : 'radio-button-off'}
+                    size={17}
+                    color={selected ? '#FFFFFF' : 'rgba(255,255,255,0.55)'}
+                />
+                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: '#FFFFFF', flex: 1 }}>
+                    {label}
+                </Text>
+                {!!strikethrough && (
+                    <Text style={{ fontFamily: fontFamilies.body, fontSize: 13, color: 'rgba(255,255,255,0.55)', textDecorationLine: 'line-through' }}>
+                        {strikethrough}
+                    </Text>
+                )}
+                <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 18, color: '#FFFFFF' }}>{price}</Text>
+                <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: 'rgba(255,255,255,0.75)' }}>{suffix}</Text>
+            </View>
+            {!!(note || badge) && (
+                <Text style={{ fontFamily: fontFamilies.body, fontSize: 11.5, color: 'rgba(255,255,255,0.75)', marginLeft: 25, marginTop: 3 }}>
+                    {[badge, note].filter(Boolean).join(' · ')}
+                </Text>
+            )}
+        </TouchableOpacity>
+    );
+};
+
 const PremiumBadge: React.FC = () => {
     const { theme, fontFamilies } = useTheme();
     return (
@@ -118,6 +172,7 @@ const ConfigScreen: React.FC = () => {
     const { theme, isDarkMode, setDarkMode, fontFamilies, borderStyle } = useTheme();
     const { plan, user, userData, relationshipData, isLoading } = usePlan();
     const pricing = usePricing();
+    const [period, setPeriod] = useState<'monthly' | 'annual'>('monthly');
 
     const [displayName, setDisplayName] = useState('');
     const [isSaving, setIsSaving] = useState(false);
@@ -377,16 +432,66 @@ const ConfigScreen: React.FC = () => {
                         <Text style={{ fontFamily: fontFamilies.body, fontSize: 13.5, color: 'rgba(255,255,255,0.75)', marginBottom: spacing.s16 }}>
                             Uno paga, ambos disfrutan.
                         </Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: spacing.s8, marginBottom: spacing.s16 }}>
-                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 14, color: 'rgba(255,255,255,0.55)', textDecorationLine: 'line-through' }}>
-                                US$9.99
+                        {/* Sprint 9.19: estos precios estaban escritos a mano
+                            ('US$9.99' tachado, 'US$2.99'). Ahora salen del
+                            paquete que se va a cobrar, así que no se pueden
+                            separar de lo que cobra la tienda, y el motivo del
+                            descuento se dice en voz alta: un precio rebajado
+                            sin explicación se lee como precio inflado el resto
+                            del año. */}
+                        {!!pricing.offer.reason && (
+                            <View style={{
+                                alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: spacing.s6,
+                                backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 8,
+                                paddingHorizontal: spacing.s10, paddingVertical: 5, marginBottom: spacing.s12,
+                            }}>
+                                <Ionicons name="pricetag" size={12} color="#FFFFFF" />
+                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 12, color: '#FFFFFF' }}>
+                                    {pricing.offer.reason}
+                                </Text>
+                            </View>
+                        )}
+
+                        {pricing.monthly ? (
+                            <View style={{ gap: spacing.s8, marginBottom: spacing.s16 }}>
+                                <PlanOption
+                                    label="Mensual"
+                                    price={pricing.monthly.product.priceString}
+                                    suffix="/ mes"
+                                    strikethrough={pricing.listMonthlyPrice}
+                                    badge={pricing.offer.discountLabel}
+                                    selected={period === 'monthly'}
+                                    onPress={() => setPeriod('monthly')}
+                                />
+                                {!!pricing.annual && (
+                                    <PlanOption
+                                        label="Anual"
+                                        price={pricing.annual.product.priceString}
+                                        suffix="/ año"
+                                        note="Equivale a 10 meses: dos van de regalo"
+                                        badge={pricing.offer.discountLabel}
+                                        selected={period === 'annual'}
+                                        onPress={() => setPeriod('annual')}
+                                    />
+                                )}
+                            </View>
+                        ) : (
+                            // Ni un precio de mentira ni un botón que revienta:
+                            // mientras no haya paquete, se dice que se está
+                            // cargando.
+                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 13, color: 'rgba(255,255,255,0.75)', marginBottom: spacing.s16 }}>
+                                {pricing.isLoading ? 'Cargando planes…' : 'No pudimos cargar los planes. Inténtalo en un momento.'}
                             </Text>
-                            <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 22, color: '#FFFFFF' }}>US$2.99</Text>
-                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 13, color: 'rgba(255,255,255,0.75)' }}>/ mes</Text>
-                        </View>
+                        )}
+
                         <TouchableOpacity
-                            onPress={() => handleUpgrade('monthly')}
-                            style={{ backgroundColor: theme.premium, borderRadius: 15, paddingVertical: spacing.s14, alignItems: 'center' }}
+                            onPress={() => handleUpgrade(period)}
+                            disabled={!pricing.monthly}
+                            style={{
+                                backgroundColor: theme.premium, borderRadius: 15,
+                                paddingVertical: spacing.s14, alignItems: 'center',
+                                opacity: pricing.monthly ? 1 : 0.5,
+                            }}
                         >
                             <Text style={{ fontFamily: fontFamilies.actionBold, fontSize: 15, color: theme.premiumTextOnFill }}>
                                 Actualizar a Conexión Total

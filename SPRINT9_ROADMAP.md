@@ -32,8 +32,10 @@ con 22 rutas) y pusheadas a `claude/conexiondiaria-app-review-o9tn7y`.
 | 9.15 | Notas de voz, con el mismo cupo que las escritas | `50f32bf` |
 | 9.16 | Categorías propias en Deseos | `aeb46ac` |
 
-**Fases A, B y C cerradas.** Quedan la fase D (monetización real: 9.17 a 9.19)
-y la E (calendario y hábito: 9.20 a 9.22), más el video del chat (9.23).
+**Fases A, B, C y D cerradas.** Queda la fase E (calendario y hábito: 9.20 a
+9.22) y el video del chat (9.23). La fase D quedó lista del lado del código;
+falta crear las cinco ofertas en el dashboard de RevenueCat (founders,
+anniversary, birthday, seasonal, default) y desplegar reglas y funciones.
 
 ### Deuda anotada
 
@@ -116,7 +118,7 @@ Aquí se vuelve real la separación entre los planes.
 |---|---|---|
 | 9.17 ✅ | Contador de fundadores en el servidor | Va en el webhook de RevenueCat que ya existe (`functions/src/index.ts`), que es quien hoy escribe el plan del usuario y el único componente que puede validar una compra. En el cliente sería falsificable. |
 | 9.18 ✅ | Ofertas por escalón y selección por fecha | Hoy la compra usa `availablePackages[0]`, el primer paquete que devuelva RevenueCat: con cinco escalones eso deja de servir. Una oferta por escalón y que la app elija según la fecha de la pareja y el contador. Antes de implementar, verificar si las tiendas permiten cinco ventanas o si cada escalón debe ser un producto propio. |
-| 9.19 | Paywall dinámico | El precio mostrado sale de la oferta que se va a cobrar, nunca de un texto fijo. El cartel de descuento aparece solo cuando aplica de verdad y dice por qué: «quedan 340 cupos», «faltan 3 días para su aniversario». |
+| 9.19 ✅ | Paywall dinámico | El precio mostrado sale de la oferta que se va a cobrar, nunca de un texto fijo. El cartel de descuento aparece solo cuando aplica de verdad y dice por qué: «quedan 340 cupos», «faltan 3 días para su aniversario». |
 
 ## Fase E — Calendario y hábito
 
