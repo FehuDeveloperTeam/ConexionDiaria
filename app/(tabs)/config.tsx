@@ -13,7 +13,7 @@ import { auth, db, storage } from '../../src/config/firebaseConfig';
 import { radii, spacing } from '../../src/config/theme';
 import { signOut } from 'firebase/auth';
 import { doc, updateDoc, writeBatch, Timestamp } from 'firebase/firestore';
-import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import { DatePickerSheet } from '../../src/components/DatePickerSheet';
 import { formatDate } from '../../src/services/dateFormat';
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import * as ImagePicker from 'expo-image-picker';
@@ -116,6 +116,9 @@ const ConfigScreen: React.FC = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [isNotificationsSheetVisible, setIsNotificationsSheetVisible] = useState(false);
     const [isPaywallVisible, setIsPaywallVisible] = useState(false);
+    // El de arriba explica la personalización de tema. La ficha de la pareja
+    // necesita el suyo: un paywall que habla de otra cosa se lee como un error.
+    const [isPartnerPaywallVisible, setIsPartnerPaywallVisible] = useState(false);
     const [isDisconnectConfirmVisible, setIsDisconnectConfirmVisible] = useState(false);
     const [isBirthPickerVisible, setIsBirthPickerVisible] = useState(false);
 
@@ -447,17 +450,28 @@ const ConfigScreen: React.FC = () => {
                             icon="person-circle-outline"
                             label="Ficha de la pareja"
                             subcopy="Tallas, gustos y notas que solo ves tú"
-                            onPress={() => plan === 'premium' ? router.push('/partner') : setIsPaywallVisible(true)}
+                            onPress={() => plan === 'premium' ? router.push('/partner') : setIsPartnerPaywallVisible(true)}
                             right={plan === 'free' ? <PremiumBadge /> : <Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
                         />
                     )}
-                    <PrefRow
-                        icon="balloon-outline"
-                        label="Fecha de nacimiento"
-                        subcopy={birthDate ? formatDate(birthDate) : 'Sin definir · tu pareja no verá tu cumpleaños'}
-                        onPress={() => setIsBirthPickerVisible(true)}
-                        right={<Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
-                    />
+                    {/* La fila va envuelta para que la capa del selector web
+                        —posicionada en absoluto— la cubra por completo. */}
+                    <View>
+                        <PrefRow
+                            icon="balloon-outline"
+                            label="Fecha de nacimiento"
+                            subcopy={birthDate ? formatDate(birthDate) : 'Sin definir · tu pareja no verá tu cumpleaños'}
+                            onPress={() => setIsBirthPickerVisible(true)}
+                            right={<Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
+                        />
+                        <DatePickerSheet
+                            isVisible={isBirthPickerVisible}
+                            date={birthDate ?? new Date(1995, 0, 1)}
+                            maximumDate={new Date()}
+                            onConfirm={handleSaveBirthDate}
+                            onCancel={() => setIsBirthPickerVisible(false)}
+                        />
+                    </View>
                     <PrefRow
                         icon="color-palette-outline"
                         label="Personalizar tema"
@@ -528,18 +542,6 @@ const ConfigScreen: React.FC = () => {
                 </View>
             </Modal>
 
-            <DateTimePickerModal
-                isVisible={isBirthPickerVisible}
-                mode="date"
-                date={birthDate ?? new Date(1995, 0, 1)}
-                maximumDate={new Date()}
-                onConfirm={handleSaveBirthDate}
-                onCancel={() => setIsBirthPickerVisible(false)}
-                locale="es_ES"
-                confirmTextIOS="Confirmar"
-                cancelTextIOS="Cancelar"
-            />
-
             <PaywallSheet
                 visible={isPaywallVisible}
                 onClose={() => setIsPaywallVisible(false)}
@@ -548,6 +550,16 @@ const ConfigScreen: React.FC = () => {
                 title="Personaliza su tema"
                 description="Elige el color, la tipografía y el borde de la pareja con Conexión Total."
                 benefits={['10 estilos de borde exclusivos', 'Fondo y texto a su gusto', 'Se aplica para los dos']}
+            />
+
+            <PaywallSheet
+                visible={isPartnerPaywallVisible}
+                onClose={() => setIsPartnerPaywallVisible(false)}
+                onUpgradePress={() => { setIsPartnerPaywallVisible(false); handleUpgrade(); }}
+                icon="gift"
+                title="Llega preparado a la fecha"
+                description="Anota sus tallas, sus gustos y las ideas de regalo en una ficha que solo ves tú, y tenlas a mano cuando se acerque la fecha."
+                benefits={['Tallas y gustos guardados, privados de verdad', 'Sus deseos a la vista antes del cumpleaños', 'Recordatorios de calendario']}
             />
 
             <ConfirmDestructiveModal

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { useRouter, Link } from 'expo-router';
 import { createUserWithEmailAndPassword, sendEmailVerification, User } from 'firebase/auth';
 import { doc, writeBatch, serverTimestamp, Timestamp } from 'firebase/firestore';
-import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import { DatePickerSheet } from '../src/components/DatePickerSheet';
 import { formatDate } from '../src/services/dateFormat';
 import { auth, db } from '../src/config/firebaseConfig';
 import { themes, spacing, radii, FontFamilies } from '../src/config/theme';
@@ -150,24 +150,21 @@ const Register: React.FC = () => {
                             {birthDate ? formatDate(birthDate) : 'dd/mm/aaaa'}
                         </Text>
                         <Ionicons name="calendar-outline" size={20} color={theme.textFaint} />
+                        {/* En web esto es la capa transparente que abre el
+                            selector del navegador; en nativo no dibuja nada. */}
+                        <DatePickerSheet
+                            isVisible={isBirthPickerVisible}
+                            date={birthDate ?? new Date(1995, 0, 1)}
+                            maximumDate={new Date()}
+                            onConfirm={(date) => { setBirthDate(date); setIsBirthPickerVisible(false); }}
+                            onCancel={() => setIsBirthPickerVisible(false)}
+                        />
                     </TouchableOpacity>
                     <Text style={styles.fieldHint}>
                         Para avisarle a tu pareja de tu cumpleaños.
                     </Text>
                 </View>
 
-                <DateTimePickerModal
-                    isVisible={isBirthPickerVisible}
-                    mode="date"
-                    date={birthDate ?? new Date(1995, 0, 1)}
-                    // Nadie nace mañana; el selector no deja elegir el futuro.
-                    maximumDate={new Date()}
-                    onConfirm={(date) => { setBirthDate(date); setIsBirthPickerVisible(false); }}
-                    onCancel={() => setIsBirthPickerVisible(false)}
-                    locale="es_ES"
-                    confirmTextIOS="Confirmar"
-                    cancelTextIOS="Cancelar"
-                />
                 <TextField
                     label="Email"
                     value={email}
