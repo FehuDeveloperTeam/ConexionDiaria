@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, TouchableOpacity } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { radii, spacing } from '../../src/config/theme';
 import { useTheme } from '../../src/contexts/themeContext';
@@ -97,6 +97,7 @@ const RAIL_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 function DesktopTabRail({ state, descriptors, navigation }: BottomTabBarProps) {
     const { theme, borderStyle, fontFamilies } = useTheme();
     const { userData, partnerData, plan } = usePlan();
+    const router = useRouter();
     const railBorderColor = borderStyle.key !== 'default' ? borderStyle.borderColor : theme.borderSoft;
     const activeBg = borderStyle.key !== 'default' ? borderStyle.background : theme.primaryTint;
 
@@ -133,13 +134,17 @@ function DesktopTabRail({ state, descriptors, navigation }: BottomTabBarProps) {
 
             <View style={{ flex: 1 }} />
 
-            {/* Tarjeta de pareja */}
+            {/* Tarjeta de pareja — al tocarla se abre su ficha (Sprint 9.12) */}
             {userData?.partnerId && partnerData && (
-                <View style={{
-                    flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
-                    padding: spacing.s12, borderRadius: radii.field,
-                    backgroundColor: theme.surfaceAlt, marginBottom: spacing.s10,
-                }}>
+                <TouchableOpacity
+                    onPress={() => router.push('/partner')}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Ver la ficha de ${partnerData.displayName ?? 'tu pareja'}`}
+                    style={{
+                        flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
+                        padding: spacing.s12, borderRadius: radii.field,
+                        backgroundColor: theme.surfaceAlt, marginBottom: spacing.s10,
+                    }}>
                     <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
                         <Text style={{ color: theme.white, fontFamily: fontFamilies.bodyBold, fontSize: 13 }}>
                             {partnerData.displayName?.charAt(0).toUpperCase() || '?'}
@@ -148,7 +153,8 @@ function DesktopTabRail({ state, descriptors, navigation }: BottomTabBarProps) {
                     <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 13, color: theme.text, flexShrink: 1 }} numberOfLines={1}>
                         {partnerData.displayName}
                     </Text>
-                </View>
+                    <Ionicons name="chevron-forward" size={15} color={theme.textFaint} />
+                </TouchableOpacity>
             )}
 
             {/* Tarjeta de plan */}

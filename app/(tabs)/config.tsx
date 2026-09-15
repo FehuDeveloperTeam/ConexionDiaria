@@ -440,8 +440,19 @@ const ConfigScreen: React.FC = () => {
                     {/* Sprint 9.11: desde el registro es obligatoria, pero las
                         cuentas anteriores la traen vacía y necesitan un lugar
                         donde completarla. */}
+                    {/* Sprint 9.12: en escritorio se llega tocando a la pareja
+                        en el riel; acá para que también exista en el teléfono. */}
+                    {userData?.partnerId && (
+                        <PrefRow
+                            icon="person-circle-outline"
+                            label="Ficha de la pareja"
+                            subcopy="Tallas, gustos y notas que solo ves tú"
+                            onPress={() => plan === 'premium' ? router.push('/partner') : setIsPaywallVisible(true)}
+                            right={plan === 'free' ? <PremiumBadge /> : <Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
+                        />
+                    )}
                     <PrefRow
-                        icon="gift-outline"
+                        icon="balloon-outline"
                         label="Fecha de nacimiento"
                         subcopy={birthDate ? formatDate(birthDate) : 'Sin definir · tu pareja no verá tu cumpleaños'}
                         onPress={() => setIsBirthPickerVisible(true)}
