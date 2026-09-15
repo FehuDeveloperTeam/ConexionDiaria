@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Audio } from 'expo-av';
+import { Audio, AVPlaybackStatus } from 'expo-av';
 import { User as FirebaseUser } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
@@ -7,20 +7,37 @@ import { db } from '../../../config/firebaseConfig';
 import { ExtendedMessage } from '../types';
 
 // Reproducción de notas de voz recibidas: config del modo de audio y
-// control de reproducción (play/pause/progreso/marcar escuchado). La
+// control de reproducción (play/pausa/progreso/marcar escuchado). La
 // duración de cada audio no se mide acá — viaja en 'message.audioDuration',
 // grabada por useAudioRecording al terminar de grabar.
+//
+// Sprint 9.1 — el sonido activo vive en refs, no en estado. Antes estaba en
+// un useState, así que 'toggleAudioPlayback' decidía con un valor que React
+// todavía no había aplicado: tocar un audio mientras otro seguía cargando
+// dejaba al primero sin detener y sonaban los dos a la vez. Un ref se lee y
+// se escribe en el momento, que es lo que necesita algo que solo admite una
+// reproducción a la vez.
 export function useAudioPlayback(
     currentUser: FirebaseUser | null,
     partnerId: string | null | undefined
 ) {
-    const [currentSound, setCurrentSound] = useState<Audio.Sound | null>(null);
+    // 'currentlyPlayingId' es solo lo que está SONANDO: al pausar vuelve a
+    // null para que el botón muestre play de nuevo, mientras el progreso se
+    // conserva para poder retomar donde quedó.
     const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
     const [audioProgress, setAudioProgress] = useState<{ [key: string]: number }>({});
     const [audioDurations, setAudioDurations] = useState<{ [key: string]: number }>({});
     const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
-    const notificationSoundRef = useRef<Audio.Sound | null>(null);
-    const completionSoundRef = useRef<Audio.Sound | null>(null);
+
+    const soundRef = useRef<Audio.Sound | null>(null);
+    const loadedIdRef = useRef<string | null>(null);
+    // Cada intento de reproducción se lleva un número. Si mientras uno carga
+    // el usuario toca otro audio, el que llega tarde ve que su número quedó
+    // obsoleto, se descarga y no suena.
+    const playTokenRef = useRef(0);
+
+    const startCueRef = useRef<Audio.Sound | null>(null);
+    const endCueRef = useRef<Audio.Sound | null>(null);
 
     // Configurar audio al montar el componente
     useEffect(() => {
@@ -35,79 +52,86 @@ export function useAudioPlayback(
                     interruptionModeIOS: 1,
                     interruptionModeAndroid: 1,
                 });
-
-                // Cargar sonidos de notificación (opcional - comentado si no tienes los archivos)
-                try {
-                    const { sound: notifSound } = await Audio.Sound.createAsync(
-                        require('../../../../assets/sounds/notification.mp3'),
-                        { shouldPlay: false }
-                    );
-                    notificationSoundRef.current = notifSound;
-                } catch {
-                    console.log('Archivo notification.mp3 no encontrado - continuando sin sonido');
-                }
-
-                try {
-                    const { sound: completeSound } = await Audio.Sound.createAsync(
-                        require('../../../../assets/sounds/complete.mp3'),
-                        { shouldPlay: false }
-                    );
-                    completionSoundRef.current = completeSound;
-                } catch {
-                    console.log('Archivo complete.mp3 no encontrado - continuando sin sonido');
-                }
-
             } catch (error) {
                 console.error('Error configurando audio:', error);
+            }
+
+            // Avisos de inicio y término. Si falta el archivo se sigue sin
+            // aviso: no vale la pena romper la reproducción por esto.
+            try {
+                const { sound } = await Audio.Sound.createAsync(
+                    require('../../../../assets/sounds/notification.mp3'),
+                    { shouldPlay: false }
+                );
+                startCueRef.current = sound;
+            } catch {
+                console.log('notification.mp3 no disponible — se reproduce sin aviso de inicio');
+            }
+
+            try {
+                const { sound } = await Audio.Sound.createAsync(
+                    require('../../../../assets/sounds/complete.mp3'),
+                    { shouldPlay: false }
+                );
+                endCueRef.current = sound;
+            } catch {
+                console.log('complete.mp3 no disponible — se reproduce sin aviso de término');
             }
         };
 
         configureAudio();
 
         return () => {
-            // Limpiar sonidos al desmontar
-            if (notificationSoundRef.current) {
-                notificationSoundRef.current.unloadAsync();
-            }
-            if (completionSoundRef.current) {
-                completionSoundRef.current.unloadAsync();
-            }
+            startCueRef.current?.unloadAsync().catch(() => {});
+            endCueRef.current?.unloadAsync().catch(() => {});
         };
     }, []);
 
-    // Función para detener el audio actual
-    const stopCurrentAudio = async () => {
-        if (currentSound) {
-            try {
-                console.log('⏹️ Deteniendo audio actual');
-                await currentSound.stopAsync();
-                await currentSound.unloadAsync();
-            } catch (error) {
-                console.error('Error deteniendo audio:', error);
-            }
+    // Los avisos se cargan una vez y se rebobinan en cada uso: 'replayAsync'
+    // vuelve al inicio y reproduce, así suena igual la segunda vez.
+    const playCue = async (cue: Audio.Sound | null) => {
+        if (!cue) return;
+        try {
+            await cue.replayAsync();
+        } catch {
+            // Un aviso que falla nunca debe impedir escuchar la nota de voz.
         }
-        setCurrentSound(null);
-        setCurrentlyPlayingId(null);
     };
 
-    // Callback SIMPLIFICADO para actualización de estado de reproducción
-    const onPlaybackStatusUpdate = (messageId: string, status: any) => {
-        if (status.isLoaded) {
-            if (status.isPlaying && status.durationMillis) {
-                const progress = status.positionMillis / status.durationMillis;
-                setAudioProgress(prev => ({ ...prev, [messageId]: progress }));
-            }
+    // Suelta el sonido activo. Limpia los refs ANTES de esperar, para que
+    // cualquier toque que llegue mientras tanto ya lo vea liberado.
+    const releaseActiveSound = async () => {
+        const sound = soundRef.current;
+        soundRef.current = null;
+        loadedIdRef.current = null;
+        if (!sound) return;
+        try {
+            await sound.unloadAsync();
+        } catch {
+            // Ya estaba descargado.
+        }
+    };
 
-            // Si el audio terminó
-            if (status.didJustFinish) {
-                console.log('🏁 Audio terminado:', messageId);
-                setCurrentSound(null);
-                setCurrentlyPlayingId(null);
-                setAudioProgress(prev => {
-                    const { [messageId]: _, ...rest } = prev;
-                    return rest;
-                });
-            }
+    const handleStatus = (messageId: string, token: number, status: AVPlaybackStatus) => {
+        // Estado de una carga que ya fue reemplazada por otra.
+        if (token !== playTokenRef.current) return;
+        if (!status.isLoaded) return;
+
+        if (status.durationMillis) {
+            setAudioProgress(prev => ({
+                ...prev,
+                [messageId]: status.positionMillis / status.durationMillis!,
+            }));
+        }
+
+        if (status.didJustFinish) {
+            playCue(endCueRef.current);
+            releaseActiveSound();
+            setCurrentlyPlayingId(null);
+            setAudioProgress(prev => {
+                const { [messageId]: _unused, ...rest } = prev;
+                return rest;
+            });
         }
     };
 
@@ -127,61 +151,73 @@ export function useAudioPlayback(
         }
     };
 
-    // Función SIMPLIFICADA para reproducir audio (sin cola)
     const playAudio = async (message: ExtendedMessage) => {
         const messageId = message._id.toString();
-        const audioUrl = message.audio!;
+        const token = ++playTokenRef.current;
 
         try {
-            console.log('🎬 Reproduciendo audio:', messageId);
             setIsLoadingAudio(messageId);
+            await releaseActiveSound();
+            setCurrentlyPlayingId(null);
+            // Se descargó el sonido anterior, así que ese audio vuelve a
+            // empezar de cero: la barra tiene que decir lo mismo.
+            setAudioProgress(prev => ({ ...prev, [messageId]: 0 }));
 
-            // Detener cualquier audio que esté reproduciéndose
-            await stopCurrentAudio();
+            try {
+                await Audio.setAudioModeAsync({
+                    allowsRecordingIOS: false,
+                    playsInSilentModeIOS: true,
+                    staysActiveInBackground: false,
+                    shouldDuckAndroid: false,
+                    playThroughEarpieceAndroid: false,
+                    interruptionModeIOS: 1,
+                    interruptionModeAndroid: 1,
+                });
+            } catch {
+                // En web esta llamada no siempre aplica; no debe impedir oír el audio.
+            }
 
-            // Configuración para ALTAVOZ
-            await Audio.setAudioModeAsync({
-                allowsRecordingIOS: false,
-                playsInSilentModeIOS: true,
-                staysActiveInBackground: false,
-                shouldDuckAndroid: false,
-                playThroughEarpieceAndroid: false,
-                interruptionModeIOS: 1,
-                interruptionModeAndroid: 1,
-            });
-
-            // Crear y reproducir audio
+            // Se carga en pausa y se arranca más abajo, ya con el estado
+            // puesto. Antes nacía sonando y el botón recién se enteraba
+            // después de varios await, por eso no alcanzaba a mostrar pausa.
             const { sound } = await Audio.Sound.createAsync(
-                { uri: audioUrl },
-                { shouldPlay: true }, // Reproducir inmediatamente
-                (status) => onPlaybackStatusUpdate(messageId, status)
+                { uri: message.audio! },
+                { shouldPlay: false },
+                (status) => handleStatus(messageId, token, status)
             );
+
+            if (token !== playTokenRef.current) {
+                await sound.unloadAsync().catch(() => {});
+                return;
+            }
+
+            soundRef.current = sound;
+            loadedIdRef.current = messageId;
 
             // Duración de respaldo, solo para mensajes viejos que no tengan
             // 'audioDuration' guardado desde la grabación.
             if (!message.audioDuration && !audioDurations[messageId]) {
                 const status = await sound.getStatusAsync();
                 if (status.isLoaded && status.durationMillis) {
-                    console.log('✅ Duración (respaldo):', status.durationMillis);
                     setAudioDurations(prev => ({
                         ...prev,
-                        [messageId]: status.durationMillis!
+                        [messageId]: status.durationMillis!,
                     }));
                 }
             }
 
-            setCurrentSound(sound);
             setCurrentlyPlayingId(messageId);
             setIsLoadingAudio(null);
 
-            console.log('✅ Audio reproduciéndose');
+            await playCue(startCueRef.current);
+            await sound.playAsync();
 
             if (currentUser && message.user._id !== currentUser.uid && !message.audioPlayed) {
                 markAudioPlayed(messageId);
             }
-
         } catch (error) {
-            console.error('❌ Error reproduciendo audio:', error);
+            console.error('Error reproduciendo audio:', error);
+            await releaseActiveSound();
             setIsLoadingAudio(null);
             setCurrentlyPlayingId(null);
             Toast.show({
@@ -192,26 +228,44 @@ export function useAudioPlayback(
         }
     };
 
-    // Función SIMPLE para pausar/reanudar audio
     const toggleAudioPlayback = async (message: ExtendedMessage) => {
         const messageId = message._id.toString();
-        console.log('🎮 Toggle audio:', messageId, 'currentlyPlaying:', currentlyPlayingId);
 
-        // Si este audio está reproduciéndose, PAUSARLO
-        if (currentlyPlayingId === messageId) {
-            console.log('⏸️ Pausando audio');
-            await stopCurrentAudio();
-        } else {
-            // Si no está reproduciéndose, REPRODUCIRLO (detendrá cualquier otro primero)
-            console.log('▶️ Reproduciendo audio');
-            await playAudio(message);
+        // Está sonando este mismo: pausar sin perder la posición.
+        if (currentlyPlayingId === messageId && soundRef.current) {
+            try {
+                await soundRef.current.pauseAsync();
+                setCurrentlyPlayingId(null);
+            } catch (error) {
+                console.error('Error pausando audio:', error);
+            }
+            return;
         }
+
+        // Sigue cargado pero pausado: retomar donde quedó.
+        if (loadedIdRef.current === messageId && soundRef.current) {
+            try {
+                await soundRef.current.playAsync();
+                setCurrentlyPlayingId(messageId);
+                return;
+            } catch {
+                // Si no se pudo retomar, se recarga desde cero más abajo.
+            }
+        }
+
+        await playAudio(message);
     };
 
-    // Limpiar audio al desmontar
+    // Al desmontar se suelta lo que esté sonando. Se trabaja sobre los refs
+    // en vez de llamar a una función del cuerpo del hook, así el efecto no
+    // depende de nada que cambie entre renders.
     useEffect(() => {
         return () => {
-            stopCurrentAudio();
+            playTokenRef.current += 1;
+            const sound = soundRef.current;
+            soundRef.current = null;
+            loadedIdRef.current = null;
+            sound?.unloadAsync().catch(() => {});
         };
     }, []);
 
@@ -228,7 +282,6 @@ export function useAudioPlayback(
         audioProgress,
         audioDurations,
         isLoadingAudio,
-        stopCurrentAudio,
         toggleAudioPlayback,
         formatAudioDuration,
     };
