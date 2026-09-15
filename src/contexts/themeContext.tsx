@@ -84,6 +84,75 @@ export const PREMIUM_BORDER_OPTIONS: PremiumBorderOption[] = [
     { key: 'heartBorder10', name: 'Coral pastel', background: '#FFEFEC', borderColor: '#F5A99A', borderWidth: 2, borderRadius: 18, textColor: '#7C2E1D' },
 ];
 
+// --- Garantía de legibilidad del tema premium ---
+//
+// Los diez estilos de arriba se diseñaron para modo claro: todos tienen fondo
+// pastel y un textColor oscuro. Ese color se aplicaba igual en modo oscuro,
+// así que quedaba texto oscuro sobre fondo oscuro y desaparecían los números
+// del calendario, los títulos de las tareas y el cuerpo de las notas — todo
+// lo que se pinta con 'theme.text'.
+//
+// En vez de corregirlo pantalla por pantalla, el color elegido se acepta solo
+// si de verdad se lee sobre el fondo que quedó. Si no, se usa el del tema
+// base. Así la personalización sigue mandando cuando funciona, y nunca puede
+// dejar la app ilegible.
+const parseHex = (color: string): [number, number, number] | null => {
+    const match = /^#?([0-9a-f]{6})$/i.exec(color.trim());
+    if (!match) return null;
+    const value = parseInt(match[1], 16);
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+};
+
+// Luminancia relativa de la WCAG.
+const luminance = (rgb: [number, number, number]) => {
+    const [r, g, b] = rgb.map(channel => {
+        const c = channel / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+
+const contrastRatio = (a: string, b: string): number | null => {
+    const rgbA = parseHex(a);
+    const rgbB = parseHex(b);
+    if (!rgbA || !rgbB) return null;
+    const lumA = luminance(rgbA);
+    const lumB = luminance(rgbB);
+    const lighter = Math.max(lumA, lumB);
+    const darker = Math.min(lumA, lumB);
+    return (lighter + 0.05) / (darker + 0.05);
+};
+
+// 4.5 es el mínimo que la WCAG pide para texto normal.
+const MIN_CONTRAST = 4.5;
+
+// ¿Este fondo pertenece al modo en curso? Los diez estilos premium son todos
+// pastel, así que ninguno calza en oscuro; un color guardado por la pareja
+// desde el probador puede ser cualquiera de los dos.
+const suitsScheme = (background: string, scheme: 'light' | 'dark'): boolean => {
+    const rgb = parseHex(background);
+    if (!rgb) return true; // Sin poder medirlo, se respeta lo elegido.
+    const isLight = luminance(rgb) > 0.5;
+    return scheme === 'light' ? isLight : !isLight;
+};
+
+const readableTextOn = (background: string, preferred: string, fallback: string): string => {
+    const preferredRatio = contrastRatio(background, preferred);
+    // Si alguno no es un hex reconocible no hay nada que comparar; se respeta
+    // lo elegido antes que inventar un color.
+    if (preferredRatio === null) return preferred;
+    if (preferredRatio >= MIN_CONTRAST) return preferred;
+
+    const fallbackRatio = contrastRatio(background, fallback) ?? 0;
+    if (fallbackRatio >= MIN_CONTRAST) return fallback;
+
+    // Ni lo elegido ni el tema base sirven sobre ese fondo: se toma el
+    // extremo que más contraste dé, que siempre supera el mínimo.
+    const whiteRatio = contrastRatio(background, '#FFFFFF') ?? 0;
+    const blackRatio = contrastRatio(background, '#1E1E1E') ?? 0;
+    return whiteRatio >= blackRatio ? '#FFFFFF' : '#1E1E1E';
+};
+
 const DEFAULT_BORDER_OPTION = (baseBorderColor: string): PremiumBorderOption => ({
     key: 'default',
     name: 'Predeterminado',
@@ -143,8 +212,21 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         const baseTheme = themes[colorScheme];
         if (plan !== 'premium') return baseTheme;
 
-        const bg = settings.backgroundColor || (borderStyle.key !== 'default' ? borderStyle.background : undefined) || baseTheme.bg;
-        const text = settings.fontColor || (borderStyle.key !== 'default' ? borderStyle.textColor : undefined) || baseTheme.text;
+        const chosenBg = settings.backgroundColor || (borderStyle.key !== 'default' ? borderStyle.background : undefined);
+        const chosenText = settings.fontColor || (borderStyle.key !== 'default' ? borderStyle.textColor : undefined);
+
+        // El fondo elegido solo se aplica si pertenece al modo en curso. El
+        // resto de la paleta —tarjetas, divisores, texto atenuado— la sigue
+        // poniendo el tema base, así que un fondo claro dentro del modo
+        // oscuro dejaría tarjetas oscuras sobre página clara, y al revés.
+        // Cuando no calza, manda el tema base y la personalización se nota
+        // igual en el borde, que sí funciona en ambos modos.
+        const bg = chosenBg && suitsScheme(chosenBg, colorScheme) ? chosenBg : baseTheme.bg;
+
+        // Y el texto, además, solo se respeta si de verdad se lee sobre ese
+        // fondo (ver readableTextOn): sin esto, un color pensado para claro
+        // hacía desaparecer el contenido al pasar a oscuro.
+        const text = readableTextOn(bg, chosenText || baseTheme.text, baseTheme.text);
 
         return { ...baseTheme, bg, background: bg, text };
     }, [plan, settings, colorScheme, borderStyle]);
