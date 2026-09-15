@@ -22,27 +22,34 @@ con 22 rutas) y pusheadas a `claude/conexiondiaria-app-review-o9tn7y`.
 | 9.5 | Hero centrado y bloque "Lo próximo" en Inicio | `de837bf` |
 | 9.6 | El carril derecho del chat se puede plegar | `059050c` |
 | 9.7 | Archivo de Deseos: lo regalado deja de ocupar cupo | `1edd880` |
+| 9.8 | Archivo y tope de Notas, con archivado manual | `6b9d194` |
 
 De paso, el lint bajó de 4 a 3 warnings en 9.1 (nueva línea base) y se
 retiró de `chat.tsx` el cableado del visor de video, que era inalcanzable.
 
-### Bifurcación pendiente en 9.8
+### Decidido en 9.8
 
-El plan dice que Notas usa "el mismo mecanismo que 9.7", pero el mecanismo
-no se traslada solo: un deseo tiene estado de cumplido (`isCompleted`, el
-"regalado") y una nota no tiene ningún equivalente. Sin un estado que saque
-la nota de la lista activa, un tope de diez obliga a borrar para escribir
-otra, que es justo la dinámica que el archivo venía a evitar.
+Se resolvió con **archivado manual**: una nota no tiene estado de cumplida
+como el "regalado" de un deseo, así que archivar es una acción explícita.
+Lo archivado no ocupa cupo, de modo que nadie necesita borrar para escribir.
 
-Opciones, en orden de preferencia:
+### A decidir antes de 9.9
 
-1. **Archivar a mano** (recomendada): se agrega la acción "Archivar" a la
-   nota. Lo archivado no ocupa cupo y en free se ven los diez más recientes.
-   Mantiene el modelo coherente y le da a la nota un ciclo de vida propio.
-2. **Notas sin tope**: se deja el número libre y se monetiza por las notas
-   de voz (9.15). Más simple, pero deja a Notas fuera de la separación de
-   planes.
-3. Tope sin archivo: contradice lo acordado, no se recomienda.
+Los grupos de tareas son una entidad nueva, y ahí aparece un obstáculo: las
+reglas de Firestore solo contemplan las subcolecciones que ya existen
+(`notes`, `tasks`, `wishlist`, `events`…). Una subcolección nueva
+`taskGroups` quedaría denegada por defecto y **obligaría a desplegar reglas**,
+que es tu proyecto de Firebase y no algo que convenga hacer sin avisar.
+
+Opciones:
+
+1. **Grupo como campo de texto en la tarea** (recomendada): la tarea guarda
+   `group: 'Compras del finde'` y la lista de grupos se deduce de los valores
+   que existen. No agrega subcolección ni necesita desplegar reglas. La
+   limitación es que un grupo vacío no puede existir: al borrar su última
+   tarea, el grupo desaparece.
+2. **Subcolección `taskGroups`**: permite grupos vacíos y renombrarlos en un
+   solo lugar, pero exige escribir y desplegar reglas nuevas.
 
 ## Por qué la monetización va al final
 
