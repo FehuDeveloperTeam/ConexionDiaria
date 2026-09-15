@@ -107,6 +107,9 @@ function AppShell() {
                 <Stack.Screen name="register" />
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="theme-editor" />
+                {/* Panel del equipo — Sprint 10.1. Fuera del grupo de
+                    pestañas: no le corresponde el riel de la app. */}
+                <Stack.Screen name="admin" />
             </Stack>
 
             {/* Este componente decide si mostrar la carga o redirigir */}

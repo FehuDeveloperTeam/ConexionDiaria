@@ -169,6 +169,33 @@ service cloud.firestore {
       }
     }
 
+    // --- MÉTRICAS DEL PANEL ADMINISTRATIVO — Sprint 10.1 ---
+    //
+    // Acá NO hay datos de nadie: son totales agregados y una foto por día
+    // (cuántos mensajes, cuántas parejas activas). Aun así se cierran a
+    // administradores, porque son cifras de negocio.
+    //
+    // El permiso viaja en el token de Auth como un 'custom claim', no en una
+    // colección de Firestore: así se comprueba sin una lectura extra y ningún
+    // cliente puede dárselo a sí mismo escribiendo un documento.
+    //
+    // Escritura cerrada para todos, administradores incluidos: los escribe el
+    // servidor con Admin SDK, que no pasa por estas reglas. Un panel que
+    // pudiera editar sus propias métricas no mediría nada.
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.admin == true;
+    }
+
+    match /adminMetrics/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /adminDaily/{dateKey} {
+      allow read, list: if isAdmin();
+      allow write: if false;
+    }
+
     // --- REGLAS PARA LA COLECCIÓN 'appConfig' — Sprint 9.17 ---
     // Datos de configuración que la app necesita leer pero que ningún cliente
     // puede escribir. Hoy solo 'appConfig/founders', el contador de los 500

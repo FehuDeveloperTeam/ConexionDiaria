@@ -20,6 +20,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as logger from 'firebase-functions/logger';
 import { getFirestore } from 'firebase-admin/firestore';
+import { recordPairing } from './adminMetrics';
 
 interface PairWithCodeData {
   code?: unknown;
@@ -51,7 +52,7 @@ export const pairWithCode = onCall<PairWithCodeData>(async (request) => {
   const db = getFirestore();
   const codeRef = db.collection('invitationCodes').doc(code);
 
-  return db.runTransaction(async (tx) => {
+  const result = await db.runTransaction(async (tx) => {
     const codeSnap = await tx.get(codeRef);
     if (!codeSnap.exists) {
       throw new HttpsError('not-found', 'Ese código de invitación no existe.');
@@ -85,4 +86,10 @@ export const pairWithCode = onCall<PairWithCodeData>(async (request) => {
     logger.info(`pairWithCode: ${myUid} <-> ${partnerUid}`);
     return { partnerUid };
   });
+
+  // Sprint 10.1: se cuenta DESPUÉS de que la transacción se confirmó. Dentro
+  // de ella, un emparejamiento que termine fallando quedaría contado igual.
+  await recordPairing();
+
+  return result;
 });

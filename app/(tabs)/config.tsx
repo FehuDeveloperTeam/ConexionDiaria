@@ -16,6 +16,7 @@ import { doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { formatDate } from '../../src/services/dateFormat';
 import { countFilled, fieldsFor, normalizeMeasurements } from '../../src/config/measurements';
 import { usePricing } from '../../src/hooks/usePricing';
+import { useIsAdmin } from '../../src/hooks/useIsAdmin';
 import type { Gender } from '../../src/types/models';
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import * as ImagePicker from 'expo-image-picker';
@@ -172,6 +173,7 @@ const ConfigScreen: React.FC = () => {
     const { theme, isDarkMode, setDarkMode, fontFamilies, borderStyle } = useTheme();
     const { plan, user, userData, relationshipData, isLoading } = usePlan();
     const pricing = usePricing();
+    const { isAdmin } = useIsAdmin();
     const [period, setPeriod] = useState<'monthly' | 'annual'>('monthly');
 
     const [displayName, setDisplayName] = useState('');
@@ -596,6 +598,18 @@ const ConfigScreen: React.FC = () => {
                         label="Fecha de nacimiento"
                         subcopy={formatDate(birthDate ?? LEGACY_BIRTH_DATE)}
                     />
+                    {/* Sprint 10.1: solo existe para el equipo. Quien no
+                        tenga el permiso ni siquiera ve la fila, y aunque
+                        llegara a la ruta a mano, las reglas no le dan nada. */}
+                    {isAdmin && (
+                        <PrefRow
+                            icon="stats-chart-outline"
+                            label="Panel del equipo"
+                            subcopy="Métricas de Conexión Diaria"
+                            onPress={() => router.push('/admin')}
+                            right={<Ionicons name="chevron-forward" size={18} color={theme.textFaint} />}
+                        />
+                    )}
                     <PrefRow
                         icon="color-palette-outline"
                         label="Personalizar tema"

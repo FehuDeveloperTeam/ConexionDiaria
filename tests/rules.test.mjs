@@ -78,6 +78,10 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
         imageUrl: 'https://example.test/foto1.jpg', authorId: ALICE,
     });
 
+    // Métricas del panel, como las dejaría el servidor (Sprint 10.1).
+    await setDoc(doc(db, 'adminMetrics', 'summary'), { totalUsers: 12, totalCouples: 5, premiumUsers: 2 });
+    await setDoc(doc(db, 'adminDaily', '2026-09-14'), { date: '2026-09-14', messages: 48, activeUsers: 7 });
+
     // Contador de fundadores, como lo dejaría el webhook (Sprint 9.17).
     await setDoc(doc(db, 'appConfig', 'founders'), { claimed: 12, limit: 500 });
 
@@ -96,6 +100,10 @@ const alice = testEnv.authenticatedContext(ALICE);
 const bob = testEnv.authenticatedContext(BOB);
 const eve = testEnv.authenticatedContext(EVE);
 const solo = testEnv.authenticatedContext(SOLO);
+
+// El permiso de administrador viaja como custom claim en el token, no como un
+// documento: por eso se declara acá y no en la semilla de Firestore.
+const admin = testEnv.authenticatedContext('adminAAAAAAAAAAAAAAAAAAAAAA7', { admin: true });
 
 console.log('\nEmparejamiento (Firestore) — F-02');
 
@@ -480,6 +488,47 @@ await check(
     // pudiera tocarlo, el número dejaría de significar nada.
     'ATAQUE: nadie puede inflar a mano el contador de comentarios de la foto',
     assertFails(updateDoc(doc(alice.firestore(), 'relationships', REL, 'photos', 'foto1'), { commentCount: 99 }))
+);
+
+console.log('\nPanel administrativo (Firestore) — Sprint 10.1');
+
+await check(
+    'LEGÍTIMO: un administrador puede leer el resumen',
+    assertSucceeds(getDoc(doc(admin.firestore(), 'adminMetrics', 'summary')))
+);
+await check(
+    'LEGÍTIMO: un administrador puede listar los días',
+    assertSucceeds(getDocs(collection(admin.firestore(), 'adminDaily')))
+);
+await check(
+    'ATAQUE: un usuario cualquiera NO puede leer el resumen',
+    assertFails(getDoc(doc(alice.firestore(), 'adminMetrics', 'summary')))
+);
+await check(
+    'ATAQUE: un usuario cualquiera NO puede listar los días',
+    assertFails(getDocs(collection(eve.firestore(), 'adminDaily')))
+);
+await check(
+    // El claim no se puede autoasignar —lo pone el servidor en el token—,
+    // pero aunque alguien lo lograra, escribir sigue cerrado: un panel que
+    // pueda editar sus propias métricas no mide nada.
+    'ATAQUE: ni siquiera un administrador puede escribir las métricas',
+    assertFails(setDoc(doc(admin.firestore(), 'adminMetrics', 'summary'), { totalUsers: 9999 }))
+);
+await check(
+    'ATAQUE: un administrador tampoco puede tocar un día',
+    assertFails(updateDoc(doc(admin.firestore(), 'adminDaily', '2026-09-14'), { messages: 0 }))
+);
+await check(
+    // El panel es de números agregados. Ser administrador no da acceso a los
+    // datos de una pareja: para el soporte hay una función que devuelve cinco
+    // campos y nada más.
+    'ATAQUE: ser administrador NO abre los mensajes de una pareja',
+    assertFails(getDocs(collection(admin.firestore(), 'relationships', REL, 'messages')))
+);
+await check(
+    'ATAQUE: ser administrador NO abre el perfil de otra persona',
+    assertFails(getDoc(doc(admin.firestore(), 'users', ALICE)))
 );
 
 await testEnv.cleanup();

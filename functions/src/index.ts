@@ -31,6 +31,7 @@ import * as logger from 'firebase-functions/logger';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { timingSafeEqual } from 'crypto';
+import { recordPremiumGranted, recordPremiumRevoked } from './adminMetrics';
 
 initializeApp();
 const db = getFirestore();
@@ -41,6 +42,11 @@ export { onNewChatMessage, onNewMissYouPing } from './pushNotifications';
 // Emparejamiento con código verificado en el servidor (F-02) — ver
 // functions/src/pairing.ts.
 export { pairWithCode } from './pairing';
+
+// Panel administrativo (Sprint 10.1) — métricas agregadas y ficha de soporte.
+export {
+  onUserProfileCreated, aggregateDailyMetrics, adminLookupUser,
+} from './adminMetrics';
 
 // Reacciones y comentarios del álbum (Sprint 9.27) — contadores y avisos.
 export {
@@ -78,13 +84,13 @@ const DEFAULT_FOUNDER_LIMIT = 500;
 // El número se otorga UNA vez por cuenta. Quien ya lo tiene y vuelve a
 // suscribirse no consume otro cupo, y quien se da de baja no lo devuelve: el
 // cupo se gastó cuando pagó, y la cohorte fundadora no se recicla.
-async function grantPremium(uid: string): Promise<number | null> {
+async function grantPremium(uid: string): Promise<{ founderNumber: number | null; wasNew: boolean }> {
   const userRef = db.collection('users').doc(uid);
   const foundersRef = db.doc(FOUNDERS_DOC);
 
   return db.runTransaction(async (tx) => {
     const userSnap = await tx.get(userRef);
-    if (!userSnap.exists) return null;
+    if (!userSnap.exists) return { founderNumber: null, wasNew: false };
 
     const userData = userSnap.data() ?? {};
     const alreadyPremium = userData.plan === 'premium';
@@ -116,7 +122,7 @@ async function grantPremium(uid: string): Promise<number | null> {
       ...(founderNumber !== existingFounderNumber ? { founderNumber } : {}),
     });
 
-    return founderNumber;
+    return { founderNumber, wasNew: !alreadyPremium };
   });
 }
 
@@ -204,13 +210,18 @@ export const revenuecatWebhook = onRequest(
     }
 
     if (GRANTING_EVENTS.has(event.type)) {
-      const founderNumber = await grantPremium(uid);
+      const { founderNumber, wasNew } = await grantPremium(uid);
+      // Solo se cuenta el alta. Una renovación mensual no es un suscriptor
+      // nuevo, y contarla inflaría el número cada mes.
+      if (wasNew) await recordPremiumGranted();
       logger.info(
         `revenuecatWebhook: ${uid} -> premium (${event.type})`,
         founderNumber !== null ? { founderNumber } : { founder: false }
       );
     } else if (REVOKING_EVENTS.has(event.type)) {
+      const wasPremium = userSnap.data()?.plan === 'premium';
       await userRef.update({ plan: 'free', premiumSince: null });
+      if (wasPremium) await recordPremiumRevoked();
       logger.info(`revenuecatWebhook: ${uid} -> free (${event.type})`);
     } else {
       logger.info(`revenuecatWebhook: evento ${event.type} recibido, sin acción`, { uid });
