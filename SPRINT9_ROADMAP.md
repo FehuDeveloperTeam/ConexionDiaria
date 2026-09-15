@@ -52,6 +52,7 @@ Aquí se vuelve real la separación entre los planes.
 | 9.14 | Modo protección | Difuminado alto sobre las fotos del chat: solo siluetas, sin detalle reconocible. La foto se revela al abrir el modal. Premium. |
 | 9.15 | Notas de voz | Con las mismas reglas de cupo que las notas escritas. Premium. |
 | 9.16 | Deseos: categorías propias | En free las predeterminadas; en premium el usuario escribe las suyas. |
+| 9.23 | Video en chat y álbum | Agregado después de escribir el plan; por prioridad pertenece a esta fase, conserva el número alto para no renumerar el resto. Hoy no se puede enviar video: `useChatUploads` solo toma imágenes y el mensaje no tiene campo de video. Implica selector, subida, contabilidad de almacenamiento, miniatura y visor. El componente `VideoViewerModal` ya existe sin usar. Refuerza la separación de planes, porque el video es lo que de verdad llena los 100 MB del free. |
 
 ## Fase D — Monetización real
 
