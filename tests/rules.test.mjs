@@ -18,7 +18,7 @@ import {
     assertFails,
     assertSucceeds,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getBytes, deleteObject } from 'firebase/storage';
 
 const firestoreRules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
@@ -223,6 +223,36 @@ await check(
 await check(
     'LÍMITE: un avatar de 6 MB es rechazado (tope de 5 MB)',
     assertFails(uploadBytes(ref(alice.storage(), `avatars/${ALICE}/enorme.jpg`), new Uint8Array(6 * 1024 * 1024)))
+);
+
+// Subcolección nueva en el Sprint 9.9. Sin una regla propia habría quedado
+// denegada por defecto, así que estas pruebas cubren las dos caras: que la
+// pareja pueda organizar su agenda y que nadie más entre.
+console.log('\nGrupos de tareas (Firestore) — Sprint 9.9');
+
+await check(
+    'ATAQUE: Eve NO puede leer los grupos de tareas de otra pareja',
+    assertFails(getDocs(collection(eve.firestore(), 'relationships', REL, 'taskGroups')))
+);
+await check(
+    'ATAQUE: Eve NO puede crear un grupo en la relación de Alice y Bob',
+    assertFails(setDoc(doc(eve.firestore(), 'relationships', REL, 'taskGroups', 'infiltrado'), { name: 'Infiltrado' }))
+);
+await check(
+    'LEGÍTIMO: Alice sí puede crear un grupo en su relación',
+    assertSucceeds(setDoc(doc(alice.firestore(), 'relationships', REL, 'taskGroups', 'finde'), { name: 'Compras del finde', authorId: ALICE }))
+);
+await check(
+    'LEGÍTIMO: Bob sí puede leer los grupos que creó Alice',
+    assertSucceeds(getDoc(doc(bob.firestore(), 'relationships', REL, 'taskGroups', 'finde')))
+);
+await check(
+    'LEGÍTIMO: Bob sí puede renombrar un grupo creado por Alice (la agenda es compartida)',
+    assertSucceeds(updateDoc(doc(bob.firestore(), 'relationships', REL, 'taskGroups', 'finde'), { name: 'Compras' }))
+);
+await check(
+    'LEGÍTIMO: Bob sí puede borrar un grupo creado por Alice (borrarlo no borra tareas)',
+    assertSucceeds(deleteDoc(doc(bob.firestore(), 'relationships', REL, 'taskGroups', 'finde')))
 );
 
 await testEnv.cleanup();

@@ -3,7 +3,7 @@
 // el lenguaje visual del resto de la app.
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, TextInput, SectionList,
+    View, Text, TextInput, SectionList, ScrollView,
     KeyboardAvoidingView, Platform, TouchableOpacity, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,7 +11,7 @@ import { db } from '../../src/config/firebaseConfig';
 import { radii, spacing } from '../../src/config/theme';
 import {
     collection, addDoc, onSnapshot, query, orderBy, doc, limit,
-    DocumentData, serverTimestamp, updateDoc, deleteDoc,
+    DocumentData, serverTimestamp, updateDoc, deleteDoc, writeBatch,
 } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,15 +24,22 @@ import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
 import { ContextMenuRow } from '../../src/components/ContextMenuRow';
 import { RowActions } from '../../src/components/RowActions';
+import { PaywallSheet } from '../../src/components/PaywallSheet';
 import { useRouter } from 'expo-router';
 
 interface EditingTask { id: string; text: string; authorId: string; }
+
+// Sprint 9.9 — grupos de tareas. "General" no es un documento: es la ausencia
+// de grupo (groupId null), así que existe siempre, no se puede borrar y las
+// tareas que ya existían caen ahí solas. El plan free se queda justo con ese
+// grupo; crear más es premium.
+const FREE_GROUPS = 1;
 
 const TasksScreen: React.FC = () => {
     const { theme, isDarkMode: isDark, fontFamilies, borderStyle } = useTheme();
     const router = useRouter();
 
-    const { user, userData } = usePlan();
+    const { user, userData, plan } = usePlan();
     const [tasks, setTasks] = useState<DocumentData[]>([]);
     const [newTask, setNewTask] = useState('');
     const [loading, setLoading] = useState(true);
@@ -43,7 +50,40 @@ const TasksScreen: React.FC = () => {
     const [contextMenuTask, setContextMenuTask] = useState<DocumentData | null>(null);
     const [deletingTask, setDeletingTask] = useState<DocumentData | null>(null);
 
+    // null = grupo General (la ausencia de grupo).
+    const [groups, setGroups] = useState<DocumentData[]>([]);
+    const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+    const [isGroupModalVisible, setIsGroupModalVisible] = useState(false);
+    const [newGroupName, setNewGroupName] = useState('');
+    const [deletingGroup, setDeletingGroup] = useState<DocumentData | null>(null);
+    const [isPaywallVisible, setIsPaywallVisible] = useState(false);
+
     const partnerId = userData?.partnerId as string | undefined;
+
+    useEffect(() => {
+        if (!user || !partnerId) {
+            setGroups([]);
+            return;
+        }
+
+        const chatId = [user.uid, partnerId].sort().join('_');
+        const groupsRef = collection(db, 'relationships', chatId, 'taskGroups');
+        const q = query(groupsRef, orderBy('createdAt', 'asc'), limit(50));
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setGroups(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        }, (error) => { console.error('Error cargando grupos:', error); });
+
+        return () => unsubscribe();
+    }, [user, partnerId]);
+
+    // Si el grupo abierto desaparece (lo borró la pareja), se vuelve a General
+    // en vez de quedar mirando una lista vacía de algo que ya no existe.
+    useEffect(() => {
+        if (selectedGroupId && !groups.some(g => g.id === selectedGroupId)) {
+            setSelectedGroupId(null);
+        }
+    }, [groups, selectedGroupId]);
 
     useEffect(() => {
         if (!user || !partnerId) {
@@ -82,6 +122,8 @@ const TasksScreen: React.FC = () => {
                 completedBy: null,
                 completedByName: null,
                 completedAt: null,
+                // La tarea nace en el grupo que está abierto.
+                groupId: selectedGroupId,
             });
             setNewTask('');
             Toast.show({ type: 'success', text1: 'Tarea añadida' });
@@ -89,7 +131,64 @@ const TasksScreen: React.FC = () => {
             console.error("Error al añadir la tarea:", error);
             Toast.show({ type: 'error', text1: 'Error al guardar la tarea' });
         }
-    }, [newTask, userData, user]);
+    }, [newTask, userData, user, selectedGroupId]);
+
+    const openGroupModal = () => {
+        // General ya ocupa el único grupo del plan free, así que ahí no queda
+        // cupo para ninguno propio.
+        const customGroupsAllowed = plan === 'free' ? FREE_GROUPS - 1 : Infinity;
+        if (groups.length >= customGroupsAllowed) {
+            setIsPaywallVisible(true);
+            return;
+        }
+        setNewGroupName('');
+        setIsGroupModalVisible(true);
+    };
+
+    const handleCreateGroup = async () => {
+        const name = newGroupName.trim();
+        if (name === '' || !user || !userData?.partnerId) return;
+
+        const chatId = [user.uid, userData.partnerId].sort().join('_');
+        try {
+            const created = await addDoc(collection(db, 'relationships', chatId, 'taskGroups'), {
+                name,
+                authorId: user.uid,
+                createdAt: serverTimestamp(),
+            });
+            setIsGroupModalVisible(false);
+            setNewGroupName('');
+            setSelectedGroupId(created.id);
+            Toast.show({ type: 'success', text1: 'Grupo creado' });
+        } catch (error) {
+            console.error('Error creando el grupo:', error);
+            Toast.show({ type: 'error', text1: 'Error al crear el grupo' });
+        }
+    };
+
+    // Borrar un grupo NO borra sus tareas: vuelven a General. Se hace en un
+    // solo lote para que no queden tareas apuntando a un grupo inexistente si
+    // algo falla a mitad de camino.
+    const confirmDeleteGroup = async () => {
+        if (!deletingGroup || !user || !userData?.partnerId) return;
+
+        const chatId = [user.uid, userData.partnerId].sort().join('_');
+        try {
+            const batch = writeBatch(db);
+            tasks
+                .filter(t => t.groupId === deletingGroup.id)
+                .forEach(t => batch.update(doc(db, 'relationships', chatId, 'tasks', t.id), { groupId: null }));
+            batch.delete(doc(db, 'relationships', chatId, 'taskGroups', deletingGroup.id));
+            await batch.commit();
+
+            setSelectedGroupId(null);
+            Toast.show({ type: 'success', text1: 'Grupo eliminado', text2: 'Sus tareas volvieron a General' });
+        } catch (error) {
+            console.error('Error eliminando el grupo:', error);
+            Toast.show({ type: 'error', text1: 'Error al eliminar el grupo' });
+        }
+        setDeletingGroup(null);
+    };
 
     const handleToggleTask = async (taskId: string, currentStatus: boolean) => {
         if (!userData || !userData.partnerId || !user) return;
@@ -170,8 +269,12 @@ const TasksScreen: React.FC = () => {
         return <FullScreenLoader />;
     }
 
-    const pendingTasks = tasks.filter(t => !t.isCompleted);
-    const completedTasks = tasks.filter(t => t.isCompleted);
+    // Las tareas anteriores a esta sesión no traen 'groupId'; al llegar
+    // indefinido caen en General, así que no hace falta migrar nada.
+    const visibleTasks = tasks.filter(t => (t.groupId ?? null) === selectedGroupId);
+
+    const pendingTasks = visibleTasks.filter(t => !t.isCompleted);
+    const completedTasks = visibleTasks.filter(t => t.isCompleted);
     const todayStr = new Date().toDateString();
     const completedTodayCount = completedTasks.filter(
         t => t.completedAt?.toDate && t.completedAt.toDate().toDateString() === todayStr
@@ -194,6 +297,73 @@ const TasksScreen: React.FC = () => {
                         {pendingTasks.length} pendientes · {completedTodayCount} hechas hoy
                     </Text>
                 </View>
+
+                {/* Grupos — Sprint 9.9. flexGrow/flexShrink 0 porque en
+                    react-native-web todo ScrollView trae flexGrow:1, y en uno
+                    horizontal ese crecimiento va en vertical. */}
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ flexGrow: 0, flexShrink: 0 }}
+                    contentContainerStyle={{ paddingHorizontal: spacing.s22, gap: spacing.s8, paddingBottom: spacing.s12, alignItems: 'center' }}
+                >
+                    {[{ id: null as string | null, name: 'General' }, ...groups].map(group => {
+                        const active = selectedGroupId === group.id;
+                        return (
+                            <TouchableOpacity
+                                key={group.id ?? 'general'}
+                                onPress={() => setSelectedGroupId(group.id)}
+                                style={{
+                                    flexDirection: 'row', alignItems: 'center', gap: spacing.s6,
+                                    paddingHorizontal: spacing.s14, paddingVertical: spacing.s8,
+                                    borderRadius: radii.pill,
+                                    backgroundColor: active ? theme.primary : theme.surface,
+                                    borderWidth: active ? 0 : 1,
+                                    borderColor: theme.borderSoft,
+                                }}
+                            >
+                                <Text style={{
+                                    fontFamily: fontFamilies.bodyBold,
+                                    fontSize: 12,
+                                    color: active ? theme.white : theme.textMuted,
+                                }}>
+                                    {group.name}
+                                </Text>
+                                {/* La aspa solo en el grupo abierto: borrar el
+                                    grupo que estás mirando es lo único que se
+                                    puede querer, y General no se borra. */}
+                                {active && group.id && (
+                                    <TouchableOpacity
+                                        onPress={() => setDeletingGroup(groups.find(g => g.id === group.id) ?? null)}
+                                        hitSlop={8}
+                                    >
+                                        <Ionicons name="close-circle" size={15} color={theme.white} />
+                                    </TouchableOpacity>
+                                )}
+                            </TouchableOpacity>
+                        );
+                    })}
+
+                    <TouchableOpacity
+                        onPress={openGroupModal}
+                        style={{
+                            flexDirection: 'row', alignItems: 'center', gap: spacing.s6,
+                            paddingHorizontal: spacing.s14, paddingVertical: spacing.s8,
+                            borderRadius: radii.pill,
+                            backgroundColor: theme.primaryTint,
+                            borderWidth: 1, borderStyle: 'dashed', borderColor: theme.borderStrong,
+                        }}
+                    >
+                        <Ionicons
+                            name={plan === 'free' ? 'lock-closed' : 'add'}
+                            size={13}
+                            color={plan === 'free' ? theme.premium : theme.primary}
+                        />
+                        <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 12, color: theme.primary }}>
+                            Grupo
+                        </Text>
+                    </TouchableOpacity>
+                </ScrollView>
 
                 <SectionList
                     style={{ flex: 1 }}
@@ -410,6 +580,61 @@ const TasksScreen: React.FC = () => {
                 message="Se borrará para los dos y no se puede deshacer."
                 onConfirm={confirmDeleteTask}
                 onCancel={() => setDeletingTask(null)}
+            />
+
+            <ConfirmDestructiveModal
+                visible={!!deletingGroup}
+                title="Eliminar grupo"
+                message={deletingGroup ? `Se eliminará "${deletingGroup.name}". Sus tareas no se borran: vuelven a General.` : ''}
+                onConfirm={confirmDeleteGroup}
+                onCancel={() => setDeletingGroup(null)}
+            />
+
+            {/* Nuevo grupo */}
+            <Modal animationType="fade" transparent visible={isGroupModalVisible} onRequestClose={() => setIsGroupModalVisible(false)}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(24,22,46,0.5)', justifyContent: 'center', alignItems: 'center', padding: spacing.s20 }}>
+                    <View style={{ backgroundColor: theme.surface, borderRadius: radii.cardLg, padding: spacing.s22, width: '100%', maxWidth: 400, gap: spacing.s14 }}>
+                        <Text style={{ fontFamily: fontFamilies.display, fontSize: 23, color: theme.text }}>
+                            Nuevo grupo
+                        </Text>
+                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 13.5, color: theme.textMuted }}>
+                            Para separar la agenda: las compras del finde, los planes con los niños, lo de la casa.
+                        </Text>
+
+                        <TextInput
+                            style={{
+                                height: 50, borderWidth: 1, borderColor: theme.borderSoft, borderRadius: radii.field,
+                                paddingHorizontal: spacing.s16 - 1, color: theme.text, fontFamily: fontFamilies.body,
+                                fontSize: 15, backgroundColor: theme.inputBackground,
+                            }}
+                            placeholder="Ej. Compras del finde"
+                            placeholderTextColor={theme.textFaint}
+                            value={newGroupName}
+                            onChangeText={setNewGroupName}
+                            maxLength={40}
+                            autoFocus
+                        />
+
+                        <View style={{ flexDirection: 'row', gap: spacing.s10, marginTop: spacing.s4 }}>
+                            <View style={{ flex: 1 }}>
+                                <Button title="Cancelar" variant="outline" onPress={() => setIsGroupModalVisible(false)} />
+                            </View>
+                            <View style={{ flex: 1.3 }}>
+                                <Button title="Crear" onPress={handleCreateGroup} disabled={newGroupName.trim() === ''} />
+                            </View>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            <PaywallSheet
+                visible={isPaywallVisible}
+                onClose={() => setIsPaywallVisible(false)}
+                onUpgradePress={() => { setIsPaywallVisible(false); router.push('/(tabs)/config'); }}
+                icon="checkmark-done"
+                title="Separa la agenda por grupos"
+                description="El plan free mantiene todas las tareas juntas en General. Con Premium puedes crear los grupos que quieras."
+                benefits={['Grupos de tareas ilimitados', 'Las compras, los niños y la casa por separado', 'Notas y deseos sin tope']}
             />
         </SafeAreaView>
     );

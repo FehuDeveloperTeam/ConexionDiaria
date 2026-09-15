@@ -246,6 +246,17 @@ service cloud.firestore {
         allow delete: if isInRelationship(relationshipId) && isAuthorOfExistingData();
       }
 
+      // --- SUB-COLECCIÓN: Grupos de tareas ('taskGroups') — Sprint 9.9 ---
+      match /taskGroups/{groupId} {
+        // [Grupos] La agenda es compartida, así que los dos pueden leer,
+        // crear y renombrar grupos — mismo criterio que las tareas.
+        //
+        // Borrar también lo pueden los dos, a diferencia de una tarea: borrar
+        // un grupo no destruye nada, las tareas que tenía vuelven al grupo
+        // General. No hay motivo para que dependa de quién lo creó.
+        allow read, create, update, delete: if isInRelationship(relationshipId);
+      }
+
       // --- SUB-COLECCIÓN: Lista de Deseos ('wishlist') ---
       match /wishlist/{wishId} {
         // [Deseos] Cualquiera en la relación puede leer, crear y actualizar (marcar como "comprado")
