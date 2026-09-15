@@ -84,6 +84,8 @@ export interface UserDoc {
   notificationPrefs?: {
     newMessages?: boolean;
     missYou?: boolean;
+    // Sprint 9.27: reacciones y comentarios en las fotos del álbum.
+    albumActivity?: boolean;
   };
 }
 

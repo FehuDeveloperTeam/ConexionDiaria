@@ -28,7 +28,7 @@ interface ExpoPushMessage {
   data?: Record<string, unknown>;
 }
 
-const sendExpoPush = async (message: ExpoPushMessage): Promise<void> => {
+export const sendExpoPush = async (message: ExpoPushMessage): Promise<void> => {
   try {
     const response = await fetch(EXPO_PUSH_URL, {
       method: 'POST',
@@ -46,7 +46,7 @@ const sendExpoPush = async (message: ExpoPushMessage): Promise<void> => {
 
 // El id de la relación es 'uid1_uid2' (ordenados) — la pareja del autor es
 // el otro de los dos.
-const partnerUidFromRelationshipId = (relationshipId: string, authorUid: string): string | null => {
+export const partnerUidFromRelationshipId = (relationshipId: string, authorUid: string): string | null => {
   const [a, b] = relationshipId.split('_');
   if (a === authorUid) return b ?? null;
   if (b === authorUid) return a ?? null;
@@ -62,9 +62,11 @@ const partnerUidFromRelationshipId = (relationshipId: string, authorUid: string)
  * Las preferencias (notificationPrefs) sí siguen en el perfil: que la
  * pareja sepa si querés avisos no tiene ningún riesgo.
  */
-const getPushTargetIfAllowed = async (
+export type PushPrefKey = 'newMessages' | 'missYou' | 'albumActivity';
+
+export const getPushTargetIfAllowed = async (
   uid: string,
-  prefKey: 'newMessages' | 'missYou'
+  prefKey: PushPrefKey
 ): Promise<string | null> => {
   const db = getFirestore();
   const [userSnap, privateSnap] = await Promise.all([

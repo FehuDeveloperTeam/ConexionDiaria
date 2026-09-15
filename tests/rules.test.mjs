@@ -73,6 +73,11 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
     // la Cloud Function de contabilidad de Storage (F-04, F-05).
     await setDoc(doc(db, 'relationships', REL), { usedStorage: 1000 });
 
+    // Una foto del álbum, para las pruebas de reacciones y comentarios (9.27).
+    await setDoc(doc(db, 'relationships', REL, 'photos', 'foto1'), {
+        imageUrl: 'https://example.test/foto1.jpg', authorId: ALICE,
+    });
+
     // Contador de fundadores, como lo dejaría el webhook (Sprint 9.17).
     await setDoc(doc(db, 'appConfig', 'founders'), { claimed: 12, limit: 500 });
 
@@ -420,6 +425,61 @@ await check(
 await check(
     'LEGÍTIMO: Bob sí puede leer el video que subió Alice',
     assertSucceeds(getBytes(ref(bob.storage(), `relationships/${REL}/videos/clip.mp4`)))
+);
+
+console.log('\nReacciones y comentarios del álbum (Firestore) — Sprint 9.27');
+
+await check(
+    'LEGÍTIMO: Bob puede reaccionar a una foto de Alice',
+    assertSucceeds(setDoc(doc(bob.firestore(), 'relationships', REL, 'photos', 'foto1', 'reactions', BOB), { emoji: '❤️' }))
+);
+await check(
+    // El id del documento TIENE que ser el uid de quien escribe, así que
+    // reaccionar por el otro no es algo que la regla permita discutir.
+    'ATAQUE: Bob NO puede reaccionar en nombre de Alice',
+    assertFails(setDoc(doc(bob.firestore(), 'relationships', REL, 'photos', 'foto1', 'reactions', ALICE), { emoji: '❤️' }))
+);
+await check(
+    'ATAQUE: Bob NO puede borrar la reacción de Alice',
+    assertFails(deleteDoc(doc(bob.firestore(), 'relationships', REL, 'photos', 'foto1', 'reactions', ALICE)))
+);
+await check(
+    'LEGÍTIMO: Bob sí puede quitar la suya',
+    assertSucceeds(deleteDoc(doc(bob.firestore(), 'relationships', REL, 'photos', 'foto1', 'reactions', BOB)))
+);
+await check(
+    'LEGÍTIMO: Alice comenta su propia foto',
+    assertSucceeds(setDoc(doc(alice.firestore(), 'relationships', REL, 'photos', 'foto1', 'comments', 'c1'), {
+        text: 'Este día lo pasamos increíble', authorId: ALICE, authorName: 'Alice',
+    }))
+);
+await check(
+    'ATAQUE: Bob NO puede publicar un comentario firmado por Alice',
+    assertFails(setDoc(doc(bob.firestore(), 'relationships', REL, 'photos', 'foto1', 'comments', 'c2'), {
+        text: 'esto lo escribió Bob', authorId: ALICE, authorName: 'Alice',
+    }))
+);
+await check(
+    'ATAQUE: Bob NO puede editar el comentario de Alice',
+    assertFails(updateDoc(doc(bob.firestore(), 'relationships', REL, 'photos', 'foto1', 'comments', 'c1'), { text: 'cambiado' }))
+);
+await check(
+    'ATAQUE: Bob NO puede borrar el comentario de Alice',
+    assertFails(deleteDoc(doc(bob.firestore(), 'relationships', REL, 'photos', 'foto1', 'comments', 'c1')))
+);
+await check(
+    'LEGÍTIMO: Bob sí puede leer los comentarios de la foto',
+    assertSucceeds(getDocs(collection(bob.firestore(), 'relationships', REL, 'photos', 'foto1', 'comments')))
+);
+await check(
+    'ATAQUE: Eve NO puede leer los comentarios de una foto ajena',
+    assertFails(getDocs(collection(eve.firestore(), 'relationships', REL, 'photos', 'foto1', 'comments')))
+);
+await check(
+    // El contador lo escribe la Cloud Function con Admin SDK. Si el cliente
+    // pudiera tocarlo, el número dejaría de significar nada.
+    'ATAQUE: nadie puede inflar a mano el contador de comentarios de la foto',
+    assertFails(updateDoc(doc(alice.firestore(), 'relationships', REL, 'photos', 'foto1'), { commentCount: 99 }))
 );
 
 await testEnv.cleanup();

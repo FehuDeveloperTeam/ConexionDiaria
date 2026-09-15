@@ -305,7 +305,7 @@ const ConfigScreen: React.FC = () => {
         setIsSaving(false);
     }, [user, displayName]);
 
-    const handleToggleNotificationPref = useCallback(async (key: 'newMessages' | 'missYou', value: boolean) => {
+    const handleToggleNotificationPref = useCallback(async (key: 'newMessages' | 'missYou' | 'albumActivity', value: boolean) => {
         if (!user) return;
         try {
             await updateDoc(doc(db, 'users', user.uid), { [`notificationPrefs.${key}`]: value });
@@ -658,6 +658,18 @@ const ConfigScreen: React.FC = () => {
                                 onValueChange={(value) => handleToggleNotificationPref('missYou', value)}
                                 trackColor={{ false: theme.borderSoft, true: theme.primarySoft }}
                                 thumbColor={userData?.notificationPrefs?.missYou !== false ? theme.primary : theme.surface}
+                            />
+                        </View>
+
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.s8 }}>
+                            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 15, color: theme.text, flex: 1 }}>
+                                Reacciones y comentarios del álbum
+                            </Text>
+                            <Switch
+                                value={userData?.notificationPrefs?.albumActivity !== false}
+                                onValueChange={(value) => handleToggleNotificationPref('albumActivity', value)}
+                                trackColor={{ false: theme.borderSoft, true: theme.primarySoft }}
+                                thumbColor={userData?.notificationPrefs?.albumActivity !== false ? theme.primary : theme.surface}
                             />
                         </View>
 

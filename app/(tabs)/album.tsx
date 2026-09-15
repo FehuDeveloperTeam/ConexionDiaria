@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View, Text, ScrollView, useWindowDimensions,
     ActivityIndicator, Image, TouchableOpacity, Alert,
-    Modal,
+    Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, storage } from '../../src/config/firebaseConfig';
@@ -24,6 +24,7 @@ import { usePlan } from '../../src/contexts/planContext';
 import { useTheme } from '../../src/contexts/themeContext';
 import { EmptyState } from '../../src/components/EmptyState';
 import { memoryCandidates } from '../../src/services/memories';
+import { usePhotoActivity } from '../../src/hooks/usePhotoActivity';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
@@ -83,6 +84,9 @@ const AlbumScreen: React.FC = () => {
     const [viewerList, setViewerList] = useState<DocumentData[]>([]);
     const [viewerIndex, setViewerIndex] = useState<number | null>(null);
     const [memories, setMemories] = useState<{ label: string; photos: DocumentData[] }[]>([]);
+    const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+    const [commentDraft, setCommentDraft] = useState('');
+    const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
     const [viewerBoxSize, setViewerBoxSize] = useState({ width: 0, height: 0 });
     const [deletingPhoto, setDeletingPhoto] = useState<DocumentData | null>(null);
     const [isSharing, setIsSharing] = useState(false);
@@ -322,6 +326,16 @@ const AlbumScreen: React.FC = () => {
         return groups;
     }, [photos, uploadItems]);
 
+    // Sprint 9.27: solo se escucha la foto abierta. Un listener por cada foto
+    // del álbum serían 300 suscripciones para mirar nueve miniaturas.
+    //
+    // Va acá arriba y no junto al visor, que sería su lugar natural: más abajo
+    // ya pasaron los early return de "cargando" y "sin pareja", y un hook
+    // después de un return condicional rompe las reglas de hooks.
+    const relationshipId = user && partnerId ? [user.uid, partnerId].sort().join('_') : null;
+    const openPhotoId = viewerIndex !== null ? viewerList[viewerIndex]?.id ?? null : null;
+    const activity = usePhotoActivity(relationshipId, openPhotoId, user?.uid ?? null);
+
     // --- Renderizado ---
     if (loading) {
         return <FullScreenLoader />;
@@ -495,6 +509,39 @@ const AlbumScreen: React.FC = () => {
                                         style={{ width: CELL_SIZE, height: CELL_SIZE, borderRadius: 12, overflow: 'hidden' }}
                                     >
                                         <Image source={{ uri: photo.imageUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+
+                                        {/* Sprint 9.27: la señal de que acá pasó
+                                            algo. Sale de los contadores que deja
+                                            la Cloud Function en el propio
+                                            documento de la foto, que el grid ya
+                                            carga — leer las subcolecciones de
+                                            las 150 fotos costaría 300 consultas
+                                            para dibujar esto. */}
+                                        {(photo.reactionCount > 0 || photo.commentCount > 0) && (
+                                            <View style={{
+                                                position: 'absolute', left: 5, bottom: 5,
+                                                flexDirection: 'row', alignItems: 'center', gap: 6,
+                                                backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 8,
+                                                paddingHorizontal: 6, paddingVertical: 2.5,
+                                            }}>
+                                                {photo.reactionCount > 0 && (
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2.5 }}>
+                                                        <Ionicons name="heart" size={10} color={theme.affection} />
+                                                        <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 9.5, color: '#FFFFFF' }}>
+                                                            {photo.reactionCount}
+                                                        </Text>
+                                                    </View>
+                                                )}
+                                                {photo.commentCount > 0 && (
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2.5 }}>
+                                                        <Ionicons name="chatbubble" size={9} color="#FFFFFF" />
+                                                        <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 9.5, color: '#FFFFFF' }}>
+                                                            {photo.commentCount}
+                                                        </Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                        )}
                                     </TouchableOpacity>
                                 );
                             })}
@@ -528,12 +575,12 @@ const AlbumScreen: React.FC = () => {
             </DesktopContentWrap>
 
             {/* Visor full-screen */}
-            <Modal visible={viewerIndex !== null} transparent animationType="fade" onRequestClose={() => setViewerIndex(null)}>
+            <Modal visible={viewerIndex !== null} transparent animationType="fade" onRequestClose={() => { setIsCommentsOpen(false); setViewerIndex(null); }}>
                 <View style={{ flex: 1, backgroundColor: '#08080A' }}>
                     {currentPhoto && (
                         <>
                             <SafeAreaView edges={['top']} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.s16, paddingVertical: spacing.s10 }}>
-                                <TouchableOpacity onPress={() => setViewerIndex(null)} style={{ padding: spacing.s8 }}>
+                                <TouchableOpacity onPress={() => { setIsCommentsOpen(false); setViewerIndex(null); }} style={{ padding: spacing.s8 }}>
                                     <Ionicons name="close" size={26} color="#FFFFFF" />
                                 </TouchableOpacity>
                                 <Text style={{ flex: 1, textAlign: 'center', fontFamily: fontFamilies.bodySemiBold, fontSize: 12.5, color: '#FFFFFF' }}>
@@ -631,8 +678,39 @@ const AlbumScreen: React.FC = () => {
 
                             {/* Acciones */}
                             <SafeAreaView edges={['bottom']} style={{ flexDirection: 'row', justifyContent: 'space-evenly', paddingVertical: spacing.s12 }}>
-                                <TouchableOpacity onPress={() => Toast.show({ type: 'info', text1: 'Pellizca la imagen para hacer zoom' })}>
-                                    <Ionicons name="search" size={23} color="#FFFFFF" />
+                                {/* Sprint 9.27: el corazón va primero porque es la
+                                    acción que más se va a usar — un toque, sin
+                                    abrir nada. */}
+                                <TouchableOpacity
+                                    onPress={() => activity.toggleReaction()}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={activity.myReaction ? 'Quitar tu reacción' : 'Reaccionar a la foto'}
+                                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                                >
+                                    <Ionicons
+                                        name={activity.myReaction ? 'heart' : 'heart-outline'}
+                                        size={23}
+                                        color={activity.myReaction ? theme.affection : '#FFFFFF'}
+                                    />
+                                    {Object.keys(activity.reactions).length > 0 && (
+                                        <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 12.5, color: '#FFFFFF' }}>
+                                            {Object.keys(activity.reactions).length}
+                                        </Text>
+                                    )}
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    onPress={() => setIsCommentsOpen(true)}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Ver los comentarios de la foto"
+                                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                                >
+                                    <Ionicons name="chatbubble-outline" size={22} color="#FFFFFF" />
+                                    {activity.comments.length > 0 && (
+                                        <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 12.5, color: '#FFFFFF' }}>
+                                            {activity.comments.length}
+                                        </Text>
+                                    )}
                                 </TouchableOpacity>
                                 <TouchableOpacity onPress={() => handleDownload(currentPhoto)} disabled={isDownloading}>
                                     {isDownloading ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Ionicons name="download-outline" size={23} color="#FFFFFF" />}
@@ -646,10 +724,148 @@ const AlbumScreen: React.FC = () => {
                                     </TouchableOpacity>
                                 )}
                             </SafeAreaView>
+                            {/* Sprint 9.27: hoja de comentarios. Va como capa
+                                dentro de este modal y no como un segundo
+                                Modal: en Android los modales anidados no se
+                                llevan bien, y acá alcanza con una capa. */}
+                            {isCommentsOpen && (
+                                <KeyboardAvoidingView
+                                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                                    style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, justifyContent: 'flex-end' }}
+                                >
+                                    <TouchableOpacity
+                                        style={{ position: 'absolute', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.6)' }}
+                                        activeOpacity={1}
+                                        onPress={() => setIsCommentsOpen(false)}
+                                    />
+                                    <View style={{
+                                        maxHeight: '70%',
+                                        backgroundColor: theme.surface,
+                                        borderTopLeftRadius: radii.sheetTop,
+                                        borderTopRightRadius: radii.sheetTop,
+                                        paddingTop: spacing.s14,
+                                    }}>
+                                        <View style={{ alignSelf: 'center', width: 44, height: 4, borderRadius: 2, backgroundColor: theme.borderSoft, marginBottom: spacing.s12 }} />
+
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.s20, marginBottom: spacing.s10 }}>
+                                            <Text style={{ fontFamily: fontFamilies.display, fontSize: 20, color: theme.text, flex: 1 }}>
+                                                Comentarios
+                                            </Text>
+                                            <TouchableOpacity onPress={() => setIsCommentsOpen(false)} accessibilityRole="button" accessibilityLabel="Cerrar los comentarios">
+                                                <Ionicons name="close" size={22} color={theme.textMuted} />
+                                            </TouchableOpacity>
+                                        </View>
+
+                                        <ScrollView
+                                            style={{ flexGrow: 0 }}
+                                            contentContainerStyle={{ paddingHorizontal: spacing.s20, paddingBottom: spacing.s12, gap: spacing.s12 }}
+                                        >
+                                            {activity.comments.length === 0 ? (
+                                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 13.5, color: theme.textFaint, paddingVertical: spacing.s16, textAlign: 'center' }}>
+                                                    Nadie ha dicho nada de esta foto todavía.
+                                                </Text>
+                                            ) : activity.comments.map(comment => (
+                                                <View key={comment.id} style={{ flexDirection: 'row', gap: spacing.s10 }}>
+                                                    <View style={{
+                                                        width: 28, height: 28, borderRadius: 14, marginTop: 2,
+                                                        backgroundColor: comment.authorId === user.uid ? theme.primary : theme.affection,
+                                                        alignItems: 'center', justifyContent: 'center',
+                                                    }}>
+                                                        <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 12, color: theme.white }}>
+                                                            {(comment.authorName || '?').charAt(0).toUpperCase()}
+                                                        </Text>
+                                                    </View>
+                                                    <View style={{ flex: 1 }}>
+                                                        <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 12, color: theme.textMuted }}>
+                                                            {comment.authorId === user.uid ? 'Tú' : comment.authorName}
+                                                        </Text>
+                                                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 14, lineHeight: 20, color: theme.text }}>
+                                                            {comment.text}
+                                                        </Text>
+                                                    </View>
+                                                    {/* Solo lo propio, que es lo que
+                                                        además permite la regla. */}
+                                                    {comment.authorId === user.uid && (
+                                                        <TouchableOpacity
+                                                            onPress={() => setDeletingCommentId(comment.id)}
+                                                            accessibilityRole="button"
+                                                            accessibilityLabel="Borrar tu comentario"
+                                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                        >
+                                                            <Ionicons name="trash-outline" size={15} color={theme.textFaint} />
+                                                        </TouchableOpacity>
+                                                    )}
+                                                </View>
+                                            ))}
+                                        </ScrollView>
+
+                                        <SafeAreaView edges={['bottom']} style={{
+                                            flexDirection: 'row', alignItems: 'flex-end', gap: spacing.s8,
+                                            paddingHorizontal: spacing.s20, paddingTop: spacing.s10, paddingBottom: spacing.s10,
+                                            borderTopWidth: 1, borderTopColor: theme.divider,
+                                        }}>
+                                            <TextInput
+                                                style={{
+                                                    flex: 1, minHeight: 42, maxHeight: 110,
+                                                    paddingHorizontal: spacing.s14, paddingVertical: spacing.s10,
+                                                    borderWidth: 1, borderColor: theme.borderSoft, borderRadius: radii.field,
+                                                    backgroundColor: theme.inputBackground, color: theme.text,
+                                                    fontFamily: fontFamilies.body, fontSize: 14.5,
+                                                }}
+                                                value={commentDraft}
+                                                onChangeText={setCommentDraft}
+                                                placeholder="Escribe algo de esta foto…"
+                                                placeholderTextColor={theme.textFaint}
+                                                accessibilityLabel="Escribe un comentario"
+                                                multiline
+                                                maxLength={500}
+                                            />
+                                            <TouchableOpacity
+                                                onPress={async () => {
+                                                    const text = commentDraft;
+                                                    setCommentDraft('');
+                                                    try {
+                                                        await activity.addComment(text, userData.displayName || 'Tu pareja');
+                                                    } catch (error) {
+                                                        console.error('Error comentando la foto:', error);
+                                                        // Devolver lo escrito: perder el
+                                                        // comentario por un corte de red
+                                                        // es peor que el corte.
+                                                        setCommentDraft(text);
+                                                        Toast.show({ type: 'error', text1: 'No se pudo comentar' });
+                                                    }
+                                                }}
+                                                disabled={!commentDraft.trim()}
+                                                accessibilityRole="button"
+                                                accessibilityLabel="Enviar el comentario"
+                                                style={{
+                                                    width: 42, height: 42, borderRadius: 21,
+                                                    alignItems: 'center', justifyContent: 'center',
+                                                    backgroundColor: theme.primary,
+                                                    opacity: commentDraft.trim() ? 1 : 0.4,
+                                                }}
+                                            >
+                                                <Ionicons name="send" size={17} color={theme.white} />
+                                            </TouchableOpacity>
+                                        </SafeAreaView>
+                                    </View>
+                                </KeyboardAvoidingView>
+                            )}
                         </>
                     )}
                 </View>
             </Modal>
+
+            <ConfirmDestructiveModal
+                visible={!!deletingCommentId}
+                title="Borrar comentario"
+                message="Se borrará para los dos."
+                onConfirm={async () => {
+                    if (deletingCommentId) await activity.deleteComment(deletingCommentId);
+                    setDeletingCommentId(null);
+                }}
+                onCancel={() => setDeletingCommentId(null)}
+            />
 
             <ConfirmDestructiveModal
                 visible={!!deletingPhoto}

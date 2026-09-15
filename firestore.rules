@@ -257,7 +257,30 @@ service cloud.firestore {
         // [Álbum] Solo el autor puede eliminar su propia foto
         allow delete: if isInRelationship(relationshipId) && isAuthorOfExistingData();
 
-        allow update: if false; // No se pueden editar
+        // El documento de la foto no se edita desde el cliente. Los
+        // contadores de reacciones y comentarios que vive ahí (Sprint 9.27)
+        // los escribe la Cloud Function con Admin SDK, que no pasa por estas
+        // reglas — mismo criterio que 'usedStorage'. Si el cliente pudiera
+        // tocarlos, el número dejaría de significar nada.
+        allow update: if false;
+
+        // --- Reacciones a una foto — Sprint 9.27 ---
+        // Un documento por persona, con su uid de id. Esa forma es la que
+        // hace la regla inatacable: nadie puede reaccionar por el otro,
+        // porque el id del documento TIENE que ser el suyo.
+        match /reactions/{userId} {
+          allow read: if isInRelationship(relationshipId);
+          allow create, update, delete: if isInRelationship(relationshipId)
+            && userId == request.auth.uid;
+        }
+
+        // --- Comentarios de una foto — Sprint 9.27 ---
+        match /comments/{commentId} {
+          allow read: if isInRelationship(relationshipId);
+          allow create: if isInRelationship(relationshipId) && isAuthorOfNewData();
+          // Solo el autor edita o borra lo suyo, igual que en notas.
+          allow update, delete: if isInRelationship(relationshipId) && isAuthorOfExistingData();
+        }
       }
 
       // --- SUB-COLECCIÓN: Notas ('notes') ---

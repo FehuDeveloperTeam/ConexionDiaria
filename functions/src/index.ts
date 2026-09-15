@@ -42,6 +42,12 @@ export { onNewChatMessage, onNewMissYouPing } from './pushNotifications';
 // functions/src/pairing.ts.
 export { pairWithCode } from './pairing';
 
+// Reacciones y comentarios del álbum (Sprint 9.27) — contadores y avisos.
+export {
+  onPhotoCommentCreated, onPhotoCommentDeleted,
+  onPhotoReactionCreated, onPhotoReactionDeleted,
+} from './albumActivity';
+
 // Contabilidad de almacenamiento del plan gratuito (F-04, F-05) — ver
 // functions/src/storageAccounting.ts.
 export { onStorageObjectFinalized, onStorageObjectDeleted } from './storageAccounting';
