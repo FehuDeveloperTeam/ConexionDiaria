@@ -127,8 +127,14 @@ service cloud.firestore {
     // functions/src/storageAccounting.ts). Antes, el cliente lo incrementaba
     // él mismo tras cada subida, así que también podía ponerlo en 0 para
     // saltarse el tope del plan gratuito.
+    // Sprint 11.3: 'storageLimit' entra en la misma lista. Es el número que
+    // la regla de Storage usa para decidir si una subida cabe en el plan; si
+    // el cliente pudiera escribirlo, el cupo volvería a ser una sugerencia y
+    // todo el trabajo de moverlo al servidor no serviría de nada. Lo escribe
+    // functions/src/storageLimit.ts con Admin SDK.
     function touchesUsedStorage() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['usedStorage']);
+      return request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['usedStorage', 'storageLimit']);
     }
 
     // --- REGLAS PARA LA COLECCIÓN 'users' ---
@@ -248,7 +254,8 @@ service cloud.firestore {
       // Crear y actualizar: de los dos miembros, pero 'usedStorage' queda
       // fuera de su alcance en ambos casos (ver touchesUsedStorage() arriba).
       allow create: if isInRelationship(relationshipId)
-        && !('usedStorage' in request.resource.data);
+        && !('usedStorage' in request.resource.data)
+        && !('storageLimit' in request.resource.data);
       allow update: if isInRelationship(relationshipId) && !touchesUsedStorage();
 
       // Nada en la app borra este documento.

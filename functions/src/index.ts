@@ -43,6 +43,10 @@ export { onNewChatMessage, onNewMissYouPing } from './pushNotifications';
 // functions/src/pairing.ts.
 export { pairWithCode } from './pairing';
 
+// Tope de almacenamiento de la pareja (Sprint 11.3) — lo hace cumplir
+// storage.rules; acá solo se calcula. Ver functions/src/storageLimit.ts.
+export { onPlanOrPartnerChanged } from './storageLimit';
+
 // Recepción de errores del cliente (Sprint 11.1) — ver functions/src/errorLog.ts.
 export { reportClientError } from './errorLog';
 

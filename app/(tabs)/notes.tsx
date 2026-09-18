@@ -28,6 +28,7 @@ import { useAudioRecording } from '../../src/screens/chat/hooks/useAudioRecordin
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import * as Crypto from 'expo-crypto';
 import { useRouter } from 'expo-router';
+import { storageLimitFor } from '../../src/config/plans';
 
 interface EditingNote { id: string; text: string; }
 
@@ -173,7 +174,7 @@ const NotesScreen: React.FC = () => {
     } = useAudioRecording({
         plan,
         usedStorage: relationshipData?.usedStorage || 0,
-        maxStorage: plan === 'premium' ? 25 * 1024 * 1024 * 1024 : 100 * 1024 * 1024,
+        maxStorage: storageLimitFor(plan),
         uploadAudio: uploadVoiceNote,
         onNeedUpgrade: () => setIsPaywallVisible(true),
     });

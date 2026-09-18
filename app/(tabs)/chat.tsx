@@ -32,6 +32,7 @@ import { VideoViewerModal } from '../../src/screens/chat/components/VideoViewerM
 import { useChatUploads } from '../../src/screens/chat/hooks/useChatUploads';
 import { useAudioRecording } from '../../src/screens/chat/hooks/useAudioRecording';
 import { usePartnerPresence } from '../../src/screens/chat/hooks/usePartnerPresence';
+import { storageLimitFor } from '../../src/config/plans';
 
 // Habilitar LayoutAnimation en Android
 // Preferencia local de si el carril derecho va plegado (Sprint 9.6).
@@ -132,7 +133,7 @@ const ChatScreen = () => {
 
     // Calcular almacenamiento usado
     const usedStorage = relationshipData?.usedStorage || 0;
-    const maxStorage = plan === 'premium' ? 25 * 1024 * 1024 * 1024 : 100 * 1024 * 1024; // 25GB vs 100MB
+    const maxStorage = storageLimitFor(plan);
     // Aviso de almacenamiento — solo aplica al plan gratuito (premium ya tiene 25GB).
     const storageUsageRatio = maxStorage > 0 ? usedStorage / maxStorage : 0;
     const showStorageWarning = plan === 'free' && storageUsageRatio >= 0.9;

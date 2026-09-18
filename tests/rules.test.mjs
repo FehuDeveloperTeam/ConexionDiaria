@@ -531,6 +531,34 @@ await check(
     assertFails(getDoc(doc(admin.firestore(), 'users', ALICE)))
 );
 
+console.log('\nCupo de almacenamiento — Sprint 11.3');
+
+// El tope TOTAL no se valida en storage.rules: las reglas entre servicios
+// (firestore.get() desde Storage) no funcionan en el emulador, comprobado con
+// una sonda —firestore.exists() devuelve false aunque el documento esté ahí—,
+// así que una regla así no se podría probar antes de desplegarla. Se hace
+// cumplir en functions/src/storageAccounting.ts, y su lógica de decisión tiene
+// pruebas propias en tests/storageQuota.test.mjs.
+//
+// Lo que SÍ depende de las reglas, y se comprueba acá, es que el cliente no
+// pueda tocar los dos números con los que el servidor decide.
+const CUPO_PREMIUM = 25 * 1024 * 1024 * 1024;
+
+await check(
+    'ATAQUE: Alice NO puede subirse el tope de almacenamiento a sí misma',
+    assertFails(updateDoc(doc(alice.firestore(), 'relationships', REL), { storageLimit: CUPO_PREMIUM * 10 }))
+);
+await check(
+    'ATAQUE: Eve NO puede crear una relación con el tope ya puesto',
+    assertFails(setDoc(doc(eve.firestore(), 'relationships', 'eveEEEEEEEEEEEEEEEEEEEEEEEE3_soloSSSSSSSSSSSSSSSSSSSSSSS4'), {
+        members: [EVE, SOLO], storageLimit: CUPO_PREMIUM,
+    }))
+);
+await check(
+    'ATAQUE: Alice tampoco puede bajar usedStorage y storageLimit en la misma escritura',
+    assertFails(updateDoc(doc(alice.firestore(), 'relationships', REL), { usedStorage: 0, storageLimit: CUPO_PREMIUM }))
+);
+
 await testEnv.cleanup();
 
 console.log(`\n${'='.repeat(58)}`);

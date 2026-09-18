@@ -30,6 +30,32 @@ service firebase.storage {
         && request.auth.uid in relationshipId.split('_');
     }
 
+    // --- Sobre el cupo de almacenamiento de la pareja (Sprint 11.3) ---
+    //
+    // Acá NO se valida el total acumulado, y es una decisión, no un olvido.
+    //
+    // El intento original fue leer 'usedStorage' y 'storageLimit' del
+    // documento de la relación con firestore.get() desde estas reglas. Las
+    // reglas entre servicios existen y están documentadas, pero NO funcionan
+    // en el emulador: firestore.exists() devuelve false aunque el documento
+    // esté ahí, comprobado con una sonda. O sea, no hay forma de probar esa
+    // regla antes de desplegarla.
+    //
+    // Y sus dos modos de falla son inaceptables. Si ante "no encuentro el
+    // documento" se deja pasar, el cupo no se aplica nunca y nadie se entera:
+    // exactamente el agujero que se venía a cerrar, ahora con la apariencia
+    // de estar tapado. Si se rechaza, y las reglas entre servicios fallaran en
+    // producción, NADIE puede subir nada.
+    //
+    // El tope total se hace cumplir en el servidor, en
+    // functions/src/storageAccounting.ts, que ya corre en cada subida: si el
+    // archivo pasa el cupo de la pareja, se borra y se registra. Es una
+    // subida de ancho de banda desperdiciada —acotada por los topes por
+    // archivo de más abajo— a cambio de un control que sí se puede probar y
+    // que no puede fallar en silencio.
+    //
+    // Lo que SÍ vive acá es el tope por archivo, que no necesita leer nada.
+
     // --- Foto de perfil ---
     // Solo su dueño, incluso para leer: la pareja la ve igual, porque se
     // muestra con la URL de descarga guardada en el perfil, no vía SDK.

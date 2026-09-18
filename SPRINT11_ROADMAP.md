@@ -11,7 +11,7 @@ final.
 |---|---|---|---|
 | 11.1 | Reporte de errores y red de seguridad | ✅ | 101 `console.error` que no llegaban a ninguna parte, y pantalla blanca ante cualquier error de render. |
 | 11.2 | Integración continua | ✅ | Las 159 pruebas no corren solas: nada impide subir código que las rompa. |
-| 11.3 | Cupo de almacenamiento en el servidor | | `checkStorage()` vive solo en el cliente; `storage.rules` nunca consulta `usedStorage`. El tope del plan gratuito es burlable. |
+| 11.3 | Cupo de almacenamiento en el servidor | ✅ | `checkStorage()` vive solo en el cliente; `storage.rules` nunca consulta `usedStorage`. El tope del plan gratuito es burlable. |
 | 11.4 | Embudo de conversión en el panel | | El panel mide actividad, no conversión. Sin cohortes no se sabe si el negocio funciona. |
 
 ## Fase 2 — Pérdida de usuarios
@@ -45,6 +45,34 @@ bajar el número.
 **El export corre con credenciales de relleno.** Solo necesita que las
 variables existan para inlinearlas; así se comprueba que el build no está roto
 sin poner las credenciales reales en CI.
+
+## Decidido en 11.3 — y un inconveniente que cambió el plan
+
+**Las reglas entre servicios no funcionan en el emulador.** El plan era
+validar el tope en `storage.rules` leyendo `usedStorage` y `storageLimit` del
+documento de la relación con `firestore.get()`. Están documentadas y
+probablemente funcionan en producción, pero **`firestore.exists()` devuelve
+`false` aunque el documento exista** — comprobado con una sonda: al exigir
+`exists()`, las subidas legítimas empezaron a fallar. O sea, no hay forma de
+probar esa regla antes de desplegarla.
+
+Y sus dos modos de falla eran inaceptables. Ante «no encuentro el documento»,
+dejar pasar significa no aplicar el cupo nunca y que nadie se entere: el mismo
+agujero, ahora con la apariencia de estar tapado. Rechazar significa que, si
+las reglas entre servicios fallaran en producción, **nadie puede subir nada**.
+
+**Se movió a `onStorageObjectFinalized`**, que ya corría en cada subida. Si el
+archivo pasa el cupo, se borra y queda contado en `overQuotaUploads` para
+soporte. Cuesta una subida de ancho de banda desperdiciada —acotada por el
+tope por archivo, que sí vive en las reglas— a cambio de un control
+verificable que no puede fallar en silencio. La decisión va en una transacción:
+dos subidas simultáneas leyendo por separado podrían dejar pasar las dos.
+
+**Las tres decisiones se extrajeron a un módulo puro** (`storageQuota.ts`) con
+24 pruebas. Son justo las que si están mal no dan error, solo dejan de aplicar
+el cupo: qué rutas cuentan (la foto de perfil no), cuál es el tope cuando el
+campo falta (gratuito, nunca «sin límite») y cuál es el de una pareja mixta
+(basta que uno pague).
 
 ## Corrección de la auditoría preliminar
 
