@@ -41,7 +41,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       - run: npm ci
@@ -74,15 +74,21 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       # Los emuladores de Firebase corren sobre la JVM. Se fija la versión
       # en vez de confiar en la que traiga la imagen del runner.
+      #
+      # 21 es el mínimo que exige firebase-tools: con 17 aborta antes de
+      # arrancar los emuladores ("no longer supports Java version before
+      # 21") y las 87 pruebas de reglas no llegan a correr. Si se sube el
+      # número acá, hay que subirlo también en el entorno de quien programa:
+      # una versión distinta en cada lado es lo que dejó pasar esta falla.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - run: npm ci
 
@@ -97,7 +103,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
