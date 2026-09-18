@@ -13,7 +13,10 @@
     "test:pricing": "npx tsc -p tests/tsconfig.pricing.json && TZ=America/Santiago node tests/pricing.test.mjs",
     "test:milestones": "npx tsc -p tests/tsconfig.milestones.json && TZ=America/Santiago node tests/milestones.test.mjs",
     "test:questions": "npx tsc -p tests/tsconfig.questions.json && node tests/dailyQuestions.test.mjs",
-    "test:memories": "npx tsc -p tests/tsconfig.memories.json && TZ=America/Santiago node tests/memories.test.mjs"
+    "test:memories": "npx tsc -p tests/tsconfig.memories.json && TZ=America/Santiago node tests/memories.test.mjs",
+    "test:logic": "npm run test:pricing && npm run test:milestones && npm run test:questions && npm run test:memories",
+    "test": "npm run test:logic && npm run test:rules",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

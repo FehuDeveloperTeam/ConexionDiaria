@@ -10,7 +10,7 @@ final.
 | # | Sesión | Estado | Notas |
 |---|---|---|---|
 | 11.1 | Reporte de errores y red de seguridad | ✅ | 101 `console.error` que no llegaban a ninguna parte, y pantalla blanca ante cualquier error de render. |
-| 11.2 | Integración continua | | Las 159 pruebas no corren solas: nada impide subir código que las rompa. |
+| 11.2 | Integración continua | ✅ | Las 159 pruebas no corren solas: nada impide subir código que las rompa. |
 | 11.3 | Cupo de almacenamiento en el servidor | | `checkStorage()` vive solo en el cliente; `storage.rules` nunca consulta `usedStorage`. El tope del plan gratuito es burlable. |
 | 11.4 | Embudo de conversión en el panel | | El panel mide actividad, no conversión. Sin cohortes no se sabe si el negocio funciona. |
 
@@ -29,6 +29,22 @@ final.
 | 11.8 | Unificar el reproductor de audio | | 435 líneas en dos implementaciones del mismo problema. |
 | 11.9 | Partir `home.tsx` y `chat.tsx` | | 1.387 y 1.293 líneas. Ahí ya se escaparon errores. |
 | 11.10 | Accesibilidad en lo antiguo | | 50 atributos para 344 elementos tocables (~15%). |
+
+## Decidido en 11.2
+
+**Tres trabajos en paralelo y no uno secuencial**: app, reglas y functions. El
+de reglas necesita la JVM para los emuladores y el de functions su propio
+`npm ci`; separarlos evita que la app espere por una dependencia que no usa, y
+deja claro en el reporte qué se rompió.
+
+**El lint se fija en 3 avisos con `--max-warnings 3`.** Esa era la línea base
+que se venía sosteniendo a mano en cada sesión; sin el tope, un cuarto aviso
+entra sin que nadie lo note. Cuando se arregle alguno de los tres, hay que
+bajar el número.
+
+**El export corre con credenciales de relleno.** Solo necesita que las
+variables existan para inlinearlas; así se comprueba que el build no está roto
+sin poner las credenciales reales en CI.
 
 ## Corrección de la auditoría preliminar
 
