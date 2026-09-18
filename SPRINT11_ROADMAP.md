@@ -26,7 +26,7 @@ final.
 | # | Sesión | Estado | Notas |
 |---|---|---|---|
 | 11.7 | `CLAUDE.md` | ✅ | Las convenciones del proyecto no están escritas en ninguna parte del repo. Va antes de las refactorizaciones. |
-| 11.8 | Unificar el reproductor de audio | | 435 líneas en dos implementaciones del mismo problema. |
+| 11.8 | Unificar el reproductor de audio | ⏸ aplazada | 435 líneas en dos implementaciones del mismo problema. |
 | 11.9 | Partir `home.tsx` y `chat.tsx` | | 1.387 y 1.293 líneas. Ahí ya se escaparon errores. |
 | 11.10 | Accesibilidad en lo antiguo | | 50 atributos para 344 elementos tocables (~15%). |
 
@@ -73,6 +73,31 @@ dos subidas simultáneas leyendo por separado podrían dejar pasar las dos.
 el cupo: qué rutas cuentan (la foto de perfil no), cuál es el tope cuando el
 campo falta (gratuito, nunca «sin límite») y cuál es el de una pareja mixta
 (basta que uno pague).
+
+## Aplazada en 11.8, y por qué
+
+**No se unificaron los dos reproductores de audio.** El núcleo compartido
+(refs + número de intento) es idéntico, pero fusionarlos obliga a cambiar
+`useSingleAudioPlayer`, del que dependen las Notas, y a extender su API con
+callbacks para intercalar los avisos de inicio y fin del chat.
+
+El problema no es la dificultad: es que **la reproducción real no se puede
+probar en el entorno de desarrollo remoto** —sin dispositivo y con `expo-av`
+simulado—, y este es el código que costó tres intentos arreglar y que ya está
+verificado funcionando. Refactorizarlo a ciegas, sin nadie mirando, cambia un
+riesgo hipotético (que un arreglo futuro no llegue a la otra copia) por un
+riesgo real (romper algo que funciona).
+
+En su lugar se hizo lo que sí baja el riesgo hoy:
+
+- **Cinco pruebas del núcleo**, tres de ellas regresión directa de los
+  síntomas de 9.1: que pausar pause de verdad, que tocar otro audio no deje
+  los dos sonando, y que una carga obsoleta no arranque tarde encima del que
+  ya suena.
+- **El acoplamiento queda visible**: las dos copias se nombran mutuamente con
+  una advertencia de que un arreglo en una no llega a la otra.
+
+Queda para cuando haya un dispositivo donde verificarlo.
 
 ## Decidido en 11.6 — y un error de orden en este propio plan
 

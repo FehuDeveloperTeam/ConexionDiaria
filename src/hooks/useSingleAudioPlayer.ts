@@ -1,5 +1,17 @@
 // Reproductor de un audio a la vez — Sprint 9.15.
 //
+// OJO — COPIA HERMANA: la misma máquina de estados existe en
+// src/screens/chat/hooks/useAudioPlayback.ts, que además marca el mensaje como
+// escuchado y suena avisos de inicio y fin. **Un arreglo acá NO llega allá.**
+// Antes de tocar este archivo, mirar si el mismo problema existe en el otro.
+//
+// La unificación quedó pendiente a propósito (Sprint 11.8): fusionarlas obliga
+// a cambiar este hook, del que dependen las Notas, y la reproducción real no
+// se puede probar en el entorno de desarrollo remoto —sin dispositivo y con
+// expo-av simulado—. Es el código que costó tres intentos arreglar, así que se
+// prefirió cubrir el núcleo con pruebas (tests/ui/singleAudioPlayer.test.tsx)
+// antes que refactorizarlo a ciegas.
+//
 // Es la parte genérica del reproductor del chat (Sprint 9.1), sin lo que
 // depende de los mensajes: acá no se marca nada como escuchado ni se suenan
 // avisos, solo se reproduce, se pausa y se retoma.

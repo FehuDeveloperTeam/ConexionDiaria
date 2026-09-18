@@ -6,6 +6,14 @@ import Toast from 'react-native-toast-message';
 import { db } from '../../../config/firebaseConfig';
 import { ExtendedMessage } from '../types';
 
+// OJO — COPIA HERMANA: la máquina de estados de este archivo (refs + número
+// de intento) es la misma que src/hooks/useSingleAudioPlayer.ts, que usan las
+// Notas. **Un arreglo acá NO llega allá.** Antes de tocar este archivo, mirar
+// si el mismo problema existe en el otro; el núcleo compartido tiene pruebas
+// en tests/ui/singleAudioPlayer.test.tsx.
+//
+// Por qué siguen separadas: ver el comentario de useSingleAudioPlayer.ts.
+//
 // Reproducción de notas de voz recibidas: config del modo de audio y
 // control de reproducción (play/pausa/progreso/marcar escuchado). La
 // duración de cada audio no se mide acá — viaja en 'message.audioDuration',
