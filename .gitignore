@@ -61,3 +61,4 @@ tests/.tmp-memories/
 *service-account*.json
 *-firebase-adminsdk-*.json
 tests/.tmp-storage/
+tests/.tmp-dateinput/

@@ -19,7 +19,7 @@ final.
 | # | Sesión | Estado | Notas |
 |---|---|---|---|
 | 11.5 | Caché offline de Firestore | ✅ | `getFirestore(app)` sin caché persistente: la app no sirve sin señal, y es una app de hábito diario que se abre en el metro. |
-| 11.6 | Pruebas de los flujos que cobran | | Emparejamiento, bienvenida, paywall y compra. Incluye montar el ejecutor de pruebas de componentes, que no existe. |
+| 11.6 | Pruebas de los flujos que cobran | ✅ | Emparejamiento, bienvenida, paywall y compra. Incluye montar el ejecutor de pruebas de componentes, que no existe. |
 
 ## Fase 3 — Deuda
 
@@ -73,6 +73,29 @@ dos subidas simultáneas leyendo por separado podrían dejar pasar las dos.
 el cupo: qué rutas cuentan (la foto de perfil no), cuál es el tope cuando el
 campo falta (gratuito, nunca «sin límite») y cuál es el de una pareja mixta
 (basta que uno pague).
+
+## Decidido en 11.6 — y un error de orden en este propio plan
+
+**Los flujos completos de `config.tsx` y `home.tsx` NO quedaron cubiertos**, y
+no por falta de ganas: con 739 y 1.387 líneas y una decena de dependencias
+externas cada uno, montar sus dobles cuesta más que el valor que entrega, y el
+resultado sería una prueba frágil que se rompe con cualquier cambio.
+
+Eso significa que **11.9 (partir los archivos grandes) es prerrequisito de
+probarlos**, no una tarea posterior. El plan los tenía al revés.
+
+Lo que sí quedó cubierto son los componentes donde de verdad ocurrieron los
+errores: el límite de error, la bienvenida —incluidas dos pruebas de regresión
+del bucle—, el paywall (que un cartel no invente precios) y la fila de tallas.
+22 pruebas de interfaz.
+
+**El ícono perdía su etiqueta de accesibilidad bajo jest.** Al descubrirlo, la
+etiqueta se movió del ícono a una vista que lo envuelve. No es un parche para
+la prueba: un glifo de fuente se anuncia de forma menos confiable que una
+vista marcada como accesible, así que el cambio mejora el producto real.
+
+**`react-test-renderer` queda con versión exacta.** Con caret resuelve a 19.3,
+que exige React ^19.3 mientras el proyecto está en 19.1, y rompe la instalación.
 
 ## Decidido en 11.5 — y una corrección al propio plan
 

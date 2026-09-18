@@ -12,15 +12,18 @@ import { useTheme } from '../contexts/themeContext';
 
 export const StatusTick: React.FC<{ filled: boolean }> = ({ filled }) => {
     const { theme } = useTheme();
+    // La etiqueta va en una vista que envuelve al ícono, no en el ícono.
+    // Dos razones: un glifo de fuente se anuncia de forma menos confiable que
+    // una vista marcada como accesible, y sin esto alguien que no distinga el
+    // verde del gris no tiene ninguna forma de saber qué falta por llenar.
     return (
-        <Ionicons
-            name={filled ? 'checkmark-circle' : 'ellipse-outline'}
-            size={20}
-            color={filled ? theme.success : theme.textFaint}
-            // Sin esto, alguien que no distinga el verde del gris no tiene
-            // cómo saber qué falta por llenar.
-            accessibilityLabel={filled ? 'Dato ingresado' : 'Sin ingresar'}
-        />
+        <View accessible accessibilityLabel={filled ? 'Dato ingresado' : 'Sin ingresar'}>
+            <Ionicons
+                name={filled ? 'checkmark-circle' : 'ellipse-outline'}
+                size={20}
+                color={filled ? theme.success : theme.textFaint}
+            />
+        </View>
     );
 };
 

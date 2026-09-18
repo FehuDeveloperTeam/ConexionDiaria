@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   app:
-    name: App (tipos, lint, lógica, export)
+    name: App (tipos, lint, lógica, interfaz, export)
     runs-on: ubuntu-latest
     env:
       # Valores de relleno. El export solo necesita que las variables
@@ -57,8 +57,11 @@ jobs:
       - name: Lint (máximo 3 avisos, la línea base)
         run: npm run lint -- --max-warnings 3
 
-      - name: Pruebas de lógica (precios, hitos, preguntas, recuerdos)
+      - name: Pruebas de lógica (precios, hitos, preguntas, recuerdos, cupos, fechas)
         run: npm run test:logic
+
+      - name: Pruebas de interfaz
+        run: npm run test:ui
 
       - name: Export de web
         run: npx expo export --platform web
