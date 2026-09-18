@@ -1128,20 +1128,35 @@ const Home: React.FC = () => {
                                     key={mood.emoji}
                                     style={[styles.quickMoodCircle, isSelected && styles.quickMoodCircleSelected]}
                                     onPress={() => handleSelectMood(mood)}
+                                    accessibilityRole="button"
+                                    // Sin esto el lector de pantalla anuncia el
+                                    // carácter del emoji y nada más.
+                                    accessibilityLabel={`Ánimo: ${mood.name}`}
+                                    accessibilityState={{ selected: isSelected }}
                                 >
                                     <Text style={styles.quickMoodEmoji}>{mood.emoji}</Text>
                                 </TouchableOpacity>
                             );
                         })}
                         {plan === 'premium' ? (
-                            <TouchableOpacity style={styles.quickMoodMoreCircle} onPress={openMoodSelector}>
+                            <TouchableOpacity
+                                style={styles.quickMoodMoreCircle}
+                                onPress={openMoodSelector}
+                                accessibilityRole="button"
+                                accessibilityLabel="Ver más ánimos"
+                            >
                                 <Ionicons name="add" size={20} color={theme.primary} />
                             </TouchableOpacity>
                         ) : (
                             // El candado sigue marcando que hay más — pero ahora abre el
                             // mismo selector con el adelanto de 2 picantes (MOODS_FREE_BONUS)
                             // en vez de ir directo al paywall.
-                            <TouchableOpacity style={styles.quickMoodLockCircle} onPress={openMoodSelector}>
+                            <TouchableOpacity
+                                style={styles.quickMoodLockCircle}
+                                onPress={openMoodSelector}
+                                accessibilityRole="button"
+                                accessibilityLabel="Ver más ánimos, algunos de Conexión Total"
+                            >
                                 <Ionicons name="lock-closed" size={16} color={theme.primary} />
                             </TouchableOpacity>
                         )}

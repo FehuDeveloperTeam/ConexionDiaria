@@ -668,6 +668,8 @@ const CalendarScreen: React.FC = () => {
                 hay tab bar que despejar. */}
             <TouchableOpacity
                 onPress={openEventModal}
+                accessibilityRole="button"
+                accessibilityLabel="Agregar un evento"
                 style={{
                     position: 'absolute',
                     right: 20,
@@ -690,7 +692,7 @@ const CalendarScreen: React.FC = () => {
             {/* Modal de nuevo evento — bottom sheet */}
             <Modal animationType="slide" transparent visible={isEventModalVisible} onRequestClose={closeEventModal}>
                 <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(24,22,46,0.5)' }}>
-                    <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeEventModal} />
+                    <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeEventModal} accessibilityElementsHidden importantForAccessibility="no" />
                     <ScrollView
                         style={{
                             backgroundColor: theme.surface,

@@ -433,6 +433,8 @@ const ChatScreen = () => {
                                 openImageViewer(imageProps.currentMessage.image);
                             }
                         }}
+                        accessibilityRole="imagebutton"
+                        accessibilityLabel="Ver la foto en grande"
                     >
                         <Image
                             source={{ uri: imageProps.currentMessage.image }}
@@ -551,6 +553,8 @@ const ChatScreen = () => {
                 {/* Botón de regreso */}
                 <TouchableOpacity
                     onPress={() => router.back()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Volver"
                     style={{
                         marginRight: spacing.s12,
                         padding: 4,
@@ -926,6 +930,8 @@ const ChatScreen = () => {
                                         ) : (
                                             <TouchableOpacity
                                                 onPress={startRecording}
+                                                accessibilityRole="button"
+                                                accessibilityLabel="Grabar una nota de voz"
                                                 style={{
                                                     width: 40,
                                                     height: 40,
@@ -963,6 +969,8 @@ const ChatScreen = () => {
                                     renderActions={() => (
                                         <TouchableOpacity
                                             onPress={cancelRecording}
+                                            accessibilityRole="button"
+                                            accessibilityLabel="Descartar la grabación"
                                             style={{
                                                 width: 40,
                                                 height: 40,
@@ -1025,6 +1033,8 @@ const ChatScreen = () => {
                                         }}>
                                             <TouchableOpacity
                                                 onPress={stopRecording}
+                                                accessibilityRole="button"
+                                                accessibilityLabel="Enviar la nota de voz"
                                                 style={{
                                                     width: 46,
                                                     height: 46,

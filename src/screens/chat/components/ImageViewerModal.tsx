@@ -81,7 +81,7 @@ export const ImageViewerModal: React.FC<{
                             edges={['top']}
                             style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 }}
                         >
-                            <TouchableOpacity onPress={onClose} style={{ padding: 8 }}>
+                            <TouchableOpacity onPress={onClose} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel="Cerrar la imagen">
                                 <Ionicons name="close" size={26} color="#FFFFFF" />
                             </TouchableOpacity>
 
@@ -89,7 +89,7 @@ export const ImageViewerModal: React.FC<{
                                 {images.length > 1 ? `${index + 1} de ${images.length}` : ''}
                             </Text>
 
-                            <TouchableOpacity onPress={handleDownload} disabled={isDownloading} style={{ padding: 8 }}>
+                            <TouchableOpacity onPress={handleDownload} disabled={isDownloading} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel="Descargar la imagen">
                                 {isDownloading ? (
                                     <ActivityIndicator size="small" color="#FFFFFF" />
                                 ) : (
@@ -129,6 +129,8 @@ export const ImageViewerModal: React.FC<{
                             {index > 0 && (
                                 <TouchableOpacity
                                     onPress={() => onIndexChange(index - 1)}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Imagen anterior"
                                     style={{
                                         position: 'absolute', left: 16, top: '50%', marginTop: -19,
                                         width: 38, height: 38, borderRadius: 19,
@@ -141,6 +143,8 @@ export const ImageViewerModal: React.FC<{
                             {index < images.length - 1 && (
                                 <TouchableOpacity
                                     onPress={() => onIndexChange(index + 1)}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Imagen siguiente"
                                     style={{
                                         position: 'absolute', right: 16, top: '50%', marginTop: -19,
                                         width: 38, height: 38, borderRadius: 19,

@@ -336,6 +336,8 @@ const TasksScreen: React.FC = () => {
                                     <TouchableOpacity
                                         onPress={() => setDeletingGroup(groups.find(g => g.id === group.id) ?? null)}
                                         hitSlop={8}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`Eliminar el grupo ${group.name}`}
                                     >
                                         <Ionicons name="close-circle" size={15} color={theme.white} />
                                     </TouchableOpacity>
@@ -346,6 +348,8 @@ const TasksScreen: React.FC = () => {
 
                     <TouchableOpacity
                         onPress={openGroupModal}
+                        accessibilityRole="button"
+                        accessibilityLabel="Crear un grupo de tareas"
                         style={{
                             flexDirection: 'row', alignItems: 'center', gap: spacing.s6,
                             paddingHorizontal: spacing.s14, paddingVertical: spacing.s8,
@@ -486,6 +490,8 @@ const TasksScreen: React.FC = () => {
                     <TouchableOpacity
                         onPress={handleAddTask}
                         disabled={newTask.trim() === ''}
+                        accessibilityRole="button"
+                        accessibilityLabel="Agregar la tarea"
                         style={{
                             width: 42,
                             height: 42,

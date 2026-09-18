@@ -92,7 +92,7 @@ export const DateTimeModal: React.FC<{
     return (
         <Modal visible={isVisible} transparent animationType="fade" onRequestClose={onCancel}>
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(24,22,46,0.5)' }}>
-                <TouchableOpacity style={{ position: 'absolute', width: '100%', height: '100%' }} activeOpacity={1} onPress={onCancel} />
+                <TouchableOpacity style={{ position: 'absolute', width: '100%', height: '100%' }} activeOpacity={1} onPress={onCancel} accessibilityElementsHidden importantForAccessibility="no" />
                 <View style={{
                     width: 320, maxWidth: '90%',
                     backgroundColor: theme.surface, borderRadius: radii.card,

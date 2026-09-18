@@ -90,7 +90,8 @@ const ThemeEditorScreen: React.FC = () => {
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.s16, paddingVertical: spacing.s12 }}>
-                <TouchableOpacity onPress={() => router.back()} style={{ padding: 4, marginRight: spacing.s12 }}>
+                <TouchableOpacity onPress={() => router.back()} style={{ padding: 4, marginRight: spacing.s12 }}
+                        accessibilityRole="button" accessibilityLabel="Volver">
                     <Ionicons name="arrow-back" size={24} color={theme.text} />
                 </TouchableOpacity>
                 <Text style={{ fontFamily: fontFamilies.display, fontSize: 25, color: theme.text }}>Personalizar tema</Text>
@@ -173,6 +174,9 @@ const ThemeEditorScreen: React.FC = () => {
                             <TouchableOpacity
                                 key={color}
                                 onPress={() => setBgColor(isSelected ? undefined : color)}
+                                accessibilityRole="button"
+                                accessibilityState={{ selected: isSelected }}
+                                accessibilityLabel={`Color de fondo ${color}`}
                                 style={{
                                     width: 26, height: 26, borderRadius: 8, backgroundColor: color,
                                     borderWidth: isSelected ? 2 : 1, borderColor: isSelected ? theme.primary : theme.borderSoft,
@@ -193,6 +197,9 @@ const ThemeEditorScreen: React.FC = () => {
                             <TouchableOpacity
                                 key={color}
                                 onPress={() => setTextColor(isSelected ? undefined : color)}
+                                accessibilityRole="button"
+                                accessibilityState={{ selected: isSelected }}
+                                accessibilityLabel={`Color de texto ${color}`}
                                 style={{
                                     width: 26, height: 26, borderRadius: 8, backgroundColor: color,
                                     borderWidth: isSelected ? 2 : 1, borderColor: isSelected ? theme.primary : theme.borderSoft,
@@ -213,6 +220,8 @@ const ThemeEditorScreen: React.FC = () => {
                             <TouchableOpacity
                                 key={chip.key}
                                 onPress={() => setFontKey(isSelected ? undefined : chip.key)}
+                                accessibilityRole="button"
+                                accessibilityState={{ selected: isSelected }}
                                 style={{
                                     flex: 1, alignItems: 'center', paddingVertical: spacing.s12,
                                     borderRadius: radii.field, borderWidth: isSelected ? 2 : 1,

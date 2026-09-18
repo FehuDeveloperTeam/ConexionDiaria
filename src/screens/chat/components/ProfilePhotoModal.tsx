@@ -28,6 +28,8 @@ export const ProfilePhotoModal: React.FC<{
             <TouchableOpacity
                 activeOpacity={1}
                 onPress={onClose}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
                 style={{
                     flex: 1,
                     backgroundColor: 'rgba(0,0,0,0.9)',
@@ -47,6 +49,8 @@ export const ProfilePhotoModal: React.FC<{
                         padding: 8,
                     }}
                     onPress={onClose}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cerrar la foto de perfil"
                 >
                     <Ionicons name="close" size={28} color="#FFF" />
                 </TouchableOpacity>

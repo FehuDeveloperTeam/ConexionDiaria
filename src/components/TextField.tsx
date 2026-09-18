@@ -99,7 +99,9 @@ export const TextField: React.FC<{
                     onSubmitEditing={onSubmitEditing}
                 />
                 {isPassword && (
-                    <TouchableOpacity style={{ padding: spacing.s10 }} onPress={() => setIsVisible((v) => !v)}>
+                    <TouchableOpacity style={{ padding: spacing.s10 }} onPress={() => setIsVisible((v) => !v)}
+                        accessibilityRole="button"
+                        accessibilityLabel={isVisible ? 'Ocultar la contraseña' : 'Mostrar la contraseña'}>
                         <Feather name={isVisible ? 'eye-off' : 'eye'} size={21} color={theme.primary} />
                     </TouchableOpacity>
                 )}

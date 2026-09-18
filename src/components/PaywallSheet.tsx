@@ -131,7 +131,7 @@ export const PaywallSheet: React.FC<{
         return (
             <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
                 <View style={{ flex: 1, flexDirection: 'row', backgroundColor: 'rgba(24,22,46,0.5)' }}>
-                    <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
+                    <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no" />
                     <ScrollView
                         style={{ width: 400, backgroundColor: theme.surface, borderTopLeftRadius: radii.sheetTop, borderBottomLeftRadius: radii.sheetTop }}
                         contentContainerStyle={{ padding: spacing.s26, gap: spacing.s12 }}
@@ -146,7 +146,7 @@ export const PaywallSheet: React.FC<{
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
             <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(24,22,46,0.5)' }}>
-                <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
+                <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no" />
                 <View
                     style={{
                         backgroundColor: theme.surface,

@@ -168,7 +168,8 @@ const PartnerSheetScreen: React.FC = () => {
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
             <DesktopContentWrap>
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.s16, paddingVertical: spacing.s12 }}>
-                <TouchableOpacity onPress={() => router.back()} style={{ padding: 4, marginRight: spacing.s12 }}>
+                <TouchableOpacity onPress={() => router.back()} style={{ padding: 4, marginRight: spacing.s12 }}
+                        accessibilityRole="button" accessibilityLabel="Volver">
                     <Ionicons name="arrow-back" size={24} color={theme.text} />
                 </TouchableOpacity>
                 <Text style={{ fontFamily: fontFamilies.display, fontSize: 25, color: theme.text }}>

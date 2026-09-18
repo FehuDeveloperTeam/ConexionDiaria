@@ -531,6 +531,9 @@ const WishlistScreen: React.FC = () => {
 
                         <TouchableOpacity
                             onPress={() => handleToggleItem(item)}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: !!item.isCompleted }}
+                            accessibilityLabel={item.isCompleted ? `Marcar ${item.title} como pendiente` : `Marcar ${item.title} como cumplido`}
                             style={{
                                 width: 28,
                                 height: 28,
@@ -583,6 +586,8 @@ const WishlistScreen: React.FC = () => {
             {/* FAB — en escritorio no hay tab bar que despejar abajo */}
             <TouchableOpacity
                 onPress={openAddItemModal}
+                accessibilityRole="button"
+                accessibilityLabel="Agregar un deseo"
                 style={{
                     position: 'absolute',
                     right: 20,
@@ -752,6 +757,8 @@ const WishlistScreen: React.FC = () => {
                             />
                             <TouchableOpacity
                                 onPress={handleAddCategory}
+                                accessibilityRole="button"
+                                accessibilityLabel="Crear la categoría"
                                 disabled={newCategory.trim() === ''}
                                 style={{
                                     width: 50, height: 50, borderRadius: radii.field,
@@ -776,7 +783,8 @@ const WishlistScreen: React.FC = () => {
                                         <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.text, flex: 1 }}>
                                             {name}
                                         </Text>
-                                        <TouchableOpacity onPress={() => handleDeleteCategory(name)} hitSlop={8}>
+                                        <TouchableOpacity onPress={() => handleDeleteCategory(name)} hitSlop={8}
+                                            accessibilityRole="button" accessibilityLabel={`Eliminar la categoría ${name}`}>
                                             <Ionicons name="trash-outline" size={17} color={theme.danger} />
                                         </TouchableOpacity>
                                     </View>

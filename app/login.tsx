@@ -72,7 +72,8 @@ const Login: React.FC = () => {
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
             <View style={styles.container}>
-                <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+                <TouchableOpacity style={styles.backButton} onPress={() => router.back()}
+                    accessibilityRole="button" accessibilityLabel="Volver">
                     <Ionicons name="arrow-back" size={26} color={theme.text} />
                 </TouchableOpacity>
 

@@ -520,6 +520,8 @@ const NotesScreen: React.FC = () => {
                         <TouchableOpacity
                             onPress={handleStartVoiceNote}
                             disabled={isUploadingVoice}
+                            accessibilityRole="button"
+                            accessibilityLabel={plan === 'premium' ? 'Grabar una nota de voz' : 'Las notas de voz son de Premium'}
                             style={{
                                 width: 42, height: 42, borderRadius: 14,
                                 backgroundColor: plan === 'premium' ? theme.primary : theme.surfaceAlt,
@@ -540,6 +542,8 @@ const NotesScreen: React.FC = () => {
                         <TouchableOpacity
                             onPress={handleAddNote}
                             disabled={newNote.trim() === ''}
+                            accessibilityRole="button"
+                            accessibilityLabel="Guardar la nota"
                             style={{
                                 width: 42,
                                 height: 42,

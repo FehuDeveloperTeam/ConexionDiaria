@@ -524,6 +524,8 @@ const AlbumScreen: React.FC = () => {
                                     <TouchableOpacity
                                         key={photo.id}
                                         onPress={() => { setViewerList(photos); setViewerIndex(flatIndex); }}
+                                        accessibilityRole="imagebutton"
+                                        accessibilityLabel="Abrir la foto"
                                         style={{ width: CELL_SIZE, height: CELL_SIZE, borderRadius: 12, overflow: 'hidden' }}
                                     >
                                         <Image source={{ uri: photo.imageUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
@@ -571,6 +573,8 @@ const AlbumScreen: React.FC = () => {
             {/* CTA Agregar — en escritorio no hay tab bar que despejar abajo */}
             <TouchableOpacity
                 onPress={handleAddPhoto}
+                accessibilityRole="button"
+                accessibilityLabel="Agregar fotos al álbum"
                 style={{
                     position: 'absolute',
                     right: 20,
@@ -598,7 +602,8 @@ const AlbumScreen: React.FC = () => {
                     {currentPhoto && (
                         <>
                             <SafeAreaView edges={['top']} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.s16, paddingVertical: spacing.s10 }}>
-                                <TouchableOpacity onPress={() => { setIsCommentsOpen(false); setViewerIndex(null); }} style={{ padding: spacing.s8 }}>
+                                <TouchableOpacity onPress={() => { setIsCommentsOpen(false); setViewerIndex(null); }} style={{ padding: spacing.s8 }}
+                                    accessibilityRole="button" accessibilityLabel="Cerrar la foto">
                                     <Ionicons name="close" size={26} color="#FFFFFF" />
                                 </TouchableOpacity>
                                 <Text style={{ flex: 1, textAlign: 'center', fontFamily: fontFamilies.bodySemiBold, fontSize: 12.5, color: '#FFFFFF' }}>
@@ -607,7 +612,12 @@ const AlbumScreen: React.FC = () => {
                                 </Text>
                                 <View style={{ width: 42, alignItems: 'flex-end' }}>
                                     {currentPhoto.authorId === user.uid && (
-                                        <TouchableOpacity onPress={() => setDeletingPhoto(currentPhoto)} style={{ padding: spacing.s8 }}>
+                                        <TouchableOpacity
+                                            onPress={() => setDeletingPhoto(currentPhoto)}
+                                            style={{ padding: spacing.s8 }}
+                                            accessibilityRole="button"
+                                            accessibilityLabel="Opciones de la foto"
+                                        >
                                             <Ionicons name="ellipsis-horizontal" size={22} color="#FFFFFF" />
                                         </TouchableOpacity>
                                     )}
@@ -642,6 +652,8 @@ const AlbumScreen: React.FC = () => {
                                 {viewerIndex! > 0 && (
                                     <TouchableOpacity
                                         onPress={() => setViewerIndex(viewerIndex! - 1)}
+                                        accessibilityRole="button"
+                                        accessibilityLabel="Foto anterior"
                                         style={{
                                             position: 'absolute', left: spacing.s16, top: '50%', marginTop: -19,
                                             width: 38, height: 38, borderRadius: 19,
@@ -654,6 +666,8 @@ const AlbumScreen: React.FC = () => {
                                 {viewerIndex! < viewerList.length - 1 && (
                                     <TouchableOpacity
                                         onPress={() => setViewerIndex(viewerIndex! + 1)}
+                                        accessibilityRole="button"
+                                        accessibilityLabel="Foto siguiente"
                                         style={{
                                             position: 'absolute', right: spacing.s16, top: '50%', marginTop: -19,
                                             width: 38, height: 38, borderRadius: 19,
@@ -730,14 +744,28 @@ const AlbumScreen: React.FC = () => {
                                         </Text>
                                     )}
                                 </TouchableOpacity>
-                                <TouchableOpacity onPress={() => handleDownload(currentPhoto)} disabled={isDownloading}>
+                                <TouchableOpacity
+                                    onPress={() => handleDownload(currentPhoto)}
+                                    disabled={isDownloading}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Descargar la foto"
+                                >
                                     {isDownloading ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Ionicons name="download-outline" size={23} color="#FFFFFF" />}
                                 </TouchableOpacity>
-                                <TouchableOpacity onPress={() => handleShare(currentPhoto)} disabled={isSharing}>
+                                <TouchableOpacity
+                                    onPress={() => handleShare(currentPhoto)}
+                                    disabled={isSharing}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Compartir la foto"
+                                >
                                     {isSharing ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Ionicons name="share-outline" size={23} color="#FFFFFF" />}
                                 </TouchableOpacity>
                                 {currentPhoto.authorId === user.uid && (
-                                    <TouchableOpacity onPress={() => setDeletingPhoto(currentPhoto)}>
+                                    <TouchableOpacity
+                                        onPress={() => setDeletingPhoto(currentPhoto)}
+                                        accessibilityRole="button"
+                                        accessibilityLabel="Eliminar la foto"
+                                    >
                                         <Ionicons name="trash-outline" size={23} color={theme.danger} />
                                     </TouchableOpacity>
                                 )}
@@ -755,6 +783,8 @@ const AlbumScreen: React.FC = () => {
                                         style={{ position: 'absolute', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.6)' }}
                                         activeOpacity={1}
                                         onPress={() => setIsCommentsOpen(false)}
+                                        accessibilityElementsHidden
+                                        importantForAccessibility="no"
                                     />
                                     <View style={{
                                         maxHeight: '70%',

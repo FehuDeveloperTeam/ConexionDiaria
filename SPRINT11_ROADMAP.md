@@ -28,7 +28,40 @@ final.
 | 11.7 | `CLAUDE.md` | ✅ | Las convenciones del proyecto no están escritas en ninguna parte del repo. Va antes de las refactorizaciones. |
 | 11.8 | Unificar el reproductor de audio | ⏸ aplazada | 435 líneas en dos implementaciones del mismo problema. |
 | 11.9 | Partir `home.tsx` y `chat.tsx` | ◐ a medias | 1.387 y 1.293 líneas. Ahí ya se escaparon errores. |
-| 11.10 | Accesibilidad en lo antiguo | | 50 atributos para 344 elementos tocables (~15%). |
+| 11.10 | Accesibilidad en lo antiguo | ✅ | Ya no queda ningún control de solo ícono sin nombre. |
+
+## Decidido en 11.10
+
+**Se midió con un script, no a ojo.** Recorre los `.tsx` de `app/` y `src/`,
+encuentra el cierre real de cada etiqueta —contando llaves y comillas, porque
+un `=>` dentro de una prop rompe cualquier búsqueda del primer `>`— y marca
+los tocables cuyo contenido es solo un ícono y no tienen nombre. Antes: **26
+controles sin nombre de 157**. Después: **0**, con 66 nombres propios. El
+script quedó fuera del repo a propósito: es una auditoría, no una prueba; lo
+que hay que sostener es el resultado, y quien lo dude puede volver a medirlo.
+
+**Los telones de fondo se ocultan, no se nombran.** Las hojas y los modales
+tienen debajo un tocable invisible que cubre toda la pantalla para cerrarlas al
+tocar afuera. Nombrarlo «Cerrar» le pondría al lector de pantalla un botón
+gigante encima de todo el contenido de la hoja. Llevan
+`accessibilityElementsHidden` e `importantForAccessibility="no"`, y el cierre
+queda en el botón explícito de cada hoja.
+
+**El estado va en el nombre, no solo en el ícono.** Un ícono que cambia de play
+a pausa, de ojo a ojo tachado o de círculo vacío a palomita no dice nada si el
+nombre es fijo. Los controles que alternan llevan el nombre de lo que van a
+hacer (`Pausar la nota de voz` / `Reproducir la nota de voz`) y, cuando existe
+el rol adecuado, además el estado: `accessibilityState={{ checked }}` en los
+deseos, `{{ selected }}` en los ánimos y en las muestras de color.
+
+**Un emoji solo no es un nombre.** Los círculos de ánimo de Inicio se
+anunciaban como el carácter suelto. Ahora dicen `Ánimo: <nombre>` con el estado
+de selección.
+
+**Es la primera pasada sobre los controles de más tráfico, no accesibilidad
+completa.** Falta el contraste medido en los temas personalizados, el orden de
+foco en las hojas y probar con TalkBack y VoiceOver en un dispositivo real —
+nada de eso se puede validar desde el entorno remoto.
 
 ## Decidido en 11.2
 

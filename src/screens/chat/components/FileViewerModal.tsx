@@ -150,7 +150,7 @@ export const FileViewerModal: React.FC<{
                         }}>
                             Vista Previa
                         </Text>
-                        <TouchableOpacity onPress={onClose}>
+                        <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Cerrar el archivo">
                             <Ionicons name="close" size={28} color={theme.text} />
                         </TouchableOpacity>
                     </View>

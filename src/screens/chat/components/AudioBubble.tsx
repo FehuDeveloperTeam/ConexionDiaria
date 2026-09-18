@@ -63,6 +63,10 @@ export const AudioBubble: React.FC<{
             }}>
                 <TouchableOpacity
                     onPress={() => toggleAudioPlayback(message)}
+                    accessibilityRole="button"
+                    // El estado va en la etiqueta y no solo en el ícono: un
+                    // lector de pantalla no ve si el triángulo es play o pausa.
+                    accessibilityLabel={isPlaying ? 'Pausar la nota de voz' : 'Reproducir la nota de voz'}
                     disabled={isLoadingThisAudio}
                     style={{
                         width: 34,

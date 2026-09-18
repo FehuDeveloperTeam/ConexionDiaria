@@ -664,7 +664,7 @@ const ConfigScreen: React.FC = () => {
             {/* Bottom sheet de notificaciones */}
             <Modal visible={isNotificationsSheetVisible} transparent animationType="slide" onRequestClose={() => setIsNotificationsSheetVisible(false)}>
                 <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(24,22,46,0.5)' }}>
-                    <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setIsNotificationsSheetVisible(false)} />
+                    <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setIsNotificationsSheetVisible(false)} accessibilityElementsHidden importantForAccessibility="no" />
                     <View style={{ backgroundColor: theme.surface, borderTopLeftRadius: radii.sheetTop, borderTopRightRadius: radii.sheetTop, padding: spacing.s22, gap: spacing.s14 }}>
                         <View style={{ alignSelf: 'center', width: 44, height: 4, borderRadius: 2, backgroundColor: theme.borderSoft }} />
                         <Text style={{ fontFamily: fontFamilies.display, fontSize: 23, color: theme.text }}>Notificaciones</Text>
