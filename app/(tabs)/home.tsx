@@ -37,9 +37,12 @@ import { registerPushToken } from '../../src/services/notifications';
 import { Button as AppButton } from '../../src/components/Button';
 import { PaywallSheet } from '../../src/components/PaywallSheet';
 import { DailyQuestionCard } from '../../src/components/DailyQuestionCard';
+import { GiftAlertCard } from '../../src/screens/home/GiftAlertCard';
+import { MeasurementsInviteCard } from '../../src/screens/home/MeasurementsInviteCard';
+import { NextUpCard } from '../../src/screens/home/NextUpCard';
 import { countFilled, fieldsFor, normalizeMeasurements } from '../../src/config/measurements';
 import {
-    daysBetween, nextAnniversary as computeNextAnniversary,
+    nextAnniversary as computeNextAnniversary,
     nextMonthiversary as computeNextMonthiversary,
 } from '../../src/services/milestones';
 import type { Gender } from '../../src/types/models';
@@ -153,45 +156,9 @@ const getStyles = (theme: typeof themes.light, fontFamily: string | undefined, b
     heroEyebrow: { fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 1.1, color: '#FFFFFF', opacity: 0.85, textAlign: 'center' },
     heroNumber: { fontFamily: fontFamilies.display, fontSize: 32, lineHeight: 36, color: '#FFFFFF', textAlign: 'center' },
 
-    // --- Sprint 9.5: "Lo próximo" — puente entre Inicio y Calendario ---
-    nextCard: {
-        flexDirection: 'row', alignItems: 'center', gap: spacing.s12, width: '100%',
-        backgroundColor: theme.surface, borderRadius: radii.card - 2,
-        borderWidth: 1, borderColor: theme.borderSoft,
-        padding: spacing.s14, marginTop: spacing.s12,
-    },
-    nextIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: theme.primaryTint, alignItems: 'center', justifyContent: 'center' },
-    nextLabel: { fontFamily: fontFamilies.bodyBold, fontSize: 10, letterSpacing: 0.9, color: theme.textFaint },
-    nextTitle: { fontFamily: fontFamilies.bodySemiBold, fontSize: 14.5, color: theme.text, marginTop: 2 },
-    nextWhen: { fontFamily: fontFamilies.bodyBold, fontSize: 12.5, color: theme.primary },
-
-    // --- Sprint 9.13: aviso de regalo (Calendario -> Deseos -> tallas) ---
-    giftCard: {
-        width: '100%', backgroundColor: theme.surface, borderRadius: radii.card,
-        borderWidth: 1.5, borderColor: theme.affection,
-        padding: spacing.s16, marginTop: spacing.s12, gap: spacing.s10,
-    },
-    giftHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.s10 },
-    giftTitle: { fontFamily: fontFamilies.bodyBold, fontSize: 14.5, color: theme.text, flex: 1 },
-    giftWhen: { fontFamily: fontFamilies.bodyBold, fontSize: 12.5, color: theme.affectionInk },
-    giftLine: { fontFamily: fontFamilies.body, fontSize: 13.5, color: theme.textMuted, lineHeight: 20 },
-    giftWishRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.s8 },
-    giftWish: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: theme.text, flex: 1 },
-    giftSizes: {
-        flexDirection: 'row', flexWrap: 'wrap', gap: spacing.s8,
-        borderTopWidth: 1, borderTopColor: theme.divider, paddingTop: spacing.s10,
-    },
-    giftSizeChip: {
-        backgroundColor: theme.surfaceAlt, borderRadius: 8,
-        paddingVertical: 3, paddingHorizontal: 8,
-    },
-    giftSizeText: { fontFamily: fontFamilies.bodySemiBold, fontSize: 11.5, color: theme.textMuted },
-    giftLockRow: {
-        flexDirection: 'row', alignItems: 'center', gap: spacing.s8,
-        borderTopWidth: 1, borderTopColor: theme.divider, paddingTop: spacing.s10,
-    },
-    giftLockText: { fontFamily: fontFamilies.body, fontSize: 12.5, color: theme.textFaint, flex: 1 },
-    giftLockCta: { fontFamily: fontFamilies.bodyBold, fontSize: 12, color: theme.primary },
+    // Los estilos del aviso de regalo y de "Lo próximo" se fueron con sus
+    // componentes a src/screens/home/ (Sprint 11.9): cada tarjeta se lleva los
+    // suyos, que es lo que corta la dependencia de vuelta a esta pantalla.
 
     // --- Sprint 7.3a: selector rápido de ánimo ---
     quickMoodLabel: { fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 0.9, textTransform: 'uppercase', color: theme.textMuted, marginTop: spacing.s16 },
@@ -1113,70 +1080,20 @@ const Home: React.FC = () => {
                         </TouchableOpacity>
                     </LinearGradient>
 
-                    {/* Sprint 9.13 — el aviso de regalo, el encadenado que une
-                        Calendario, Deseos y la ficha de la pareja. Va antes de
-                        "Lo próximo" porque tiene fecha de vencimiento.
-
-                        En free se muestra igual la fecha: su cumpleaños no es
-                        un secreto que haya que cobrar. Lo que se reserva es la
-                        ayuda — qué pidió y qué tallas usa. */}
-                    {giftOccasion && (
-                        <View style={styles.giftCard}>
-                            <View style={styles.giftHeader}>
-                                <Ionicons name="gift" size={20} color={theme.affection} />
-                                <Text style={styles.giftTitle}>
-                                    Se acerca {giftOccasion.label}
-                                </Text>
-                                <Text style={styles.giftWhen}>
-                                    {giftOccasion.days <= 0 ? 'Hoy' : giftOccasion.days === 1 ? 'Mañana' : `En ${giftOccasion.days} días`}
-                                </Text>
-                            </View>
-
-                            {plan === 'premium' ? (
-                                <>
-                                    {giftIntel && giftIntel.wishes.length > 0 ? (
-                                        <View style={{ gap: spacing.s6 }}>
-                                            <Text style={styles.giftLine}>Lo que pidió:</Text>
-                                            {giftIntel.wishes.map((wish, i) => (
-                                                <View key={`${wish}-${i}`} style={styles.giftWishRow}>
-                                                    <Ionicons name="star" size={13} color={theme.premium} style={{ marginTop: 3 }} />
-                                                    <Text style={styles.giftWish}>{wish}</Text>
-                                                </View>
-                                            ))}
-                                        </View>
-                                    ) : (
-                                        <Text style={styles.giftLine}>
-                                            No tiene deseos anotados. Puedes preguntarle sin que se note.
-                                        </Text>
-                                    )}
-
-                                    {giftIntel && giftIntel.sizes.length > 0 ? (
-                                        <View style={styles.giftSizes}>
-                                            {giftIntel.sizes.map(size => (
-                                                <View key={size.label} style={styles.giftSizeChip}>
-                                                    <Text style={styles.giftSizeText}>{size.label} {size.value}</Text>
-                                                </View>
-                                            ))}
-                                        </View>
-                                    ) : (
-                                        <TouchableOpacity style={styles.giftLockRow} onPress={() => router.push('/partner')}>
-                                            <Ionicons name="create-outline" size={15} color={theme.textFaint} />
-                                            <Text style={styles.giftLockText}>Anota sus tallas para tenerlas a mano</Text>
-                                            <Text style={styles.giftLockCta}>Abrir ficha</Text>
-                                        </TouchableOpacity>
-                                    )}
-                                </>
-                            ) : (
-                                <TouchableOpacity style={styles.giftLockRow} onPress={() => setIsGiftPaywallVisible(true)}>
-                                    <Ionicons name="lock-closed" size={15} color={theme.premium} />
-                                    <Text style={styles.giftLockText}>
-                                        Conexión Total te muestra qué pidió y sus tallas
-                                    </Text>
-                                    <Text style={styles.giftLockCta}>Ver</Text>
-                                </TouchableOpacity>
-                            )}
-                        </View>
-                    )}
+                    {/* El aviso de regalo, la invitación de tallas y "Lo
+                        próximo" viven en src/screens/home/ (Sprint 11.9). Esta
+                        pantalla tenía 1.387 líneas y ahí ya se escaparon
+                        errores: un useMemo después de un return, un bloque
+                        reemplazado en el lugar equivocado. Cada tarjeta se
+                        lleva sus propios estilos, que es lo que corta la
+                        dependencia de vuelta. */}
+                    <GiftAlertCard
+                        occasion={giftOccasion}
+                        intel={giftIntel}
+                        plan={plan}
+                        onOpenPartnerSheet={() => router.push('/partner')}
+                        onNeedUpgrade={() => setIsGiftPaywallVisible(true)}
+                    />
 
                     {/* Sprint 9.21 — la pregunta del día. Va después del
                         aviso de regalo, que tiene fecha de vencimiento, y
@@ -1186,73 +1103,19 @@ const Home: React.FC = () => {
                         <DailyQuestionCard onArchiveBlocked={() => setIsQuestionsPaywallVisible(true)} />
                     )}
 
-                    {/* Sprint 9.24 — invitación a declarar MIS tallas.
-                        Deliberadamente discreta: una fila, sin color de
-                        acento, sin modal y con una X para posponerla dos
-                        semanas. Compite en la misma pantalla con el aviso de
-                        regalo, que sí es urgente; esto no lo es, y si grita se
-                        vuelve ruido. Desaparece sola cuando no queda ninguna
-                        talla por responder. */}
-                    {showMeasurementsInvite && (
-                        <TouchableOpacity
-                            onPress={() => router.push('/measurements?guide=1')}
-                            accessibilityRole="button"
-                            accessibilityLabel="Responder mis tallas"
-                            style={{
-                                flexDirection: 'row', alignItems: 'center', gap: spacing.s12,
-                                backgroundColor: theme.surfaceAlt, borderRadius: radii.card,
-                                paddingVertical: spacing.s12, paddingHorizontal: spacing.s14,
-                                marginBottom: spacing.s16,
-                            }}
-                        >
-                            <Ionicons name="shirt-outline" size={18} color={theme.textMuted} />
-                            <View style={{ flex: 1 }}>
-                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: theme.text }}>
-                                    ¿{partnerData?.displayName || 'Tu pareja'} sabe qué talla usas?
-                                </Text>
-                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint, marginTop: 2 }}>
-                                    Déjaselas anotadas · {myMeasurementsFilled} de {myMeasurementFields.length}
-                                </Text>
-                            </View>
-                            <TouchableOpacity
-                                onPress={snoozeMeasurementsInvite}
-                                accessibilityRole="button"
-                                accessibilityLabel="Recordármelo más adelante"
-                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                            >
-                                <Ionicons name="close" size={16} color={theme.textFaint} />
-                            </TouchableOpacity>
-                        </TouchableOpacity>
-                    )}
+                    <MeasurementsInviteCard
+                        visible={showMeasurementsInvite}
+                        partnerName={partnerData?.displayName}
+                        filled={myMeasurementsFilled}
+                        total={myMeasurementFields.length}
+                        onPress={() => router.push('/measurements?guide=1')}
+                        onSnooze={snoozeMeasurementsInvite}
+                    />
 
-                    {/* Sprint 9.5: "Lo próximo". Se compara a medianoche y no con la
-                        hora exacta, para que un evento de esta tarde diga "Hoy" y uno
-                        de mañana temprano diga "Mañana". Solo aparece si hay algo
-                        próximo: sin eventos no se muestra un hueco vacío. */}
-                    {nextUp && (() => {
-                        // daysBetween cuenta días de calendario y no de 24
-                        // horas: el día del cambio de hora dura 23, y
-                        // truncando milisegundos la cuenta se adelanta un día.
-                        const days = daysBetween(new Date(), nextUp.date);
-                        const whenLabel = days <= 0 ? 'Hoy' : days === 1 ? 'Mañana' : `En ${days} días`;
-
-                        return (
-                            <TouchableOpacity
-                                style={styles.nextCard}
-                                activeOpacity={0.85}
-                                onPress={() => router.push('/(tabs)/calendar')}
-                            >
-                                <View style={styles.nextIcon}>
-                                    <Ionicons name={nextUp.icon} size={18} color={theme.primary} />
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.nextLabel}>LO PRÓXIMO</Text>
-                                    <Text style={styles.nextTitle} numberOfLines={1}>{nextUp.title}</Text>
-                                </View>
-                                <Text style={styles.nextWhen}>{whenLabel}</Text>
-                            </TouchableOpacity>
-                        );
-                    })()}
+                    <NextUpCard
+                        next={nextUp}
+                        onPress={() => router.push('/(tabs)/calendar')}
+                    />
 
                     {/* Sprint 7.3a: selector rápido de ánimo — tocar un círculo abre
                         directo el modal de mensaje (ya no hay un paso intermedio). */}

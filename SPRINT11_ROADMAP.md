@@ -27,7 +27,7 @@ final.
 |---|---|---|---|
 | 11.7 | `CLAUDE.md` | ✅ | Las convenciones del proyecto no están escritas en ninguna parte del repo. Va antes de las refactorizaciones. |
 | 11.8 | Unificar el reproductor de audio | ⏸ aplazada | 435 líneas en dos implementaciones del mismo problema. |
-| 11.9 | Partir `home.tsx` y `chat.tsx` | | 1.387 y 1.293 líneas. Ahí ya se escaparon errores. |
+| 11.9 | Partir `home.tsx` y `chat.tsx` | ◐ a medias | 1.387 y 1.293 líneas. Ahí ya se escaparon errores. |
 | 11.10 | Accesibilidad en lo antiguo | | 50 atributos para 344 elementos tocables (~15%). |
 
 ## Decidido en 11.2
@@ -73,6 +73,26 @@ dos subidas simultáneas leyendo por separado podrían dejar pasar las dos.
 el cupo: qué rutas cuentan (la foto de perfil no), cuál es el tope cuando el
 campo falta (gratuito, nunca «sin límite») y cuál es el de una pareja mixta
 (basta que uno pague).
+
+## A medias en 11.9
+
+`home.tsx` bajó de **1.387 a 1.250 líneas**: se extrajeron el aviso de regalo,
+la invitación de tallas y «Lo próximo» a `src/screens/home/`. **`chat.tsx`
+(1.293 líneas) sigue intacto.**
+
+Cada tarjeta se lleva **sus propios estilos**. Eso es el punto: si recibieran
+el objeto de estilos de la pantalla seguirían atadas a ella, y no se habría
+ganado nada más que mover líneas de archivo.
+
+Se extrajo solo lo que tiene una interfaz chica y clara. Lo que queda en
+`home.tsx` —el hero de aniversario, el extrañómetro, el selector de ánimo—
+está entretejido con una decena de estados locales, y separarlo bien exige
+decidir qué estado sube y qué baja: eso es un rediseño, y sin poder revisarlo
+visualmente no corresponde hacerlo sin nadie mirando.
+
+El aviso de regalo quedó además con 8 pruebas, que cumplen doble función:
+cubren la separación de planes de la función estrella y sirvieron de red para
+comprobar que la extracción no cambió el comportamiento.
 
 ## Aplazada en 11.8, y por qué
 
