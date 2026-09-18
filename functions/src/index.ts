@@ -50,6 +50,9 @@ export { onPlanOrPartnerChanged } from './storageLimit';
 // Recepción de errores del cliente (Sprint 11.1) — ver functions/src/errorLog.ts.
 export { reportClientError } from './errorLog';
 
+// Embudo de conversión por cohorte (Sprint 11.4) — ver adminCohorts.ts.
+export { aggregateCohorts } from './adminCohorts';
+
 // Panel administrativo (Sprint 10.1) — métricas agregadas y ficha de soporte.
 export {
   onUserProfileCreated, aggregateDailyMetrics, adminLookupUser,

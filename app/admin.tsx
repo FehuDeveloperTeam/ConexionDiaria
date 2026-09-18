@@ -46,6 +46,14 @@ interface DailyRow {
     newPremium?: number;
 }
 
+interface CohortRow {
+    month: string;
+    signups?: number;
+    paired?: number;
+    premium?: number;
+    medianDaysToPair?: number | null;
+}
+
 interface LookupResult {
     uid: string;
     plan: string;
@@ -70,6 +78,7 @@ const AdminScreen: React.FC = () => {
 
     const [summary, setSummary] = useState<Summary | null>(null);
     const [days, setDays] = useState<DailyRow[]>([]);
+    const [cohorts, setCohorts] = useState<CohortRow[]>([]);
     const [foundersLeft, setFoundersLeft] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -88,9 +97,10 @@ const AdminScreen: React.FC = () => {
 
         (async () => {
             try {
-                const [summarySnap, daysSnap, foundersSnap] = await Promise.all([
+                const [summarySnap, daysSnap, cohortsSnap, foundersSnap] = await Promise.all([
                     getDoc(doc(db, 'adminMetrics', 'summary')),
                     getDocs(query(collection(db, 'adminDaily'), orderBy('__name__', 'desc'), limit(DAYS))),
+                    getDocs(query(collection(db, 'adminCohorts'), orderBy('__name__', 'desc'), limit(6))),
                     getDoc(doc(db, 'appConfig', 'founders')),
                 ]);
 
@@ -101,6 +111,7 @@ const AdminScreen: React.FC = () => {
                 // límite recorte los días antiguos); el gráfico los quiere al
                 // revés.
                 setDays(daysSnap.docs.map(d => ({ date: d.id, ...d.data() } as DailyRow)).reverse());
+                setCohorts(cohortsSnap.docs.map(d => ({ month: d.id, ...d.data() } as CohortRow)));
 
                 const founders = foundersSnap.data();
                 const claimed = (founders?.claimed as number) ?? 0;
@@ -300,6 +311,97 @@ const AdminScreen: React.FC = () => {
                             </View>
                         </>
                     )}
+
+                    {/* Embudo de conversión — Sprint 11.4 */}
+                    <View style={{ gap: spacing.s10 }}>
+                        <Text style={sectionLabel}>Conversión por cohorte</Text>
+                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, lineHeight: 18, color: theme.textFaint }}>
+                            Por mes de registro, no sobre el total: mezclar a quien se registró ayer
+                            con quien lleva un año da un número que siempre parece malo cuando la app
+                            crece. Las descargas no aparecen acá porque ese dato vive en App Store
+                            Connect y Play Console, no en nuestra base.
+                        </Text>
+
+                        {cohorts.length === 0 ? (
+                            <View style={{
+                                backgroundColor: theme.surface, borderRadius: radii.card,
+                                borderWidth: 1, borderColor: theme.borderSoft, padding: spacing.s16,
+                            }}>
+                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 13.5, lineHeight: 20, color: theme.textMuted }}>
+                                    Todavía no hay cohortes calculadas. Se recalculan de madrugada, así
+                                    que la primera aparece mañana.
+                                </Text>
+                            </View>
+                        ) : (
+                            <View style={{
+                                backgroundColor: theme.surface, borderRadius: radii.card,
+                                borderWidth: 1, borderColor: theme.borderSoft,
+                            }}>
+                                <View style={{
+                                    flexDirection: 'row', paddingHorizontal: spacing.s14, paddingVertical: spacing.s10,
+                                    borderBottomWidth: 1, borderBottomColor: theme.divider,
+                                }}>
+                                    {['Mes', 'Cuentas', 'Empareja', 'Premium'].map((header, i) => (
+                                        <Text
+                                            key={header}
+                                            style={{
+                                                flex: i === 0 ? 1.2 : 1,
+                                                textAlign: i === 0 ? 'left' : 'right',
+                                                fontFamily: fontFamilies.bodyBold, fontSize: 10.5,
+                                                letterSpacing: 0.6, textTransform: 'uppercase', color: theme.textFaint,
+                                            }}
+                                        >
+                                            {header}
+                                        </Text>
+                                    ))}
+                                </View>
+
+                                {cohorts.map((cohort, index) => {
+                                    const signups = cohort.signups ?? 0;
+                                    const pct = (n?: number) =>
+                                        signups > 0 && typeof n === 'number'
+                                            ? `${n} · ${Math.round((n / signups) * 100)}%`
+                                            : '—';
+                                    return (
+                                        <View
+                                            key={cohort.month}
+                                            style={{
+                                                flexDirection: 'row', paddingHorizontal: spacing.s14, paddingVertical: spacing.s10,
+                                                borderBottomWidth: index === cohorts.length - 1 ? 0 : 1,
+                                                borderBottomColor: theme.divider,
+                                            }}
+                                        >
+                                            <Text style={{ flex: 1.2, fontFamily: fontFamilies.body, fontSize: 12.5, color: theme.textMuted }}>
+                                                {cohort.month}
+                                            </Text>
+                                            <Text style={{ flex: 1, textAlign: 'right', fontFamily: fontFamilies.bodySemiBold, fontSize: 12.5, color: theme.text }}>
+                                                {signups}
+                                            </Text>
+                                            <Text style={{ flex: 1, textAlign: 'right', fontFamily: fontFamilies.bodySemiBold, fontSize: 12.5, color: theme.text }}>
+                                                {pct(cohort.paired)}
+                                            </Text>
+                                            <Text style={{ flex: 1, textAlign: 'right', fontFamily: fontFamilies.bodySemiBold, fontSize: 12.5, color: theme.text }}>
+                                                {pct(cohort.premium)}
+                                            </Text>
+                                        </View>
+                                    );
+                                })}
+                            </View>
+                        )}
+
+                        {/* La mediana de días hasta emparejarse dice si el problema está en
+                            el producto o en el tráfico: si la gente se registra y no se
+                            empareja nunca, no es que falten descargas. */}
+                        {cohorts.some(c => typeof c.medianDaysToPair === 'number') && (
+                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textMuted }}>
+                                Días hasta emparejarse (mediana):{' '}
+                                {cohorts
+                                    .filter(c => typeof c.medianDaysToPair === 'number')
+                                    .map(c => `${c.month}: ${c.medianDaysToPair}`)
+                                    .join(' · ')}
+                            </Text>
+                        )}
+                    </View>
 
                     {/* Soporte */}
                     <View style={{ gap: spacing.s10 }}>

@@ -12,7 +12,7 @@ final.
 | 11.1 | Reporte de errores y red de seguridad | ✅ | 101 `console.error` que no llegaban a ninguna parte, y pantalla blanca ante cualquier error de render. |
 | 11.2 | Integración continua | ✅ | Las 159 pruebas no corren solas: nada impide subir código que las rompa. |
 | 11.3 | Cupo de almacenamiento en el servidor | ✅ | `checkStorage()` vive solo en el cliente; `storage.rules` nunca consulta `usedStorage`. El tope del plan gratuito es burlable. |
-| 11.4 | Embudo de conversión en el panel | | El panel mide actividad, no conversión. Sin cohortes no se sabe si el negocio funciona. |
+| 11.4 | Embudo de conversión en el panel | ✅ | El panel mide actividad, no conversión. Sin cohortes no se sabe si el negocio funciona. |
 
 ## Fase 2 — Pérdida de usuarios
 
@@ -73,6 +73,26 @@ dos subidas simultáneas leyendo por separado podrían dejar pasar las dos.
 el cupo: qué rutas cuentan (la foto de perfil no), cuál es el tope cuando el
 campo falta (gratuito, nunca «sin límite») y cuál es el de una pareja mixta
 (basta que uno pague).
+
+## Decidido en 11.4 — y una limitación que no se puede salvar
+
+**Las descargas no se pueden medir desde acá.** Ese dato vive en App Store
+Connect y en Play Console, no en Firestore, y no hay forma honesta de
+inferirlo. El embudo empieza donde empiezan nuestros datos —la cuenta
+creada— y el panel lo dice explícitamente, en vez de dejar creer que está
+completo. Para el número de arriba hay que mirar las consolas de las tiendas.
+
+**Cohorte = mes de registro, no porcentaje sobre el total.** Preguntar «qué
+porcentaje de los usuarios paga» mezcla a quien se registró ayer con quien
+lleva un año: da un número que siempre parece malo justo cuando la app crece,
+y que empeora al crecer más rápido.
+
+**Se leen los documentos de la cohorte en vez de usar `count()`.** A este
+volumen son centavos, y permite medir además la mediana de días hasta
+emparejarse — que es lo que distingue un problema de producto de un problema
+de tráfico: si la gente se registra y no se empareja nunca, no faltan
+descargas. Solo se recalculan los últimos 6 meses; una cohorte vieja ya no se
+mueve.
 
 ## Corrección de la auditoría preliminar
 

@@ -202,6 +202,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Embudo de conversión por cohorte (Sprint 11.4). Mismo criterio: son
+    // cifras agregadas, sin contenido de nadie, y las escribe solo el
+    // servidor.
+    match /adminCohorts/{monthKey} {
+      allow read, list: if isAdmin();
+      allow write: if false;
+    }
+
     // --- REGLAS PARA LA COLECCIÓN 'appConfig' — Sprint 9.17 ---
     // Datos de configuración que la app necesita leer pero que ningún cliente
     // puede escribir. Hoy solo 'appConfig/founders', el contador de los 500

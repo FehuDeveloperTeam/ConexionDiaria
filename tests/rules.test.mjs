@@ -520,6 +520,18 @@ await check(
     assertFails(updateDoc(doc(admin.firestore(), 'adminDaily', '2026-09-14'), { messages: 0 }))
 );
 await check(
+    'LEGÍTIMO: un administrador puede leer el embudo por cohorte',
+    assertSucceeds(getDocs(collection(admin.firestore(), 'adminCohorts')))
+);
+await check(
+    'ATAQUE: un usuario cualquiera NO puede leer el embudo',
+    assertFails(getDoc(doc(alice.firestore(), 'adminCohorts', '2026-09')))
+);
+await check(
+    'ATAQUE: ni un administrador puede escribir una cohorte',
+    assertFails(updateDoc(doc(admin.firestore(), 'adminCohorts', '2026-09'), { premium: 999 }))
+);
+await check(
     // El panel es de números agregados. Ser administrador no da acceso a los
     // datos de una pareja: para el soporte hay una función que devuelve cinco
     // campos y nada más.
