@@ -25,7 +25,7 @@ final.
 
 | # | Sesión | Estado | Notas |
 |---|---|---|---|
-| 11.7 | `CLAUDE.md` | | Las convenciones del proyecto no están escritas en ninguna parte del repo. Va antes de las refactorizaciones. |
+| 11.7 | `CLAUDE.md` | ✅ | Las convenciones del proyecto no están escritas en ninguna parte del repo. Va antes de las refactorizaciones. |
 | 11.8 | Unificar el reproductor de audio | | 435 líneas en dos implementaciones del mismo problema. |
 | 11.9 | Partir `home.tsx` y `chat.tsx` | | 1.387 y 1.293 líneas. Ahí ya se escaparon errores. |
 | 11.10 | Accesibilidad en lo antiguo | | 50 atributos para 344 elementos tocables (~15%). |
