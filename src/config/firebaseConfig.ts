@@ -1,5 +1,8 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import {
+  getFirestore, initializeFirestore,
+  persistentLocalCache, persistentMultipleTabManager,
+} from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getAuth, initializeAuth, setPersistence, browserLocalPersistence, getReactNativePersistence } from "firebase/auth";
 import { getFunctions } from "firebase/functions";
@@ -25,8 +28,39 @@ if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
 // Inicializa Firebase
 const app = initializeApp(firebaseConfig);
 
-// Inicializa servicios
-const db = getFirestore(app);
+// Inicializa servicios.
+//
+// Sprint 11.5: caché persistente en web. Sin ella, cada recarga de la pestaña
+// vuelve a pedirle todo a la red: el chat, las notas y el álbum aparecen
+// vacíos un instante y la app se siente lenta aunque no lo sea. Con la caché,
+// lo último que se vio ya está dibujado antes de que llegue la primera
+// respuesta.
+//
+// 'persistentMultipleTabManager' importa de verdad acá: sin él, abrir la app
+// en una segunda pestaña hace fallar la persistencia de la primera con
+// 'failed-precondition'. Y esta app se usa en escritorio, donde tener dos
+// pestañas abiertas es lo normal.
+//
+// LO QUE ESTO NO RESUELVE: el caso móvil. La caché persistente de Firestore va
+// sobre IndexedDB, que no existe en React Native — ahí el SDK web solo tiene
+// caché en memoria, así que la app sigue sirviendo mientras está abierta pero
+// arranca vacía sin señal. Resolverlo de verdad exige migrar a
+// @react-native-firebase, que trae el SDK nativo con persistencia propia; es
+// una decisión grande y aparte, no un ajuste de configuración.
+//
+// La comprobación es por IndexedDB y no por Platform.OS: durante el export
+// estático, Platform.OS ya es 'web' pero el código corre en Node, donde la
+// caché persistente no se puede usar.
+const hayIndexedDb =
+  typeof globalThis !== 'undefined' &&
+  typeof (globalThis as { indexedDB?: unknown }).indexedDB !== 'undefined';
+
+const db = Platform.OS === 'web' && hayIndexedDb
+  ? initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    })
+  : getFirestore(app);
+
 const storage = getStorage(app);
 
 // A-05: en móvil, 'getAuth(app)' NO conecta AsyncStorage solo — el propio

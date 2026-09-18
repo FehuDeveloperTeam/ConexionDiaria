@@ -18,7 +18,7 @@ final.
 
 | # | Sesión | Estado | Notas |
 |---|---|---|---|
-| 11.5 | Caché offline de Firestore | | `getFirestore(app)` sin caché persistente: la app no sirve sin señal, y es una app de hábito diario que se abre en el metro. |
+| 11.5 | Caché offline de Firestore | ✅ | `getFirestore(app)` sin caché persistente: la app no sirve sin señal, y es una app de hábito diario que se abre en el metro. |
 | 11.6 | Pruebas de los flujos que cobran | | Emparejamiento, bienvenida, paywall y compra. Incluye montar el ejecutor de pruebas de componentes, que no existe. |
 
 ## Fase 3 — Deuda
@@ -73,6 +73,24 @@ dos subidas simultáneas leyendo por separado podrían dejar pasar las dos.
 el cupo: qué rutas cuentan (la foto de perfil no), cuál es el tope cuando el
 campo falta (gratuito, nunca «sin límite») y cuál es el de una pareja mixta
 (basta que uno pague).
+
+## Decidido en 11.5 — y una corrección al propio plan
+
+**La caché persistente de Firestore es solo para web.** Va sobre IndexedDB,
+que no existe en React Native. La justificación con la que se priorizó este
+ítem —«la app se abre en el metro y no sirve»— es el caso **móvil**, y este
+cambio **no lo resuelve**: en el teléfono el SDK web sigue con caché en
+memoria, así que la app funciona mientras está abierta pero arranca vacía sin
+señal.
+
+Lo que sí se gana, y es real, es la experiencia en escritorio, que es donde
+más se está usando la app hoy: cada recarga de pestaña dejaba todo vacío un
+instante mientras la red respondía. Se usa `persistentMultipleTabManager`
+porque sin él una segunda pestaña rompe la persistencia de la primera.
+
+Resolver el caso móvil exige migrar a `@react-native-firebase`, que trae el
+SDK nativo con persistencia propia. Es una decisión grande y aparte — toca
+toda la capa de datos — y no estaba dimensionada en este plan.
 
 ## Decidido en 11.4 — y una limitación que no se puede salvar
 
