@@ -11,6 +11,7 @@ import {
     orderBy, query, serverTimestamp, setDoc,
 } from 'firebase/firestore';
 import { db } from '../config/firebaseConfig';
+import { captureError } from '../services/errorReporter';
 
 export interface PhotoComment {
     id: string;
@@ -69,6 +70,7 @@ export const usePhotoActivity = (
             else await setDoc(ref, { emoji, createdAt: serverTimestamp() });
         } catch (error) {
             console.error('Error guardando la reacción:', error);
+            captureError(error, { origin: 'reaccionarFoto' });
         }
     }, [relationshipId, photoId, myUid, reactions]);
 

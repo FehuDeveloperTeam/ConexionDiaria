@@ -31,6 +31,7 @@ import { PaywallSheet } from '../../src/components/PaywallSheet';
 import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
 import { FullScreenLoader } from '../../src/components/FullScreenLoader';
 import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
+import { captureError } from '../../src/services/errorReporter';
 
 // Nombres de los 10 estilos de borde premium (ver ThemeContext), en el
 // mismo orden que el catálogo del handoff — se reutiliza para mostrar el
@@ -231,6 +232,8 @@ const ConfigScreen: React.FC = () => {
         } catch (e: any) {
             if (!e.userCancelled) {
                 console.error(e);
+                // Un pago que falla es el único error que cuesta plata directa.
+                captureError(e, { origin: 'comprarPremium', context: { period } });
                 Toast.show({ type: 'error', text1: 'Error al procesar el pago' });
             }
         }
@@ -273,6 +276,7 @@ const ConfigScreen: React.FC = () => {
             uploadTask.on('state_changed', null,
                 (error) => {
                     console.error("Error al subir avatar:", error);
+                    captureError(error, { origin: 'subirAvatar' });
                     setIsUploading(false);
                     Toast.show({ type: 'error', text1: 'Error al subir la imagen' });
                 },

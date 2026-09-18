@@ -43,6 +43,9 @@ export { onNewChatMessage, onNewMissYouPing } from './pushNotifications';
 // functions/src/pairing.ts.
 export { pairWithCode } from './pairing';
 
+// Recepción de errores del cliente (Sprint 11.1) — ver functions/src/errorLog.ts.
+export { reportClientError } from './errorLog';
+
 // Panel administrativo (Sprint 10.1) — métricas agregadas y ficha de soporte.
 export {
   onUserProfileCreated, aggregateDailyMetrics, adminLookupUser,

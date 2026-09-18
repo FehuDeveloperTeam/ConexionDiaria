@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { generateUniqueInvitationCode, buildInvitationCodeDoc } from '../src/services/invitationCode';
 import { TextField } from '../src/components/TextField';
 import { Button } from '../src/components/Button';
+import { captureError } from '../src/services/errorReporter';
 
 const getStyles = (theme: typeof themes.light, fontFamilies: FontFamilies) => StyleSheet.create({
     container: { flexGrow: 1, padding: spacing.s20, backgroundColor: theme.bg },
@@ -107,6 +108,9 @@ const Register: React.FC = () => {
             router.replace('/(tabs)/home');
         } catch (error: any) {
             console.error(error);
+            // Lo más caro que puede fallar: una cuenta a medio crear deja el
+            // correo tomado y a la persona sin poder entrar ni registrarse.
+            captureError(error, { origin: 'crearCuenta' });
 
             // A-06: si la cuenta de Auth llegó a crearse pero algo después
             // falló (generar el código, escribir el perfil), no dejarla a
@@ -118,6 +122,7 @@ const Register: React.FC = () => {
                     await createdUser.delete();
                 } catch (deleteError) {
                     console.error('No se pudo revertir la cuenta a medio crear:', deleteError);
+                    captureError(deleteError, { origin: 'revertirCuenta', fatal: true });
                 }
             }
 

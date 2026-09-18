@@ -26,6 +26,7 @@ import { Button } from '../src/components/Button';
 import { DesktopContentWrap } from '../src/components/DesktopContentWrap';
 import { ensureNotificationPermissions, registerPushToken } from '../src/services/notifications';
 import { markOnboardingDismissed } from '../src/services/onboardingSession';
+import { captureError } from '../src/services/errorReporter';
 
 interface Step {
     icon: keyof typeof Ionicons.glyphMap;
@@ -99,6 +100,7 @@ const WelcomeScreen: React.FC = () => {
                 await setDoc(doc(db, 'users', user.uid), { onboardedAt: Timestamp.now() }, { merge: true });
             } catch (error) {
                 console.error('No se pudo marcar la bienvenida como vista:', error);
+                captureError(error, { origin: 'cerrarBienvenida' });
             }
         }
         router.replace('/(tabs)/home');

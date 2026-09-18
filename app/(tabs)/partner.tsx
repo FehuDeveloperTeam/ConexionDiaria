@@ -30,6 +30,7 @@ import {
     countFilled, fieldsFor, groupsFor, normalizeMeasurements, MeasurementValues,
 } from '../../src/config/measurements';
 import type { Gender } from '../../src/types/models';
+import { captureError } from '../../src/services/errorReporter';
 
 // Las tallas dejaron de ser tres campos fijos en el 9.24: ahora las define el
 // catálogo de src/config/measurements.ts, así que viven en un mapa suelto.
@@ -94,6 +95,7 @@ const PartnerSheetScreen: React.FC = () => {
             router.back();
         } catch (error) {
             console.error('Error guardando la ficha:', error);
+            captureError(error, { origin: 'guardarFicha' });
             Toast.show({ type: 'error', text1: 'No se pudo guardar la ficha' });
         }
         setIsSaving(false);

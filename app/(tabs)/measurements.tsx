@@ -30,6 +30,7 @@ import {
     countFilled, fieldsFor, groupsFor, normalizeMeasurements, MeasurementValues,
 } from '../../src/config/measurements';
 import type { Gender } from '../../src/types/models';
+import { captureError } from '../../src/services/errorReporter';
 
 const GENDER_OPTIONS: { value: Gender; label: string }[] = [
     { value: 'female', label: 'Femenino' },
@@ -132,6 +133,7 @@ const MeasurementsScreen: React.FC = () => {
                 setDraft(prev => ({ ...prev, [field.key]: value.trim() }));
             } catch (error) {
                 console.error('Error guardando la talla:', error);
+                captureError(error, { origin: 'guardarTalla' });
                 Toast.show({ type: 'error', text1: 'No se pudo guardar' });
                 setIsSaving(false);
                 return;
@@ -156,6 +158,7 @@ const MeasurementsScreen: React.FC = () => {
             Toast.show({ type: 'success', text1: 'Tallas guardadas' });
         } catch (error) {
             console.error('Error guardando las tallas:', error);
+            captureError(error, { origin: 'guardarTallas' });
             Toast.show({ type: 'error', text1: 'No se pudieron guardar' });
         }
         setIsSaving(false);

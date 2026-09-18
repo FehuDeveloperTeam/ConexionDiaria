@@ -8,6 +8,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Crypto from 'expo-crypto';
 import Toast from 'react-native-toast-message';
 import { db, storage } from '../../../config/firebaseConfig';
+import { captureError } from '../../../services/errorReporter';
 
 // Función helper para convertir URI a Blob
 const uriToBlob = (uri: string): Promise<Blob> => {
@@ -105,6 +106,7 @@ export function useChatUploads({
                 },
                 (error) => {
                     console.error('Error subiendo imagen:', error);
+                    captureError(error, { origin: 'subirImagenChat' });
                     setIsUploading(false);
                     Toast.show({
                         type: 'error',
@@ -189,6 +191,7 @@ export function useChatUploads({
                 },
                 (error) => {
                     console.error('Error subiendo audio:', error);
+                    captureError(error, { origin: 'subirAudioChat' });
                     setIsUploading(false);
                     Toast.show({
                         type: 'error',
@@ -292,6 +295,7 @@ export function useChatUploads({
                 },
                 (error) => {
                     console.error('Error subiendo video:', error);
+                    captureError(error, { origin: 'subirVideoChat' });
                     setIsUploading(false);
                     Toast.show({
                         type: 'error',

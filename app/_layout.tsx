@@ -27,6 +27,8 @@ import { toastConfig } from '../src/components/toastConfig';
 import { PlanProvider, usePlan } from '../src/contexts/planContext';
 import { ThemeProvider, useTheme } from '../src/contexts/themeContext'; // Importamos el nuevo ThemeProvider
 import { wasOnboardingDismissed } from '../src/services/onboardingSession';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
+import { captureError, initErrorReporting } from '../src/services/errorReporter';
 import Purchases from 'react-native-purchases';
 
 // Sprint 7.0: mantener la splash nativa visible hasta que las tres
@@ -34,6 +36,11 @@ import Purchases from 'react-native-purchases';
 // un parpadeo inicial con la fuente del sistema antes de que aparezca
 // Newsreader/Manrope/Poppins.
 SplashScreen.preventAutoHideAsync();
+
+// Sprint 11.1: se engancha acá, en el módulo y no dentro de un efecto, para
+// que quede activo antes de que se monte cualquier componente. Un error
+// durante el primer render es justamente el que más cuesta diagnosticar.
+initErrorReporting();
 
 // 3. Este componente se encarga de la carga y la redirección
 // Se ejecutará *después* de que PlanProvider esté disponible
@@ -172,7 +179,10 @@ const RootLayout: React.FC = () => {
 
     useEffect(() => {
         if (fontsLoaded || fontError) {
-            if (fontError) console.error('Error cargando fuentes del sistema de diseño:', fontError);
+            if (fontError) {
+                console.error('Error cargando fuentes del sistema de diseño:', fontError);
+                captureError(fontError, { origin: 'cargarFuentes' });
+            }
             SplashScreen.hideAsync();
         }
     }, [fontsLoaded, fontError]);
@@ -185,11 +195,16 @@ const RootLayout: React.FC = () => {
 
     // 9. Renderizamos los providers y el Stack
     return (
-        <PlanProvider>
-            <ThemeProvider> {/* <-- Añadimos el ThemeProvider aquí */}
-                <AppShell />
-            </ThemeProvider>
-        </PlanProvider>
+        // El límite de error va POR FUERA de los proveedores: si lo que se
+        // rompe es el de sesión o el de tema, tiene que quedar alguien
+        // capaz de dibujar la pantalla de error.
+        <ErrorBoundary>
+            <PlanProvider>
+                <ThemeProvider> {/* <-- Añadimos el ThemeProvider aquí */}
+                    <AppShell />
+                </ThemeProvider>
+            </PlanProvider>
+        </ErrorBoundary>
     );
 }
 

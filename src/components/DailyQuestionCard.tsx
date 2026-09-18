@@ -16,6 +16,7 @@ import { radii, spacing } from '../config/theme';
 import { usePlan } from '../contexts/planContext';
 import { useTheme } from '../contexts/themeContext';
 import { questionFor, questionIndexFor, DAILY_QUESTIONS } from '../config/dailyQuestions';
+import { captureError } from '../services/errorReporter';
 
 const todayKey = (): string => {
     const now = new Date();
@@ -89,6 +90,7 @@ export const DailyQuestionCard: React.FC<{ onArchiveBlocked: () => void }> = ({ 
             setDraft('');
         } catch (error) {
             console.error('Error guardando la respuesta:', error);
+            captureError(error, { origin: 'responderPregunta' });
             Toast.show({ type: 'error', text1: 'No se pudo guardar tu respuesta' });
         }
         setIsSaving(false);
