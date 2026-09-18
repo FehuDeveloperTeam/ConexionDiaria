@@ -54,7 +54,8 @@ export const PlanProvider = ({ children }: { children: ReactNode }) => {
     }, []);
 
     // 2. Efecto para el propio documento de usuario (depende de 'user').
-    // OJO: este listener se dispara seguido (isOnline cada 30s, cambios de
+    // OJO: este listener se dispara seguido (el latido de presencia cada 4
+    // minutos —ver src/hooks/useOnlineStatus.ts—, cambios de
     // ánimo, etc.), así que no debe crear listeners de pareja/relación aquí
     // adentro — eso es el efecto 3, con dependencias más finas.
     useEffect(() => {
