@@ -31,12 +31,18 @@ export const useOnlineStatus = () => {
         // Marcar como online al montar el componente
         updateOnlineStatus(true);
 
-        // Actualizar lastSeen cada 30 segundos mientras está activo
+        // Actualizar lastSeen cada 4 minutos mientras está activo. Antes eran
+        // 30s: cada una de esas escrituras dispara el onSnapshot de
+        // users/{uid} en PlanContext, así que bajar la frecuencia reduce
+        // directamente cuánto se re-ejecuta todo lo que depende de él.
+        // El cambio real de estado (entra/sale de la app) sigue siendo
+        // inmediato, vía el listener de AppState de abajo — esto solo
+        // afecta el "latido" mientras el usuario sigue activo sin soltar la app.
         const interval = setInterval(() => {
             if (appState.current === 'active') {
                 updateOnlineStatus(true);
             }
-        }, 30000); // 30 segundos
+        }, 4 * 60 * 1000);
 
         // Listener para cambios en el estado de la app
         const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {

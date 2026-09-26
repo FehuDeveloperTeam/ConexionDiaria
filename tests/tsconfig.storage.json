@@ -1,0 +1,14 @@
+{
+  // Igual que las otras suites: "types": [] para que tsc no cargue los @types
+  // del proyecto, que chocan entre sí y acá no hacen falta.
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "es2020",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": [],
+    "outDir": ".tmp-storage"
+  },
+  "files": ["../functions/src/storageQuota.ts"]
+}

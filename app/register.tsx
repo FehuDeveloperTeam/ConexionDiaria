@@ -1,108 +1,131 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput as RNTextInput, Button, Alert, useColorScheme, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter, Link } from 'expo-router';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, sendEmailVerification, User } from 'firebase/auth';
+import { doc, writeBatch, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { DateField } from '../src/components/DateField';
 import { auth, db } from '../src/config/firebaseConfig';
-import { themes } from '../src/config/theme';
-import { Feather } from '@expo/vector-icons';
+import { themes, spacing, radii, FontFamilies } from '../src/config/theme';
+import { useTheme } from '../src/contexts/themeContext';
+import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { generateUniqueInvitationCode, buildInvitationCodeDoc } from '../src/services/invitationCode';
+import { TextField } from '../src/components/TextField';
+import { Button } from '../src/components/Button';
+import { captureError } from '../src/services/errorReporter';
 
-const getStyles = (theme: typeof themes.light) => StyleSheet.create({
-    container: {
-        flexGrow: 1,
-        justifyContent: 'center',
-        padding: 20,
-        backgroundColor: theme.background,
+const getStyles = (theme: typeof themes.light, fontFamilies: FontFamilies) => StyleSheet.create({
+    container: { flexGrow: 1, padding: spacing.s20, backgroundColor: theme.bg },
+    backButton: { paddingVertical: spacing.s10, marginBottom: spacing.s10 },
+    title: { fontFamily: fontFamilies.display, fontSize: 34, lineHeight: 36, color: theme.text, marginBottom: spacing.s26 },
+    footer: { marginTop: spacing.s26, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.s4 },
+
+    // --- Sprint 9.11: fecha de nacimiento. Calcado del lenguaje visual de
+    // TextField (etiqueta en mayúsculas, campo de 50 de alto) para que no se
+    // note que es otro componente. ---
+    fieldBlock: { marginBottom: spacing.s20, width: '100%' },
+    fieldLabel: {
+        fontFamily: fontFamilies.bodyBold, fontSize: 11, letterSpacing: 0.9,
+        textTransform: 'uppercase', color: theme.textMuted, marginBottom: spacing.s8,
     },
-    title: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        textAlign: 'center',
-        marginBottom: 40,
-        color: theme.text,
-    },
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        width: '100%',
-        borderColor: theme.borderColor,
-        borderWidth: 1,
-        borderRadius: 8,
-        marginBottom: 20,
+    dateField: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        width: '100%', height: 50, paddingHorizontal: spacing.s16 - 1,
+        borderWidth: 1, borderColor: theme.borderSoft, borderRadius: radii.field,
         backgroundColor: theme.inputBackground,
     },
-    input: {
-        flex: 1,
-        height: 50,
-        paddingHorizontal: 15,
-        fontSize: 16,
-        color: theme.text,
-    },
-    icon: {
-        padding: 10,
-    },
-    footer: {
-        marginTop: 30,
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: 5,
-    },
-    footerText: {
-        color: theme.text,
-    },
-    link: {
-        color: theme.link,
-        fontWeight: 'bold',
-    },
-    loadingContainer: {
-        paddingVertical: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-    }
+    dateValue: { fontFamily: fontFamilies.body, fontSize: 16, color: theme.text },
+    datePlaceholder: { fontFamily: fontFamilies.body, fontSize: 16, color: theme.placeholder },
+    fieldHint: { fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint, marginTop: spacing.s6 },
+    footerText: { fontFamily: fontFamilies.body, color: theme.textMuted, fontSize: 13.5 },
+    link: { fontFamily: fontFamilies.bodyBold, color: theme.primary, fontSize: 13.5 },
 });
 
 const Register: React.FC = () => {
-    const colorScheme = useColorScheme() || 'light';
-    const theme = themes[colorScheme];
-    const styles = getStyles(theme);
+    const { theme, fontFamilies } = useTheme();
+    const styles = getStyles(theme, fontFamilies);
     const router = useRouter();
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [displayName, setDisplayName] = useState('');
-    const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-    const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
+    const [birthDate, setBirthDate] = useState<Date | null>(null);
     const [loading, setLoading] = useState(false);
+
+    // Validación en vivo: apenas hay algo escrito en "confirmar", si no
+    // coincide se marca de inmediato (borde + mensaje + CTA bloqueado) en
+    // vez de esperar al submit.
+    const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
 
     const handleRegister = async () => {
         if (password !== confirmPassword) return Toast.show({ type: 'error', text1: 'Error', text2: 'Las contraseñas no coinciden.' });
         if (!email || !password || !displayName) return Toast.show({ type: 'error', text1: 'Error', text2: 'Por favor, completa todos los campos.' });
-        
+        if (!birthDate) return Toast.show({ type: 'error', text1: 'Falta tu fecha de nacimiento', text2: 'La usamos para avisarle a tu pareja de tu cumpleaños.' });
+
         setLoading(true);
+        // Se guarda apenas se crea la cuenta de Auth, para poder revertirla
+        // en el catch si algo después falla (ver A-06 más abajo).
+        let createdUser: User | null = null;
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-            const user = userCredential.user;
-            
-            // ⭐ ACTUALIZADO: Incluye isOnline y lastSeen
-            await setDoc(doc(db, "users", user.uid), {
-                email: user.email,
+            createdUser = userCredential.user;
+
+            const invitationCode = await generateUniqueInvitationCode();
+
+            // El perfil y el código de invitación se crean en el mismo batch:
+            // si uno fallara, no queda un código huérfano sin dueño ni un
+            // perfil sin código para emparejar.
+            const batch = writeBatch(db);
+            batch.set(doc(db, "users", createdUser.uid), {
+                email: createdUser.email,
                 displayName: displayName.trim(),
                 createdAt: serverTimestamp(),
                 partnerId: null,
                 relationshipStartDate: null,
+                birthDate: Timestamp.fromDate(birthDate),
+                invitationCode,
+                gender: null,
                 currentMood: { emoji: '😊', name: 'Neutral', status: '' },
-                // ⭐ CAMPOS NUEVOS PARA ESTADO ONLINE ⭐
-                isOnline: true,              // Usuario online al registrarse
-                lastSeen: serverTimestamp()  // Timestamp actual
+                isOnline: true,
+                lastSeen: serverTimestamp(),
+                plan: 'free',
+                premiumSince: null
             });
-            
+            batch.set(doc(db, "invitationCodes", invitationCode), buildInvitationCodeDoc(createdUser.uid));
+            await batch.commit();
+
+            // A-02: mandar la verificación de correo. No bloquea el uso de
+            // la app — si falla (red, límite de envíos de Firebase), la
+            // persona igual entra y puede reenviarla después desde Inicio.
+            try {
+                await sendEmailVerification(createdUser);
+            } catch (verificationError) {
+                console.error('No se pudo enviar el correo de verificación:', verificationError);
+            }
+
             router.replace('/(tabs)/home');
         } catch (error: any) {
             console.error(error);
+            // Lo más caro que puede fallar: una cuenta a medio crear deja el
+            // correo tomado y a la persona sin poder entrar ni registrarse.
+            captureError(error, { origin: 'crearCuenta' });
+
+            // A-06: si la cuenta de Auth llegó a crearse pero algo después
+            // falló (generar el código, escribir el perfil), no dejarla a
+            // medio camino. Antes, esa cuenta quedaba en un limbo: el
+            // correo ya estaba tomado pero sin perfil, así que la persona
+            // no podía ni entrar ni volver a registrarse.
+            if (createdUser) {
+                try {
+                    await createdUser.delete();
+                } catch (deleteError) {
+                    console.error('No se pudo revertir la cuenta a medio crear:', deleteError);
+                    captureError(deleteError, { origin: 'revertirCuenta', fatal: true });
+                }
+            }
+
             if (error.code === 'auth/email-already-in-use') Toast.show({ type: 'error', text1: 'Error', text2: 'Este correo ya está en uso.' });
             else if (error.code === 'auth/weak-password') Toast.show({ type: 'error', text1: 'Error', text2: 'La contraseña debe tener al menos 6 caracteres.' });
             else Toast.show({ type: 'error', text1: 'Error', text2: 'Ocurrió un problema al crear la cuenta.' });
@@ -111,76 +134,72 @@ const Register: React.FC = () => {
     };
 
     return (
-        <SafeAreaView style={{flex: 1, backgroundColor: theme.background}}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
             <ScrollView contentContainerStyle={styles.container}>
+                <TouchableOpacity style={styles.backButton} onPress={() => router.back()}
+                    accessibilityRole="button" accessibilityLabel="Volver">
+                    <Ionicons name="arrow-back" size={26} color={theme.text} />
+                </TouchableOpacity>
+
                 <Text style={styles.title}>Crea tu Cuenta</Text>
 
-                <View style={styles.inputContainer}>
-                    <RNTextInput
-                        style={styles.input}
-                        placeholder="Tu Nombre"
-                        placeholderTextColor={theme.placeholder}
-                        value={displayName}
-                        onChangeText={setDisplayName}
-                        returnKeyType="next"
+                <TextField label="Nombre" value={displayName} onChangeText={setDisplayName} placeholder="Tu nombre" returnKeyType="next" />
+
+                {/* Sprint 9.11: obligatoria desde el registro, antes de
+                    emparejarse, para que no queden cuentas sin el dato. */}
+                <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Fecha de nacimiento</Text>
+                    {/* Nadie nace mañana: el selector no deja elegir el futuro. */}
+                    <DateField
+                        value={birthDate}
+                        onChange={setBirthDate}
+                        maximumDate={new Date()}
                     />
-                </View>
-                <View style={styles.inputContainer}>
-                    <RNTextInput
-                        style={styles.input}
-                        placeholder="Correo Electrónico"
-                        placeholderTextColor={theme.placeholder}
-                        value={email}
-                        onChangeText={setEmail}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        returnKeyType="next"
-                    />
-                </View>
-                
-                <View style={styles.inputContainer}>
-                    <RNTextInput
-                        style={styles.input}
-                        placeholder="Contraseña (mín. 6 caracteres)"
-                        placeholderTextColor={theme.placeholder}
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry={!isPasswordVisible}
-                        returnKeyType="next"
-                    />
-                    <TouchableOpacity style={styles.icon} onPress={() => setIsPasswordVisible(!isPasswordVisible)}>
-                        <Feather name={isPasswordVisible ? "eye-off" : "eye"} size={22} color={theme.placeholder} />
-                    </TouchableOpacity>
+                    <Text style={styles.fieldHint}>
+                        Para avisarle a tu pareja de tu cumpleaños.
+                    </Text>
                 </View>
 
-                <View style={styles.inputContainer}>
-                    <RNTextInput
-                        style={styles.input}
-                        placeholder="Confirmar Contraseña"
-                        placeholderTextColor={theme.placeholder}
-                        value={confirmPassword}
-                        onChangeText={setConfirmPassword}
-                        secureTextEntry={!isConfirmPasswordVisible}
-                        returnKeyType="go"
-                        onSubmitEditing={handleRegister}
-                    />
-                    <TouchableOpacity style={styles.icon} onPress={() => setIsConfirmPasswordVisible(!isConfirmPasswordVisible)}>
-                        <Feather name={isConfirmPasswordVisible ? "eye-off" : "eye"} size={22} color={theme.placeholder} />
-                    </TouchableOpacity>
-                </View>
+                <TextField
+                    label="Email"
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="tu@correo.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    returnKeyType="next"
+                />
+                <TextField
+                    label="Contraseña"
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Mín. 6 caracteres"
+                    isPassword
+                    returnKeyType="next"
+                />
+                <TextField
+                    label="Confirmar contraseña"
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    placeholder="Repite tu contraseña"
+                    isPassword
+                    error={passwordsMismatch ? 'Las contraseñas no coinciden' : undefined}
+                    returnKeyType="go"
+                    onSubmitEditing={handleRegister}
+                />
 
-                {loading ? (
-                    <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="large" color={theme.primary} />
-                    </View>
-                ) : (
-                    <Button title="Registrarme" onPress={handleRegister} color={theme.primary} />
-                )}
+                <Button
+                    title="Registrarme"
+                    onPress={handleRegister}
+                    loading={loading}
+                    loadingText="Creando cuenta…"
+                    disabled={passwordsMismatch}
+                />
 
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>¿Ya tienes una cuenta?</Text>
                     <Link href="/login" style={styles.link}>
-                        Inicia sesión aquí
+                        Inicia sesión
                     </Link>
                 </View>
             </ScrollView>

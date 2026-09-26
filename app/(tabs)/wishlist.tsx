@@ -1,278 +1,46 @@
-import React, { useState, useEffect, useMemo } from 'react';
+// Sprint 7.6a — re-skin de Deseos según el sistema de diseño: chips de
+// filtro, secciones por persona con avatar+inicial, badges de tipo y de
+// "regalado", FAB, menú contextual flotante y paywall inline al llegar a
+// 10 ítems (contando ambas listas).
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, ActivityIndicator, SectionList, ScrollView,
-    TouchableOpacity, Modal, TextInput, Alert, Linking, Animated
+    View, Text, SectionList, ScrollView,
+    TouchableOpacity, Modal, TextInput, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { themes } from '../../src/config/theme';
+import { radii, shadows, spacing } from '../../src/config/theme';
 import { db } from '../../src/config/firebaseConfig';
-import { 
-    collection, addDoc, onSnapshot, Timestamp, query, doc, 
-    serverTimestamp, updateDoc, orderBy, deleteDoc 
+import {
+    collection, addDoc, onSnapshot, Timestamp, query, doc, setDoc,
+    serverTimestamp, updateDoc, orderBy, deleteDoc, limit,
+    writeBatch, arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { usePlan } from '../../src/contexts/planContext';
 import { useTheme } from '../../src/contexts/themeContext';
 import { Ionicons } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
+import Toast from 'react-native-toast-message';
+import { Button } from '../../src/components/Button';
+import { EmptyState } from '../../src/components/EmptyState';
+import { ConfirmDestructiveModal } from '../../src/components/ConfirmDestructiveModal';
+import { FullScreenLoader } from '../../src/components/FullScreenLoader';
+import { PaywallSheet } from '../../src/components/PaywallSheet';
+import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
+import { ContextMenuRow } from '../../src/components/ContextMenuRow';
+import { RowActions } from '../../src/components/RowActions';
+import { useResponsive } from '../../src/hooks/useResponsive';
 
-// --- Constantes ---
 const WISH_TYPES = ['Aniversario', 'Cumpleaños', 'Navidad', 'San Valentín', 'Solo porque sí', 'Otro'];
-
-// --- Estilos ---
-const getStyles = (theme: typeof themes.light, fontFamily: string | undefined) => StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: theme.background },
-    container: { flex: 1, padding: 15 },
-    title: { fontSize: 28, fontWeight: 'bold', color: theme.text, textAlign: 'center', marginBottom: 20, fontFamily: fontFamily },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background },
-    placeholderText: { fontSize: 16, color: theme.placeholder, textAlign: 'center', marginTop: 50, fontFamily: fontFamily },
-    
-    // Lista
-    sectionHeader: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: theme.primary,
-        backgroundColor: theme.background,
-        paddingTop: 20,
-        paddingBottom: 10,
-        fontFamily: fontFamily,
-    },
-    itemContainer: {
-        backgroundColor: theme.inputBackground,
-        borderRadius: 8,
-        padding: 15,
-        marginBottom: 10,
-        borderColor: theme.borderColor,
-        borderWidth: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    itemContent: {
-        flex: 1,
-        marginLeft: 15,
-    },
-    itemTitle: {
-        fontSize: 17,
-        fontWeight: '600',
-        color: theme.text,
-        fontFamily: fontFamily,
-    },
-    itemLink: {
-        fontSize: 13,
-        color: theme.link,
-        fontFamily: fontFamily,
-        marginTop: 4,
-    },
-    itemType: {
-        fontSize: 12,
-        color: theme.placeholder,
-        fontFamily: fontFamily,
-        marginTop: 6,
-        fontStyle: 'italic',
-    },
-    itemActions: {
-        flexDirection: 'row',
-        gap: 8,
-        marginLeft: 8,
-    },
-    actionButton: {
-        padding: 8,
-        borderRadius: 6,
-        backgroundColor: theme.placeholder + '20',
-    },
-    deleteButton: {
-        backgroundColor: '#FF525220',
-    },
-    
-    // Checkbox
-    checkbox: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        borderWidth: 2,
-        borderColor: theme.primary,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    checkboxChecked: {
-        borderColor: theme.placeholder,
-    },
-    checkboxInner: {
-        width: 16,
-        height: 16,
-        borderRadius: 8,
-        backgroundColor: theme.primary,
-    },
-    checkboxInnerChecked: {
-        backgroundColor: theme.placeholder,
-    },
-    itemTitleChecked: {
-        textDecorationLine: 'line-through',
-        color: theme.placeholder,
-    },
-
-    // FAB (Botón de Añadir)
-    fab: {
-        position: 'absolute',
-        right: 20,
-        bottom: 20,
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        backgroundColor: theme.primary,
-        justifyContent: 'center',
-        alignItems: 'center',
-        elevation: 8,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-    },
-    
-    // Modal
-    modalOverlay: { 
-        flex: 1, 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        backgroundColor: 'rgba(0, 0, 0, 0.6)' 
-    },
-    modalContainer: { 
-        width: '90%', 
-        maxHeight: '80%', 
-        backgroundColor: theme.background, 
-        borderRadius: 20, 
-        padding: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 8,
-    },
-    modalTitle: { 
-        fontSize: 20, 
-        fontWeight: 'bold', 
-        color: theme.text, 
-        marginBottom: 20, 
-        textAlign: 'center', 
-        fontFamily: fontFamily 
-    },
-    modalInput: { 
-        minHeight: 50, 
-        width: '100%', 
-        borderColor: theme.borderColor, 
-        borderWidth: 1, 
-        borderRadius: 8, 
-        padding: 10, 
-        fontSize: 16, 
-        color: theme.text, 
-        backgroundColor: theme.inputBackground, 
-        marginBottom: 15, 
-        fontFamily: fontFamily 
-    },
-    modalLabel: { 
-        fontSize: 16, 
-        color: theme.placeholder, 
-        marginBottom: 8, 
-        fontFamily: fontFamily 
-    },
-    pickerContainer: { 
-        borderWidth: 1, 
-        borderColor: theme.borderColor, 
-        borderRadius: 8, 
-        marginBottom: 20, 
-        backgroundColor: theme.inputBackground 
-    },
-    picker: { color: theme.text },
-    modalButtons: { 
-        flexDirection: 'row', 
-        justifyContent: 'space-around', 
-        width: '100%', 
-        marginTop: 10 
-    },
-    modalButton: {
-        paddingVertical: 12,
-        paddingHorizontal: 30,
-        borderRadius: 8,
-        minWidth: 100,
-        alignItems: 'center',
-    },
-    cancelButton: {
-        backgroundColor: theme.placeholder + '30',
-    },
-    saveButton: {
-        backgroundColor: theme.primary,
-    },
-    buttonText: {
-        fontSize: 16,
-        fontWeight: '600',
-        fontFamily: fontFamily,
-    },
-    cancelButtonText: {
-        color: theme.text,
-    },
-    saveButtonText: {
-        color: theme.white,
-    },
-    
-    // Filtro
-    filterContainer: {
-        marginBottom: 10,
-        padding: 10,
-        backgroundColor: theme.inputBackground,
-        borderRadius: 8,
-    },
-    filterLabel: {
-        fontSize: 14,
-        color: theme.placeholder,
-        fontFamily: fontFamily,
-        marginBottom: 5,
-        textAlign: 'center'
-    },
-    
-    // Feedback visual
-    successFeedback: {
-        position: 'absolute',
-        top: 50,
-        left: 20,
-        right: 20,
-        backgroundColor: '#4CAF50',
-        padding: 16,
-        borderRadius: 12,
-        flexDirection: 'row',
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-        elevation: 5,
-        zIndex: 1000,
-    },
-    errorFeedback: {
-        position: 'absolute',
-        top: 50,
-        left: 20,
-        right: 20,
-        backgroundColor: '#F44336',
-        padding: 16,
-        borderRadius: 12,
-        flexDirection: 'row',
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-        elevation: 5,
-        zIndex: 1000,
-    },
-    feedbackText: {
-        color: '#FFF',
-        fontSize: 15,
-        fontWeight: '600',
-        marginLeft: 12,
-        flex: 1,
-        fontFamily: fontFamily,
-    },
-});
+// Sprint 9.16 — a dónde van los deseos de una categoría propia que se borra.
+// Es uno de los tipos de siempre, así que nunca queda un deseo apuntando a
+// una categoría que ya no existe.
+const FALLBACK_TYPE = 'Otro';
+const FREE_LIMIT = 10;
+// Cuántos regalados ve el plan free en el archivo; premium los ve todos.
+const ARCHIVE_FREE_VISIBLE = 10;
+// Colores de avatar por persona (handoff) — no varían entre claro/oscuro.
+const PARTNER_AVATAR = { bg: '#FFE9EF', text: '#C2374F' };
+const GIFTED_BADGE = { bg: '#E6F3EA', text: '#2E6B47' };
 
 interface WishItem {
     id: string;
@@ -285,145 +53,107 @@ interface WishItem {
     createdAt: Timestamp;
 }
 
-// Componente de Feedback Visual
-const FeedbackMessage: React.FC<{
-    message: string;
-    type: 'success' | 'error';
-    visible: boolean;
-}> = ({ message, type, visible }) => {
-    const [fadeAnim] = useState(new Animated.Value(0));
-    const { theme, fontFamily } = useTheme();
-    const styles = getStyles(theme, fontFamily);
-
-    useEffect(() => {
-        if (visible) {
-            Animated.sequence([
-                Animated.timing(fadeAnim, {
-                    toValue: 1,
-                    duration: 300,
-                    useNativeDriver: true,
-                }),
-                Animated.delay(2000),
-                Animated.timing(fadeAnim, {
-                    toValue: 0,
-                    duration: 300,
-                    useNativeDriver: true,
-                }),
-            ]).start();
-        }
-    }, [visible]);
-
-    if (!visible) return null;
-
-    return (
-        <Animated.View
-            style={[
-                type === 'success' ? styles.successFeedback : styles.errorFeedback,
-                { opacity: fadeAnim }
-            ]}
-        >
-            <Ionicons
-                name={type === 'success' ? 'checkmark-circle' : 'alert-circle'}
-                size={24}
-                color="#FFF"
-            />
-            <Text style={styles.feedbackText}>{message}</Text>
-        </Animated.View>
-    );
-};
-
 const WishlistScreen: React.FC = () => {
     const router = useRouter();
-    const { plan, user, userData, partnerData, isLoading } = usePlan();
-    const { theme, fontFamily } = useTheme();
-    const styles = getStyles(theme, fontFamily);
+    const { plan, user, userData, partnerData, relationshipData, isLoading } = usePlan();
+    const { theme, isDarkMode: isDark, fontFamilies, borderStyle } = useTheme();
+    const { isDesktop } = useResponsive();
 
     const [allItems, setAllItems] = useState<WishItem[]>([]);
     const [filterType, setFilterType] = useState<string>('Todos');
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [editingItem, setEditingItem] = useState<WishItem | null>(null);
-    
-    // Estados del Modal
+    const [isPaywallVisible, setIsPaywallVisible] = useState(false);
+    const [contextMenuItem, setContextMenuItem] = useState<WishItem | null>(null);
+    const [isCategoryModalVisible, setIsCategoryModalVisible] = useState(false);
+    const [newCategory, setNewCategory] = useState('');
+
+    // Categorías propias de la pareja. Viven como arreglo en el documento de
+    // la relación y no en una subcolección aparte —a diferencia de los grupos
+    // de tareas— porque acá son etiquetas de texto: el deseo ya guarda su
+    // categoría por nombre en 'type', no por identificador.
+    const customCategories: string[] = Array.isArray(relationshipData?.wishCategories)
+        ? relationshipData.wishCategories
+        : [];
+    const allTypes = [...WISH_TYPES, ...customCategories];
+    const [deletingItem, setDeletingItem] = useState<WishItem | null>(null);
+
     const [newTitle, setNewTitle] = useState('');
     const [newLink, setNewLink] = useState('');
     const [newType, setNewType] = useState(WISH_TYPES[0]);
 
-    // Feedback visual
-    const [feedback, setFeedback] = useState<{
-        visible: boolean;
-        message: string;
-        type: 'success' | 'error';
-    }>({
-        visible: false,
-        message: '',
-        type: 'success',
-    });
+    const partnerId = userData?.partnerId as string | undefined;
 
-    // Función para mostrar feedback
-    const showFeedback = (message: string, type: 'success' | 'error') => {
-        setFeedback({ visible: true, message, type });
-        setTimeout(() => {
-            setFeedback({ visible: false, message: '', type: 'success' });
-        }, 2500);
-    };
-
-    // Cargar la lista de deseos
     useEffect(() => {
-        if (!user || !userData?.partnerId) {
+        if (!user || !partnerId) {
             setAllItems([]);
             return;
         }
 
-        const chatId = [user.uid, userData.partnerId].sort().join('_');
+        const chatId = [user.uid, partnerId].sort().join('_');
         const wishlistRef = collection(db, 'relationships', chatId, 'wishlist');
-        const q = query(wishlistRef, orderBy('createdAt', 'desc'));
+        const q = query(wishlistRef, orderBy('createdAt', 'desc'), limit(200));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setAllItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WishItem)));
         }, (error) => {
             console.error("Error fetching wishlist: ", error);
-            showFeedback('Error al cargar la lista', 'error');
+            Toast.show({ type: 'error', text1: 'Error al cargar la lista' });
         });
 
         return () => unsubscribe();
-    }, [user, userData]);
+    }, [user, partnerId]);
 
-    // Lógica para separar y filtrar las listas
+    // Sprint 9.7 — un deseo regalado sale de la lista activa y pasa al
+    // archivo, donde YA NO OCUPA CUPO. Esa es la razón por la que no hace
+    // falta bloquear el borrado en el plan free: nadie necesita borrar para
+    // hacer espacio, porque el camino natural —cumplir el deseo— ya lo
+    // libera. Y el archivo completo, que es el registro de todo lo que se
+    // regalaron, queda como motivo para pasar a premium.
+    const activeItems = useMemo(() => allItems.filter(item => !item.isCompleted), [allItems]);
+    const archivedItems = useMemo(() => allItems.filter(item => item.isCompleted), [allItems]);
+
     const sectionData = useMemo(() => {
         if (!user || !partnerData) return [];
 
-        let partnerList = allItems.filter(item => item.authorId === partnerData.uid);
-        let myList = allItems.filter(item => item.authorId === user.uid);
+        const byType = (list: WishItem[]) =>
+            filterType === 'Todos' ? list : list.filter(item => item.type === filterType);
 
-        if (filterType !== 'Todos') {
-            partnerList = partnerList.filter(item => item.type === filterType);
-            myList = myList.filter(item => item.type === filterType);
+        const partnerList = byType(activeItems.filter(item => item.authorId === partnerId));
+        const myList = byType(activeItems.filter(item => item.authorId === user.uid));
+        const archive = byType(archivedItems);
+
+        const sections = [
+            { title: partnerData.displayName || 'Pareja', initial: (partnerData.displayName || '?').charAt(0).toUpperCase(), isMine: false, isArchive: false, hiddenCount: 0, data: partnerList },
+            { title: 'Mi lista', initial: (userData?.displayName || '?').charAt(0).toUpperCase(), isMine: true, isArchive: false, hiddenCount: 0, data: myList },
+        ];
+
+        // El archivo solo aparece cuando hay algo dentro: una sección
+        // "Regalados 0" sería ruido. En free se ven los más recientes.
+        if (archive.length > 0) {
+            const visible = plan === 'free' ? archive.slice(0, ARCHIVE_FREE_VISIBLE) : archive;
+            sections.push({
+                title: 'Regalados',
+                initial: '',
+                isMine: false,
+                isArchive: true,
+                hiddenCount: archive.length - visible.length,
+                data: visible,
+            });
         }
 
-        return [
-            { title: `Lista de ${partnerData.displayName}`, data: partnerList },
-            { title: "Mi Lista", data: myList },
-        ];
-    }, [allItems, user, partnerData, filterType]);
+        return sections;
+    }, [activeItems, archivedItems, user, partnerData, partnerId, filterType, userData?.displayName, plan]);
 
-    // --- Manejadores ---
+    // El tope cuenta solo lo activo (ver arriba): lo regalado no consume cupo.
+    const limitReached = plan === 'free' && activeItems.length >= FREE_LIMIT;
 
     const openAddItemModal = () => {
-        // Paywall Check
-        if (plan === 'free' && allItems.length >= 10) {
-            Alert.alert(
-                "Límite Gratuito Alcanzado",
-                "Has alcanzado el límite de 10 deseos. ¡Actualiza a Conexión Total para deseos ilimitados!",
-                [
-                    { text: "OK" },
-                    { text: "Actualizar", onPress: () => router.push('/(tabs)/config') }
-                ]
-            );
+        if (limitReached) {
+            setIsPaywallVisible(true);
             return;
         }
-        
-        // Resetear y abrir modal
         setEditingItem(null);
         setNewTitle('');
         setNewLink('');
@@ -440,13 +170,10 @@ const WishlistScreen: React.FC = () => {
     };
 
     const handleSaveItem = async () => {
-        if (!user || !userData || !userData.partnerId) {
-            Alert.alert('Error', 'No se pudo obtener la información del usuario');
-            return;
-        }
-        
+        if (!user || !userData || !userData.partnerId) return;
+
         if (newTitle.trim() === '') {
-            showFeedback('El título no puede estar vacío', 'error');
+            Toast.show({ type: 'error', text1: 'El título no puede estar vacío' });
             return;
         }
 
@@ -456,17 +183,15 @@ const WishlistScreen: React.FC = () => {
 
         try {
             if (editingItem) {
-                // Actualizar item existente
                 const itemRef = doc(db, 'relationships', chatId, 'wishlist', editingItem.id);
                 await updateDoc(itemRef, {
                     title: newTitle.trim(),
                     link: newLink.trim() || null,
                     type: newType,
                 });
-                showFeedback('Deseo actualizado', 'success');
+                Toast.show({ type: 'success', text1: 'Deseo actualizado' });
             } else {
-                // Crear nuevo item
-                const docData = {
+                await addDoc(wishlistRef, {
                     title: newTitle.trim(),
                     link: newLink.trim() || null,
                     type: newType,
@@ -474,20 +199,15 @@ const WishlistScreen: React.FC = () => {
                     authorName: userData.displayName || 'Usuario',
                     isCompleted: false,
                     createdAt: serverTimestamp(),
-                };
-                
-                await addDoc(wishlistRef, docData);
-                showFeedback('Deseo añadido', 'success');
+                });
+                Toast.show({ type: 'success', text1: 'Deseo añadido' });
             }
-            
+
             setIsModalVisible(false);
-            setNewTitle('');
-            setNewLink('');
-            setNewType(WISH_TYPES[0]);
             setEditingItem(null);
         } catch (error) {
             console.error("Error saving wish: ", error);
-            showFeedback('Error al guardar el deseo', 'error');
+            Toast.show({ type: 'error', text1: 'Error al guardar el deseo' });
         } finally {
             setIsSaving(false);
         }
@@ -495,53 +215,81 @@ const WishlistScreen: React.FC = () => {
 
     const handleToggleItem = async (item: WishItem) => {
         if (!user || !userData?.partnerId) return;
-        
-        const chatId = [user.uid, userData.partnerId].sort().join('_');
-        const itemRef = doc(db, 'relationships', chatId, 'wishlist', item.id);
 
-        try {
-            await updateDoc(itemRef, {
-                isCompleted: !item.isCompleted
-            });
-            // No mostrar feedback para toggle, es acción silenciosa
-        } catch (error) {
-            console.error("Error toggling item: ", error);
-            showFeedback('Error al actualizar', 'error');
-        }
-    };
-
-    const handleDeleteItem = (item: WishItem) => {
-        // Solo el autor puede eliminar
-        if (item.authorId !== user?.uid) {
-            showFeedback('Solo puedes eliminar tus propios deseos', 'error');
+        // Desmarcar un regalado lo devuelve a la lista activa, así que puede
+        // pasarse del tope. Sin este control el archivo sería una puerta
+        // trasera para tener más de diez deseos activos en el plan free.
+        if (item.isCompleted && plan === 'free' && activeItems.length >= FREE_LIMIT) {
+            setIsPaywallVisible(true);
             return;
         }
 
-        Alert.alert(
-            "Eliminar Deseo",
-            `¿Estás seguro de que quieres eliminar "${item.title}"?`,
-            [
-                { text: "Cancelar", style: "cancel" },
-                { 
-                    text: "Eliminar", 
-                    style: "destructive",
-                    onPress: async () => {
-                        if (!userData?.partnerId) return;
-                        
-                        const chatId = [user!.uid, userData.partnerId].sort().join('_');
-                        const itemRef = doc(db, 'relationships', chatId, 'wishlist', item.id);
+        const chatId = [user.uid, userData.partnerId].sort().join('_');
+        const itemRef = doc(db, 'relationships', chatId, 'wishlist', item.id);
+        try {
+            await updateDoc(itemRef, { isCompleted: !item.isCompleted });
+        } catch (error) {
+            console.error("Error toggling item: ", error);
+            Toast.show({ type: 'error', text1: 'Error al actualizar' });
+        }
+    };
 
-                        try {
-                            await deleteDoc(itemRef);
-                            showFeedback('Deseo eliminado', 'success');
-                        } catch (error) {
-                            console.error("Error deleting item: ", error);
-                            showFeedback('Error al eliminar', 'error');
-                        }
-                    }
-                }
-            ]
-        );
+    const confirmDeleteItem = useCallback(async () => {
+        if (!deletingItem || !user || !userData?.partnerId) return;
+        const chatId = [user.uid, userData.partnerId].sort().join('_');
+        const itemRef = doc(db, 'relationships', chatId, 'wishlist', deletingItem.id);
+        try {
+            await deleteDoc(itemRef);
+            Toast.show({ type: 'success', text1: 'Deseo eliminado' });
+        } catch (error) {
+            console.error("Error deleting item: ", error);
+            Toast.show({ type: 'error', text1: 'Error al eliminar' });
+        }
+        setDeletingItem(null);
+    }, [deletingItem, user, userData]);
+
+    const handleAddCategory = async () => {
+        const name = newCategory.trim();
+        if (name === '' || !user || !userData?.partnerId) return;
+
+        if (allTypes.some(t => t.toLowerCase() === name.toLowerCase())) {
+            Toast.show({ type: 'error', text1: 'Esa categoría ya existe' });
+            return;
+        }
+
+        const chatId = [user.uid, userData.partnerId].sort().join('_');
+        try {
+            // setDoc con merge y no updateDoc: si el documento de la relación
+            // todavía no existiera, updateDoc fallaría.
+            await setDoc(doc(db, 'relationships', chatId), { wishCategories: arrayUnion(name) }, { merge: true });
+            setNewCategory('');
+            Toast.show({ type: 'success', text1: 'Categoría creada' });
+        } catch (error) {
+            console.error('Error creando la categoría:', error);
+            Toast.show({ type: 'error', text1: 'No se pudo crear la categoría' });
+        }
+    };
+
+    // Borrar una categoría no borra deseos: los suyos pasan a "Otro". Va en un
+    // solo lote para que no quede ninguno apuntando a algo inexistente.
+    const handleDeleteCategory = async (name: string) => {
+        if (!user || !userData?.partnerId) return;
+
+        const chatId = [user.uid, userData.partnerId].sort().join('_');
+        try {
+            const batch = writeBatch(db);
+            allItems
+                .filter(item => item.type === name)
+                .forEach(item => batch.update(doc(db, 'relationships', chatId, 'wishlist', item.id), { type: FALLBACK_TYPE }));
+            batch.update(doc(db, 'relationships', chatId), { wishCategories: arrayRemove(name) });
+            await batch.commit();
+
+            if (filterType === name) setFilterType('Todos');
+            Toast.show({ type: 'success', text1: 'Categoría eliminada', text2: `Sus deseos pasaron a ${FALLBACK_TYPE}` });
+        } catch (error) {
+            console.error('Error eliminando la categoría:', error);
+            Toast.show({ type: 'error', text1: 'No se pudo eliminar la categoría' });
+        }
     };
 
     const handleLinkPress = (link: string) => {
@@ -549,211 +297,529 @@ const WishlistScreen: React.FC = () => {
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
             url = 'https://' + url;
         }
-        Linking.openURL(url).catch(() => 
-            showFeedback('No se pudo abrir el enlace', 'error')
-        );
+        Linking.openURL(url).catch(() => Toast.show({ type: 'error', text1: 'No se pudo abrir el enlace' }));
     };
 
     // --- Renderizado ---
 
     if (isLoading) {
-        return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={theme.primary} />
-            </View>
-        );
+        return <FullScreenLoader />;
     }
-    
+
     if (!userData?.partnerId) {
         return (
-            <SafeAreaView style={styles.safeArea}>
-                <View style={[styles.container, {justifyContent: 'center'}]}>
-                    <Text style={styles.title}>Lista de Deseos</Text>
-                    <Text style={styles.placeholderText}>
-                        Conéctate con tu pareja para crear su lista de deseos.
-                    </Text>
-                </View>
+            <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+                <EmptyState
+                    icon="gift-outline"
+                    title="Nada que desear... aún"
+                    message="Conéctate con tu pareja para crear su lista de deseos."
+                    onConnectPress={() => router.push('/(tabs)/home')}
+                />
             </SafeAreaView>
         );
     }
 
+    const contextMenuDepth = isDark
+        ? { borderWidth: 1, borderColor: theme.border }
+        : shadows.contextMenu;
+
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <View style={styles.container}>
-                <Text style={styles.title}>Lista de Deseos</Text>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
+            <DesktopContentWrap>
+            <View style={{ paddingHorizontal: spacing.s22, paddingTop: spacing.s16, paddingBottom: spacing.s10 }}>
+                <Text style={{ fontFamily: fontFamilies.display, fontSize: 30, color: theme.text }}>Deseos</Text>
+                <Text style={{
+                    fontFamily: fontFamilies.bodySemiBold,
+                    fontSize: 12,
+                    color: limitReached ? theme.premium : theme.textMuted,
+                    marginTop: spacing.s4,
+                }}>
+                    {plan === 'free'
+                        ? (limitReached ? `${activeItems.length} de ${FREE_LIMIT} activos · límite alcanzado` : `${activeItems.length} de ${FREE_LIMIT} activos del plan free`)
+                        : `${activeItems.length} activos`}
+                </Text>
+            </View>
 
-                {/* Filtro */}
-                <View style={styles.filterContainer}>
-                    <Text style={styles.filterLabel}>Filtrar por categoría</Text>
-                    <Picker
-                        selectedValue={filterType}
-                        onValueChange={(itemValue) => setFilterType(itemValue)}
-                        style={styles.picker}
+            {/* Filtro horizontal de categorías.
+                flexGrow/flexShrink 0: en react-native-web TODO ScrollView trae
+                flexGrow:1 por defecto, y en uno horizontal ese crecimiento va en
+                el eje del padre — o sea vertical. Sin esto la fila de chips se
+                repartía la pantalla a medias con el SectionList de abajo. */}
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ flexGrow: 0, flexShrink: 0 }}
+                contentContainerStyle={{ paddingHorizontal: spacing.s22, gap: spacing.s8, paddingBottom: spacing.s10, alignItems: 'center' }}
+            >
+                {['Todos', ...allTypes].map(type => {
+                    const active = filterType === type;
+                    return (
+                        <TouchableOpacity
+                            key={type}
+                            onPress={() => setFilterType(type)}
+                            style={{
+                                paddingHorizontal: spacing.s14,
+                                paddingVertical: spacing.s8,
+                                borderRadius: radii.pill,
+                                backgroundColor: active ? theme.primary : theme.surface,
+                                borderWidth: active ? 0 : 1,
+                                borderColor: theme.borderSoft,
+                            }}
+                        >
+                            <Text style={{
+                                fontFamily: fontFamilies.bodyBold,
+                                fontSize: 12,
+                                color: active ? theme.white : theme.textMuted,
+                            }}>
+                                {type}
+                            </Text>
+                        </TouchableOpacity>
+                    );
+                })}
+
+                {/* Gestionar categorías propias (9.16) */}
+                <TouchableOpacity
+                    onPress={() => plan === 'premium' ? setIsCategoryModalVisible(true) : setIsPaywallVisible(true)}
+                    style={{
+                        flexDirection: 'row', alignItems: 'center', gap: spacing.s6,
+                        paddingHorizontal: spacing.s14, paddingVertical: spacing.s8,
+                        borderRadius: radii.pill, backgroundColor: theme.primaryTint,
+                        borderWidth: 1, borderStyle: 'dashed', borderColor: theme.borderStrong,
+                    }}
+                >
+                    <Ionicons
+                        name={plan === 'free' ? 'lock-closed' : 'add'}
+                        size={13}
+                        color={plan === 'free' ? theme.premium : theme.primary}
+                    />
+                    <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 12, color: theme.primary }}>
+                        Categoría
+                    </Text>
+                </TouchableOpacity>
+            </ScrollView>
+
+            <SectionList
+                style={{ flex: 1, minHeight: 0 }}
+                contentContainerStyle={{ paddingHorizontal: spacing.s22, paddingBottom: 140 }}
+                sections={sectionData}
+                keyExtractor={(item) => item.id}
+                stickySectionHeadersEnabled={false}
+                renderSectionHeader={({ section }) => (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s10, marginTop: section.isArchive ? spacing.s22 : spacing.s16, marginBottom: spacing.s10 }}>
+                        <View style={{
+                            width: 26,
+                            height: 26,
+                            borderRadius: 13,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: section.isArchive ? theme.surfaceAlt : (section.isMine ? theme.primarySoft : PARTNER_AVATAR.bg),
+                        }}>
+                            {section.isArchive ? (
+                                <Ionicons name="gift-outline" size={14} color={theme.textMuted} />
+                            ) : (
+                                <Text style={{
+                                    fontFamily: fontFamilies.bodyBold,
+                                    fontSize: 12,
+                                    color: section.isMine ? theme.primary : PARTNER_AVATAR.text,
+                                }}>
+                                    {section.initial}
+                                </Text>
+                            )}
+                        </View>
+                        <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 13.5, color: theme.text }}>
+                            {section.title}
+                        </Text>
+                        <View style={{ flex: 1, height: 1, backgroundColor: theme.divider }} />
+                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
+                            {section.data.length}
+                        </Text>
+                    </View>
+                )}
+                renderSectionFooter={({ section }) => (
+                    // El archivo recortado es el gancho a premium: el registro
+                    // completo de lo que se han regalado es justamente lo que
+                    // se cobra en el modelo de "memoria", no el candado.
+                    section.isArchive && section.hiddenCount > 0 ? (
+                        <TouchableOpacity
+                            onPress={() => setIsPaywallVisible(true)}
+                            style={{
+                                flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
+                                borderWidth: 1, borderStyle: 'dashed', borderColor: theme.primary,
+                                backgroundColor: theme.primaryTint, borderRadius: radii.card,
+                                padding: spacing.s14, marginTop: spacing.s4,
+                            }}
+                        >
+                            <Ionicons name="lock-closed" size={16} color={theme.premium} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: theme.text }}>
+                                    {section.hiddenCount} {section.hiddenCount === 1 ? 'regalo más' : 'regalos más'} en el archivo
+                                </Text>
+                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
+                                    Free guarda los {ARCHIVE_FREE_VISIBLE} más recientes
+                                </Text>
+                            </View>
+                            <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 12, color: theme.primary }}>
+                                Ver todo
+                            </Text>
+                        </TouchableOpacity>
+                    ) : null
+                )}
+                renderItem={({ item }) => (
+                    <TouchableOpacity
+                        activeOpacity={0.85}
+                        onLongPress={() => setContextMenuItem(item)}
+                        delayLongPress={400}
+                        style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: spacing.s12,
+                            backgroundColor: theme.surface,
+                            borderRadius: 18,
+                            padding: 15,
+                            marginBottom: spacing.s10,
+                            opacity: item.isCompleted ? 0.7 : 1,
+                            // Sprint 8.6: estilo de borde de la pareja (probador de tema) —
+                            // solo el borde, nunca el radio (la fila ya tiene el suyo propio).
+                            ...(borderStyle.key !== 'default' ? {
+                                borderWidth: borderStyle.borderWidth,
+                                borderColor: borderStyle.borderColor,
+                                borderStyle: borderStyle.dashed ? 'dashed' : 'solid',
+                            } : null),
+                        }}
                     >
-                        <Picker.Item label="Ver Todos" value="Todos" />
-                        {WISH_TYPES.map(type => (
-                            <Picker.Item key={type} label={type} value={type} />
-                        ))}
-                    </Picker>
-                </View>
-
-                {/* Lista de Deseos */}
-                <SectionList
-                    sections={sectionData}
-                    keyExtractor={(item) => item.id}
-                    renderSectionHeader={({ section: { title } }) => (
-                        <Text style={styles.sectionHeader}>{title}</Text>
-                    )}
-                    renderItem={({ item }) => {
-                        const isOwner = item.authorId === user?.uid;
-                        
-                        return (
-                            <View style={styles.itemContainer}>
-                                <TouchableOpacity
-                                    style={[styles.checkbox, item.isCompleted && styles.checkboxChecked]}
-                                    onPress={() => handleToggleItem(item)}
-                                >
-                                    {item.isCompleted && (
-                                        <View style={[styles.checkboxInner, styles.checkboxInnerChecked]} />
-                                    )}
-                                </TouchableOpacity>
-                                
-                                <View style={styles.itemContent}>
-                                    <Text style={[styles.itemTitle, item.isCompleted && styles.itemTitleChecked]}>
-                                        {item.title}
+                        <View style={{ flex: 1, gap: spacing.s6 }}>
+                            <Text style={{
+                                fontFamily: fontFamilies.bodySemiBold,
+                                fontSize: 15,
+                                color: theme.text,
+                                textDecorationLine: item.isCompleted ? 'line-through' : 'none',
+                            }}>
+                                {item.title}
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s8, flexWrap: 'wrap' }}>
+                                <View style={{
+                                    backgroundColor: theme.primaryTint,
+                                    borderRadius: 8,
+                                    paddingVertical: 3,
+                                    paddingHorizontal: 8,
+                                }}>
+                                    <Text style={{ fontFamily: fontFamilies.bodyExtraBold, fontSize: 10, color: theme.primary }}>
+                                        {item.type.toUpperCase()}
                                     </Text>
-                                    {item.link && (
-                                        <TouchableOpacity onPress={() => handleLinkPress(item.link!)}>
-                                            <Text style={styles.itemLink} numberOfLines={1}>
-                                                {item.link}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    )}
-                                    <Text style={styles.itemType}>{item.type}</Text>
                                 </View>
-
-                                {/* Botones de acción - solo para el dueño */}
-                                {isOwner && (
-                                    <View style={styles.itemActions}>
-                                        <TouchableOpacity
-                                            style={styles.actionButton}
-                                            onPress={() => openEditItemModal(item)}
-                                        >
-                                            <Ionicons name="pencil" size={18} color={theme.text} />
-                                        </TouchableOpacity>
-                                        
-                                        <TouchableOpacity
-                                            style={[styles.actionButton, styles.deleteButton]}
-                                            onPress={() => handleDeleteItem(item)}
-                                        >
-                                            <Ionicons name="trash-outline" size={18} color="#F44336" />
-                                        </TouchableOpacity>
+                                {item.isCompleted && (
+                                    <View style={{ backgroundColor: GIFTED_BADGE.bg, borderRadius: 8, paddingVertical: 3, paddingHorizontal: 8 }}>
+                                        <Text style={{ fontFamily: fontFamilies.bodyExtraBold, fontSize: 10, color: GIFTED_BADGE.text }}>
+                                            REGALADO
+                                        </Text>
                                     </View>
                                 )}
                             </View>
-                        );
-                    }}
-                    ListEmptyComponent={
-                        <Text style={styles.placeholderText}>
-                            Aún no hay deseos en esta lista.
-                        </Text>
-                    }
-                />
-            </View>
-
-            {/* Botón Flotante de Añadir */}
-            <TouchableOpacity style={styles.fab} onPress={openAddItemModal}>
-                <Ionicons name="add" size={32} color={theme.white} />
-            </TouchableOpacity>
-
-            {/* Modal para Añadir/Editar Deseo */}
-            <Modal
-                animationType="fade"
-                transparent={true}
-                visible={isModalVisible}
-                onRequestClose={() => setIsModalVisible(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContainer}>
-                        <ScrollView keyboardShouldPersistTaps="handled">
-                            <Text style={styles.modalTitle}>
-                                {editingItem ? 'Editar Deseo' : 'Añadir un Deseo'}
-                            </Text>
-                            
-                            <Text style={styles.modalLabel}>Nombre del Deseo</Text>
-                            <TextInput
-                                style={styles.modalInput}
-                                placeholder="Ej. Bolso SHEIN, Airpods Pro..."
-                                placeholderTextColor={theme.placeholder}
-                                value={newTitle}
-                                onChangeText={setNewTitle}
-                                editable={!isSaving}
-                            />
-                            
-                            <Text style={styles.modalLabel}>Enlace (Opcional)</Text>
-                            <TextInput
-                                style={styles.modalInput}
-                                placeholder="https://..."
-                                placeholderTextColor={theme.placeholder}
-                                value={newLink}
-                                onChangeText={setNewLink}
-                                autoCapitalize="none"
-                                keyboardType="url"
-                                editable={!isSaving}
-                            />
-                            
-                            <Text style={styles.modalLabel}>Categoría</Text>
-                            <View style={styles.pickerContainer}>
-                                <Picker
-                                    selectedValue={newType}
-                                    onValueChange={(itemValue) => setNewType(itemValue)}
-                                    style={styles.picker}
-                                    enabled={!isSaving}
-                                >
-                                    {WISH_TYPES.map(type => (
-                                        <Picker.Item key={type} label={type} value={type} />
-                                    ))}
-                                </Picker>
-                            </View>
-
-                            <View style={styles.modalButtons}>
-                                <TouchableOpacity 
-                                    style={[styles.modalButton, styles.cancelButton]}
-                                    onPress={() => {
-                                        setIsModalVisible(false);
-                                        setEditingItem(null);
-                                    }}
-                                    disabled={isSaving}
-                                >
-                                    <Text style={[styles.buttonText, styles.cancelButtonText]}>
-                                        Cancelar
+                            {!!item.link && (
+                                <TouchableOpacity onPress={() => handleLinkPress(item.link!)}>
+                                    <Text style={{ fontFamily: fontFamilies.body, fontSize: 15, color: theme.link }} numberOfLines={1}>
+                                        {item.link}
                                     </Text>
                                 </TouchableOpacity>
-                                
-                                <TouchableOpacity 
-                                    style={[styles.modalButton, styles.saveButton]}
-                                    onPress={handleSaveItem}
-                                    disabled={isSaving}
-                                >
-                                    {isSaving ? (
-                                        <ActivityIndicator size="small" color={theme.white} />
-                                    ) : (
-                                        <Text style={[styles.buttonText, styles.saveButtonText]}>
-                                            {editingItem ? 'Actualizar' : 'Guardar'}
-                                        </Text>
-                                    )}
-                                </TouchableOpacity>
+                            )}
+                        </View>
+
+                        <RowActions
+                            onEdit={() => openEditItemModal(item)}
+                            onDelete={item.authorId === user?.uid ? () => setDeletingItem(item) : undefined}
+                        />
+
+                        <TouchableOpacity
+                            onPress={() => handleToggleItem(item)}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: !!item.isCompleted }}
+                            accessibilityLabel={item.isCompleted ? `Marcar ${item.title} como pendiente` : `Marcar ${item.title} como cumplido`}
+                            style={{
+                                width: 28,
+                                height: 28,
+                                borderRadius: 14,
+                                borderWidth: 2,
+                                borderColor: item.isCompleted ? theme.primary : theme.borderStrong,
+                                backgroundColor: item.isCompleted ? theme.primary : 'transparent',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            }}
+                        >
+                            {item.isCompleted && <Ionicons name="checkmark" size={17} color={theme.white} />}
+                        </TouchableOpacity>
+                    </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                    <Text style={{ fontFamily: fontFamilies.body, fontSize: 14, color: theme.textFaint, textAlign: 'center', marginTop: spacing.s26 }}>
+                        Aún no hay deseos en esta lista.
+                    </Text>
+                }
+                ListFooterComponent={
+                    limitReached ? (
+                        <View style={{
+                            borderWidth: 1,
+                            borderStyle: 'dashed',
+                            borderColor: theme.primary,
+                            backgroundColor: theme.primaryTint,
+                            borderRadius: radii.card,
+                            padding: spacing.s16,
+                            marginTop: spacing.s10,
+                            gap: spacing.s8,
+                        }}>
+                            <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 14, color: theme.text }}>
+                                Desbloquea deseos ilimitados
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s8 }}>
+                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 13, color: theme.textFaint, textDecorationLine: 'line-through' }}>
+                                    US$9.99
+                                </Text>
+                                <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 13, color: theme.premium }}>
+                                    US$2.99 · -70% HOY
+                                </Text>
                             </View>
-                        </ScrollView>
+                            <Button title="Desbloquear" onPress={() => setIsPaywallVisible(true)} style={{ marginTop: spacing.s4 }} />
+                        </View>
+                    ) : null
+                }
+            />
+
+            {/* FAB — en escritorio no hay tab bar que despejar abajo */}
+            <TouchableOpacity
+                onPress={openAddItemModal}
+                accessibilityRole="button"
+                accessibilityLabel="Agregar un deseo"
+                style={{
+                    position: 'absolute',
+                    right: 20,
+                    bottom: isDesktop ? 24 : 118,
+                    width: 58,
+                    height: 58,
+                    borderRadius: 20,
+                    backgroundColor: theme.primary,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    ...(isDark ? { borderWidth: 1, borderColor: theme.border } : shadows.fab),
+                }}
+            >
+                <Ionicons name={limitReached ? 'lock-closed' : 'add'} size={28} color={theme.white} />
+            </TouchableOpacity>
+            </DesktopContentWrap>
+
+            {/* Menú contextual flotante — Editar (ambos) / Eliminar (solo autor) */}
+            <Modal visible={!!contextMenuItem} transparent animationType="fade" onRequestClose={() => setContextMenuItem(null)}>
+                <TouchableOpacity
+                    style={{ flex: 1, backgroundColor: 'rgba(24,22,46,0.35)', justifyContent: 'center', alignItems: 'center' }}
+                    activeOpacity={1}
+                    onPress={() => setContextMenuItem(null)}
+                >
+                    <View style={{ backgroundColor: theme.surface, borderRadius: 14, paddingVertical: spacing.s8, minWidth: 190, ...contextMenuDepth }}>
+                        <ContextMenuRow
+                            icon="create-outline"
+                            label="Editar"
+                            onPress={() => {
+                                if (contextMenuItem) openEditItemModal(contextMenuItem);
+                                setContextMenuItem(null);
+                            }}
+                        />
+                        {contextMenuItem?.authorId === user?.uid && (
+                            <ContextMenuRow
+                                icon="trash-outline"
+                                label="Eliminar"
+                                color={theme.danger}
+                                onPress={() => {
+                                    setDeletingItem(contextMenuItem);
+                                    setContextMenuItem(null);
+                                }}
+                            />
+                        )}
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
+            {/* Modal para añadir/editar deseo */}
+            <Modal animationType="fade" transparent visible={isModalVisible} onRequestClose={() => setIsModalVisible(false)}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(24,22,46,0.5)', justifyContent: 'center', alignItems: 'center', padding: spacing.s20 }}>
+                    <View style={{ backgroundColor: theme.surface, borderRadius: radii.cardLg, padding: spacing.s22, width: '100%', maxWidth: 400, gap: spacing.s14 }}>
+                        <Text style={{ fontFamily: fontFamilies.display, fontSize: 23, color: theme.text }}>
+                            {editingItem ? 'Editar deseo' : 'Añadir un deseo'}
+                        </Text>
+
+                        <TextInput
+                            style={{
+                                height: 50,
+                                borderWidth: 1,
+                                borderColor: theme.borderSoft,
+                                borderRadius: radii.field,
+                                paddingHorizontal: spacing.s16 - 1,
+                                color: theme.text,
+                                fontFamily: fontFamilies.body,
+                                fontSize: 15,
+                                backgroundColor: theme.inputBackground,
+                            }}
+                            placeholder="Ej. Bolso, Airpods Pro…"
+                            placeholderTextColor={theme.textFaint}
+                            value={newTitle}
+                            onChangeText={setNewTitle}
+                            editable={!isSaving}
+                        />
+
+                        <TextInput
+                            style={{
+                                height: 50,
+                                borderWidth: 1,
+                                borderColor: theme.borderSoft,
+                                borderRadius: radii.field,
+                                paddingHorizontal: spacing.s16 - 1,
+                                color: theme.text,
+                                fontFamily: fontFamilies.body,
+                                fontSize: 15,
+                                backgroundColor: theme.inputBackground,
+                            }}
+                            placeholder="Enlace (opcional)"
+                            placeholderTextColor={theme.textFaint}
+                            value={newLink}
+                            onChangeText={setNewLink}
+                            autoCapitalize="none"
+                            keyboardType="url"
+                            editable={!isSaving}
+                        />
+
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.s8 }}>
+                            {allTypes.map(type => {
+                                const active = newType === type;
+                                return (
+                                    <TouchableOpacity
+                                        key={type}
+                                        onPress={() => setNewType(type)}
+                                        disabled={isSaving}
+                                        style={{
+                                            paddingHorizontal: spacing.s14,
+                                            paddingVertical: spacing.s8,
+                                            borderRadius: radii.pill,
+                                            backgroundColor: active ? theme.primary : theme.surfaceAlt,
+                                        }}
+                                    >
+                                        <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 12, color: active ? theme.white : theme.textMuted }}>
+                                            {type}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+
+                        <View style={{ flexDirection: 'row', gap: spacing.s10, marginTop: spacing.s4 }}>
+                            <View style={{ flex: 1 }}>
+                                <Button
+                                    title="Cancelar"
+                                    variant="outline"
+                                    disabled={isSaving}
+                                    onPress={() => { setIsModalVisible(false); setEditingItem(null); }}
+                                />
+                            </View>
+                            <View style={{ flex: 1.3 }}>
+                                <Button
+                                    title={editingItem ? 'Actualizar' : 'Guardar'}
+                                    loading={isSaving}
+                                    disabled={newTitle.trim() === ''}
+                                    onPress={handleSaveItem}
+                                />
+                            </View>
+                        </View>
                     </View>
                 </View>
             </Modal>
 
-            {/* Feedback Visual - Reemplazo de Toast */}
-            <FeedbackMessage
-                message={feedback.message}
-                type={feedback.type}
-                visible={feedback.visible}
+            {/* Categorías propias — Sprint 9.16 */}
+            <Modal animationType="fade" transparent visible={isCategoryModalVisible} onRequestClose={() => setIsCategoryModalVisible(false)}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(24,22,46,0.5)', justifyContent: 'center', alignItems: 'center', padding: spacing.s20 }}>
+                    <View style={{ backgroundColor: theme.surface, borderRadius: radii.cardLg, padding: spacing.s22, width: '100%', maxWidth: 400, gap: spacing.s14 }}>
+                        <Text style={{ fontFamily: fontFamilies.display, fontSize: 23, color: theme.text }}>
+                            Sus categorías
+                        </Text>
+                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 13.5, color: theme.textMuted }}>
+                            Además de las de siempre, pueden inventar las suyas: «Para la casa», «Viaje a la playa», lo que les sirva.
+                        </Text>
+
+                        <View style={{ flexDirection: 'row', gap: spacing.s10 }}>
+                            <TextInput
+                                style={{
+                                    flex: 1, height: 50, borderWidth: 1, borderColor: theme.borderSoft,
+                                    borderRadius: radii.field, paddingHorizontal: spacing.s16 - 1,
+                                    color: theme.text, fontFamily: fontFamilies.body, fontSize: 15,
+                                    backgroundColor: theme.inputBackground,
+                                }}
+                                placeholder="Nueva categoría"
+                                placeholderTextColor={theme.textFaint}
+                                value={newCategory}
+                                onChangeText={setNewCategory}
+                                maxLength={28}
+                                onSubmitEditing={handleAddCategory}
+                            />
+                            <TouchableOpacity
+                                onPress={handleAddCategory}
+                                accessibilityRole="button"
+                                accessibilityLabel="Crear la categoría"
+                                disabled={newCategory.trim() === ''}
+                                style={{
+                                    width: 50, height: 50, borderRadius: radii.field,
+                                    backgroundColor: newCategory.trim() === '' ? theme.borderSoft : theme.primary,
+                                    alignItems: 'center', justifyContent: 'center',
+                                }}
+                            >
+                                <Ionicons name="add" size={24} color={theme.white} />
+                            </TouchableOpacity>
+                        </View>
+
+                        {customCategories.length > 0 ? (
+                            <View style={{ gap: spacing.s8 }}>
+                                {customCategories.map(name => (
+                                    <View
+                                        key={name}
+                                        style={{
+                                            flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
+                                            backgroundColor: theme.surfaceAlt, borderRadius: radii.field, padding: spacing.s12,
+                                        }}
+                                    >
+                                        <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.text, flex: 1 }}>
+                                            {name}
+                                        </Text>
+                                        <TouchableOpacity onPress={() => handleDeleteCategory(name)} hitSlop={8}
+                                            accessibilityRole="button" accessibilityLabel={`Eliminar la categoría ${name}`}>
+                                            <Ionicons name="trash-outline" size={17} color={theme.danger} />
+                                        </TouchableOpacity>
+                                    </View>
+                                ))}
+                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
+                                    Al borrar una categoría sus deseos no se pierden: pasan a {FALLBACK_TYPE}.
+                                </Text>
+                            </View>
+                        ) : (
+                            <Text style={{ fontFamily: fontFamilies.body, fontSize: 13, color: theme.textFaint }}>
+                                Todavía no han creado ninguna.
+                            </Text>
+                        )}
+
+                        <Button title="Listo" variant="outline" onPress={() => setIsCategoryModalVisible(false)} style={{ marginTop: spacing.s4 }} />
+                    </View>
+                </View>
+            </Modal>
+
+            <ConfirmDestructiveModal
+                visible={!!deletingItem}
+                title="Eliminar deseo"
+                message={deletingItem ? `Se borrará "${deletingItem.title}" para los dos.` : ''}
+                onConfirm={confirmDeleteItem}
+                onCancel={() => setDeletingItem(null)}
+            />
+
+            <PaywallSheet
+                visible={isPaywallVisible}
+                onClose={() => setIsPaywallVisible(false)}
+                onUpgradePress={() => { setIsPaywallVisible(false); router.push('/(tabs)/config'); }}
+                icon="gift"
+                title="Deseos ilimitados"
+                description="El plan free permite hasta 10 deseos entre los dos. Con Premium, sin límite."
+                benefits={['Deseos ilimitados para ambos', 'Historial completo del chat', '25 GB de almacenamiento compartido']}
             />
         </SafeAreaView>
     );

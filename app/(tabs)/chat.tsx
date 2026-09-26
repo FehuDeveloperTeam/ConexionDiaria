@@ -1,1053 +1,226 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-    View, useColorScheme, Platform, KeyboardAvoidingView, StyleSheet, 
-    ActivityIndicator, Text, TouchableOpacity, Image, LayoutAnimation, UIManager, AppState,
-    Alert, Linking, Keyboard, Modal, Dimensions, Animated, ScrollView
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GiftedChat, IMessage, InputToolbar, Composer, Send, Actions, Bubble } from 'react-native-gifted-chat';
-import { useRouter } from 'expo-router';
-import { useHeaderHeight } from '@react-navigation/elements';
-import { auth, db, storage } from '../../src/config/firebaseConfig';
-import { themes } from '../../src/config/theme';
+import React, { useState, useEffect } from 'react';
 import {
-    collection, addDoc, onSnapshot, query, orderBy, doc,
-    DocumentData, updateDoc, Timestamp, deleteDoc, setDoc
-} from 'firebase/firestore';
-import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
-import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { useActionSheet, ActionSheetProvider } from '@expo/react-native-action-sheet';
-import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as DocumentPicker from 'expo-document-picker';
-import * as Crypto from 'expo-crypto';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-import * as MediaLibrary from 'expo-media-library';
-import { Audio } from 'expo-av';
+    View, Platform, KeyboardAvoidingView, StyleSheet,
+    ActivityIndicator, Text, TouchableOpacity, Image, UIManager,
+    Keyboard, Alert, Modal
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { GiftedChat, InputToolbar, Composer, Send, Actions, Bubble } from 'react-native-gifted-chat';
+import { useRouter } from 'expo-router';
+import { spacing, radii } from '../../src/config/theme';
+import { useTheme } from '../../src/contexts/themeContext';
+import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { usePlan } from '../../src/contexts/planContext';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-// Extender el tipo IMessage para incluir campos personalizados
-interface ExtendedMessage extends IMessage {
-    audio?: string;
-    file?: string;
-    fileName?: string;
-    fileSize?: number;
-    delivered?: boolean;
-    read?: boolean;
-    audioPlayed?: boolean;
-    deleted?: boolean;
-    sentAt?: Date;
-}
+import { ExtendedMessage } from '../../src/screens/chat/types';
+import { MessageStatus } from '../../src/screens/chat/components/MessageStatus';
+import { PaywallSheet } from '../../src/components/PaywallSheet';
+import { DesktopContentWrap } from '../../src/components/DesktopContentWrap';
+import { useResponsive } from '../../src/hooks/useResponsive';
+import { ChatDesktopRail } from '../../src/screens/chat/components/ChatDesktopRail';
+import { ImageViewerModal } from '../../src/screens/chat/components/ImageViewerModal';
+import { FileViewerModal } from '../../src/screens/chat/components/FileViewerModal';
+import { SoundWaveAnimation } from '../../src/screens/chat/components/SoundWaveAnimation';
+import { ProfilePhotoModal } from '../../src/screens/chat/components/ProfilePhotoModal';
+import { useChatMessages } from '../../src/screens/chat/hooks/useChatMessages';
+import { useAudioPlayback } from '../../src/screens/chat/hooks/useAudioPlayback';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AudioPlaybackProvider } from '../../src/screens/chat/context/audioPlaybackContext';
+import { AudioBubble } from '../../src/screens/chat/components/AudioBubble';
+import { VideoBubble } from '../../src/screens/chat/components/VideoBubble';
+import { VideoViewerModal } from '../../src/screens/chat/components/VideoViewerModal';
+import { useChatUploads } from '../../src/screens/chat/hooks/useChatUploads';
+import { useAudioRecording } from '../../src/screens/chat/hooks/useAudioRecording';
+import { usePartnerPresence } from '../../src/screens/chat/hooks/usePartnerPresence';
+import { storageLimitFor } from '../../src/config/plans';
 
 // Habilitar LayoutAnimation en Android
+// Preferencia local de si el carril derecho va plegado (Sprint 9.6).
+const RAIL_COLLAPSED_KEY = 'chat.railCollapsed';
+
+// Modo protección (Sprint 9.14): difumina las fotos del chat para que quien
+// pase por detrás de la pantalla no las reconozca. Alto a propósito — con un
+// difuminado suave se siguen distinguiendo los detalles, que es justo lo que
+// se quiere evitar; a este nivel solo quedan siluetas y colores.
+const PROTECTION_KEY = 'chat.protectionMode';
+const PROTECTION_BLUR = 28;
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Función helper para convertir URI a Blob
-const uriToBlob = (uri: string): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.onload = function () { resolve(xhr.response); };
-        xhr.onerror = function (e) { 
-            console.error("uriToBlob falló:", e);
-            reject(new TypeError("Network request failed")); 
-        };
-        xhr.responseType = 'blob';
-        xhr.open('GET', uri, true);
-        xhr.send(null);
-    });
-};
-
-// Componente de palomas de estado - Mejorado estilo WhatsApp
-const MessageStatus: React.FC<{ message: ExtendedMessage; isOwn: boolean }> = ({ message, isOwn }) => {
-    if (!isOwn || message.deleted) return null;
-
-    const getStatusIcon = () => {
-        if (message.read) {
-            return (
-                <View style={{ 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
-                    marginLeft: 2,
-                    position: 'relative',
-                    width: 16,
-                    height: 14,
-                }}>
-                    <Ionicons 
-                        name="checkmark" 
-                        size={14} 
-                        color="#FF69B4" 
-                        style={{ position: 'absolute', left: 0 }}
-                    />
-                    <Ionicons 
-                        name="checkmark" 
-                        size={14} 
-                        color="#FF69B4" 
-                        style={{ position: 'absolute', left: 4 }}
-                    />
-                </View>
-            );
-        }
-        if (message.delivered) {
-            return (
-                <View style={{ 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
-                    marginLeft: 2,
-                    position: 'relative',
-                    width: 16,
-                    height: 14,
-                }}>
-                    <Ionicons 
-                        name="checkmark" 
-                        size={14} 
-                        color="#FFF" 
-                        style={{ position: 'absolute', left: 0 }}
-                    />
-                    <Ionicons 
-                        name="checkmark" 
-                        size={14} 
-                        color="#FFF" 
-                        style={{ position: 'absolute', left: 4 }}
-                    />
-                </View>
-            );
-        }
-        return <Ionicons name="checkmark" size={14} color="#FFF" style={{ marginLeft: 2 }} />;
-    };
-
-    return (
-        <View style={{ marginLeft: 4 }}>
-            {getStatusIcon()}
-        </View>
-    );
-};
-
-// Modal de Upgrade Premium
-const UpgradeModal: React.FC<{
-    visible: boolean;
-    onClose: () => void;
-    usedStorage: number;
-    maxStorage: number;
-}> = ({ visible, onClose, usedStorage, maxStorage }) => {
-    const usedMB = (usedStorage / (1024 * 1024)).toFixed(2);
-    const maxMB = (maxStorage / (1024 * 1024)).toFixed(0);
-
-    return (
-        <Modal
-            visible={visible}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={onClose}
-        >
-            <View style={{
-                flex: 1,
-                backgroundColor: 'rgba(0,0,0,0.7)',
-                justifyContent: 'center',
-                alignItems: 'center',
-                padding: 20,
-            }}>
-                <View style={{
-                    backgroundColor: '#FFF',
-                    borderRadius: 20,
-                    padding: 24,
-                    width: '90%',
-                    maxWidth: 400,
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.3,
-                    shadowRadius: 8,
-                    elevation: 8,
-                }}>
-                    {/* Icono */}
-                    <View style={{
-                        alignItems: 'center',
-                        marginBottom: 20,
-                    }}>
-                        <View style={{
-                            width: 80,
-                            height: 80,
-                            borderRadius: 40,
-                            backgroundColor: '#FFE5F0',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                        }}>
-                            <Ionicons name="cloud-upload" size={40} color="#FF69B4" />
-                        </View>
-                    </View>
-
-                    {/* Título */}
-                    <Text style={{
-                        fontSize: 24,
-                        fontWeight: 'bold',
-                        color: '#1a1a1a',
-                        textAlign: 'center',
-                        marginBottom: 12,
-                    }}>
-                        Almacenamiento Lleno
-                    </Text>
-
-                    {/* Descripción */}
-                    <Text style={{
-                        fontSize: 16,
-                        color: '#666',
-                        textAlign: 'center',
-                        marginBottom: 20,
-                        lineHeight: 24,
-                    }}>
-                        Has utilizado {usedMB} MB de {maxMB} MB disponibles
-                    </Text>
-
-                    {/* Beneficios Premium */}
-                    <View style={{
-                        backgroundColor: '#F8F8F8',
-                        borderRadius: 12,
-                        padding: 16,
-                        marginBottom: 24,
-                    }}>
-                        <Text style={{
-                            fontSize: 14,
-                            fontWeight: '600',
-                            color: '#1a1a1a',
-                            marginBottom: 12,
-                        }}>
-                            Con Premium obtendrás:
-                        </Text>
-                        
-                        <View style={{ }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                                <Ionicons name="checkmark-circle" size={20} color="#FF69B4" />
-                                <Text style={{ marginLeft: 8, fontSize: 14, color: '#333' }}>
-                                    25 GB de almacenamiento
-                                </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                                <Ionicons name="checkmark-circle" size={20} color="#FF69B4" />
-                                <Text style={{ marginLeft: 8, fontSize: 14, color: '#333' }}>
-                                    Envío ilimitado de multimedia
-                                </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                                <Ionicons name="checkmark-circle" size={20} color="#FF69B4" />
-                                <Text style={{ marginLeft: 8, fontSize: 14, color: '#333' }}>
-                                    Calidad original sin compresión
-                                </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Ionicons name="checkmark-circle" size={20} color="#FF69B4" />
-                                <Text style={{ marginLeft: 8, fontSize: 14, color: '#333' }}>
-                                    Respaldo de conversaciones
-                                </Text>
-                            </View>
-                        </View>
-                    </View>
-
-                    {/* Botones */}
-                    <TouchableOpacity
-                        style={{
-                            backgroundColor: '#FF69B4',
-                            borderRadius: 12,
-                            paddingVertical: 14,
-                            marginBottom: 12,
-                            shadowColor: '#FF69B4',
-                            shadowOffset: { width: 0, height: 4 },
-                            shadowOpacity: 0.3,
-                            shadowRadius: 8,
-                            elevation: 4,
-                        }}
-                        onPress={() => {
-                            // TODO: Navegar a pantalla de compra Premium
-                            Toast.show({
-                                type: 'info',
-                                text1: 'Próximamente',
-                                text2: 'La pantalla de upgrade estará disponible pronto',
-                            });
-                            onClose();
-                        }}
-                    >
-                        <Text style={{
-                            color: '#FFF',
-                            fontSize: 16,
-                            fontWeight: '600',
-                            textAlign: 'center',
-                        }}>
-                            Actualizar a Premium
-                        </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={{
-                            paddingVertical: 12,
-                        }}
-                        onPress={onClose}
-                    >
-                        <Text style={{
-                            color: '#666',
-                            fontSize: 14,
-                            textAlign: 'center',
-                        }}>
-                            Cerrar
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </Modal>
-    );
-};
-
-// Componente ImageViewer Modal con Zoom
-const ImageViewerModal: React.FC<{
-    visible: boolean;
-    imageUri: string;
-    onClose: () => void;
-    onDownload?: () => void;
-}> = ({ visible, imageUri, onClose, onDownload }) => {
-    const scale = useRef(new Animated.Value(1)).current;
-    const translateX = useRef(new Animated.Value(0)).current;
-    const translateY = useRef(new Animated.Value(0)).current;
-    const [isDownloading, setIsDownloading] = useState(false);
-
-    const handleDownload = async () => {
-        try {
-            setIsDownloading(true);
-            
-            // Solicitar permisos
-            const { status } = await MediaLibrary.requestPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert('Permiso Denegado', 'Necesitamos permisos para guardar la imagen');
-                setIsDownloading(false);
-                return;
-            }
-
-            // Descargar imagen
-            const filename = imageUri.split('/').pop() || `image_${Date.now()}.jpg`;
-            const docDir = (FileSystem as any).documentDirectory || (FileSystem as any).cacheDirectory;
-            if (!docDir) {
-                throw new Error('No se puede acceder al directorio de archivos');
-            }
-            const fileUri = `${docDir}${filename}`;
-            
-            const downloadResult = await (FileSystem as any).downloadAsync(imageUri, fileUri);
-            
-            // Guardar en galería
-            await MediaLibrary.createAssetAsync(downloadResult.uri);
-            
-            Toast.show({
-                type: 'success',
-                text1: 'Imagen guardada',
-                text2: 'La imagen se guardó en tu galería',
-            });
-            
-            setIsDownloading(false);
-        } catch (error) {
-            console.error('Error descargando imagen:', error);
-            Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'No se pudo descargar la imagen',
-            });
-            setIsDownloading(false);
-        }
-    };
-
-    const handlePinchGesture = Animated.event(
-        [{ nativeEvent: { scale: scale } }],
-        { useNativeDriver: true }
-    );
-
-    const resetZoom = () => {
-        Animated.parallel([
-            Animated.spring(scale, { toValue: 1, useNativeDriver: true }),
-            Animated.spring(translateX, { toValue: 0, useNativeDriver: true }),
-            Animated.spring(translateY, { toValue: 0, useNativeDriver: true }),
-        ]).start();
-    };
-
-    return (
-        <Modal
-            visible={visible}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={onClose}
-        >
-            <View style={{
-                flex: 1,
-                backgroundColor: 'rgba(0,0,0,0.95)',
-            }}>
-                {/* Botón Cerrar */}
-                <TouchableOpacity 
-                    style={{
-                        position: 'absolute',
-                        top: 50,
-                        left: 20,
-                        zIndex: 10,
-                        backgroundColor: 'rgba(255,255,255,0.2)',
-                        borderRadius: 20,
-                        padding: 8,
-                    }}
-                    onPress={onClose}
-                >
-                    <Ionicons name="close" size={28} color="#FFF" />
-                </TouchableOpacity>
-
-                {/* Botón Descargar */}
-                <TouchableOpacity 
-                    style={{
-                        position: 'absolute',
-                        top: 50,
-                        right: 20,
-                        zIndex: 10,
-                        backgroundColor: 'rgba(255,255,255,0.2)',
-                        borderRadius: 20,
-                        padding: 8,
-                    }}
-                    onPress={handleDownload}
-                    disabled={isDownloading}
-                >
-                    {isDownloading ? (
-                        <ActivityIndicator size="small" color="#FFF" />
-                    ) : (
-                        <Ionicons name="download-outline" size={28} color="#FFF" />
-                    )}
-                </TouchableOpacity>
-
-                {/* Imagen con Zoom usando ScrollView */}
-                <ScrollView
-                    contentContainerStyle={{
-                        flex: 1,
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                    }}
-                    maximumZoomScale={3}
-                    minimumZoomScale={1}
-                    showsHorizontalScrollIndicator={false}
-                    showsVerticalScrollIndicator={false}
-                    centerContent={true}
-                >
-                    <Image
-                        source={{ uri: imageUri }}
-                        style={{
-                            width: SCREEN_WIDTH,
-                            height: SCREEN_HEIGHT * 0.8,
-                            resizeMode: 'contain',
-                        }}
-                    />
-                </ScrollView>
-
-                {/* Instrucciones */}
-                <View style={{
-                    position: 'absolute',
-                    bottom: 40,
-                    left: 0,
-                    right: 0,
-                    alignItems: 'center',
-                }}>
-                    <Text style={{
-                        color: 'rgba(255,255,255,0.6)',
-                        fontSize: 14,
-                    }}>
-                        Pellizca para hacer zoom
-                    </Text>
-                </View>
-            </View>
-        </Modal>
-    );
-};
-
-// Componente VideoViewer Modal
-const VideoViewerModal: React.FC<{
-    visible: boolean;
-    videoUri: string;
-    onClose: () => void;
-}> = ({ visible, videoUri, onClose }) => {
-    return (
-        <Modal
-            visible={visible}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={onClose}
-        >
-            <View style={{
-                flex: 1,
-                backgroundColor: 'rgba(0,0,0,0.95)',
-                justifyContent: 'center',
-                alignItems: 'center',
-            }}>
-                <TouchableOpacity 
-                    style={{
-                        position: 'absolute',
-                        top: 50,
-                        left: 20,
-                        zIndex: 10,
-                        backgroundColor: 'rgba(255,255,255,0.2)',
-                        borderRadius: 20,
-                        padding: 8,
-                    }}
-                    onPress={onClose}
-                >
-                    <Ionicons name="close" size={28} color="#FFF" />
-                </TouchableOpacity>
-
-                <Text style={{ color: '#FFF', fontSize: 16 }}>
-                    Vista previa de video - Implementar reproductor
-                </Text>
-            </View>
-        </Modal>
-    );
-};
-
-// Componente FileViewer Modal con Descarga
-const FileViewerModal: React.FC<{
-    visible: boolean;
-    fileUri: string;
-    fileName: string;
-    fileSize?: number;
-    onClose: () => void;
-}> = ({ visible, fileUri, fileName, fileSize, onClose }) => {
-    const colorScheme = useColorScheme();
-    const theme = colorScheme === 'dark' ? themes.dark : themes.light;
-    const [isDownloading, setIsDownloading] = useState(false);
-    const [downloadProgress, setDownloadProgress] = useState(0);
-
-    const getFileExtension = (filename: string) => {
-        return filename.split('.').pop()?.toLowerCase() || '';
-    };
-
-    const getFileIcon = (filename: string) => {
-        const ext = getFileExtension(filename);
-        switch (ext) {
-            case 'pdf':
-                return 'document-text';
-            case 'doc':
-            case 'docx':
-                return 'document';
-            case 'xls':
-            case 'xlsx':
-                return 'stats-chart';
-            case 'zip':
-            case 'rar':
-                return 'archive';
-            case 'txt':
-                return 'document-text-outline';
-            default:
-                return 'document-attach';
-        }
-    };
-
-    const formatFileSize = (bytes?: number) => {
-        if (!bytes) return 'Tamaño desconocido';
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
-        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
-    };
-
-    const handleDownload = async () => {
-        try {
-            setIsDownloading(true);
-            setDownloadProgress(0);
-
-            const docDir = (FileSystem as any).documentDirectory || (FileSystem as any).cacheDirectory;
-            if (!docDir) {
-                throw new Error('No se puede acceder al directorio de archivos');
-            }
-            const fileUri_local = `${docDir}${fileName}`;
-            
-            const downloadResumable = (FileSystem as any).createDownloadResumable(
-                fileUri,
-                fileUri_local,
-                {},
-                (downloadProgress: { totalBytesWritten: number; totalBytesExpectedToWrite: number }) => {
-                    const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
-                    setDownloadProgress(progress * 100);
-                }
-            );
-
-            const result = await downloadResumable.downloadAsync();
-            
-            if (result && result.uri) {
-                // Compartir el archivo descargado
-                const canShare = await Sharing.isAvailableAsync();
-                if (canShare) {
-                    await Sharing.shareAsync(result.uri, {
-                        mimeType: 'application/*',
-                        dialogTitle: 'Guardar archivo',
-                    });
-                    
-                    Toast.show({
-                        type: 'success',
-                        text1: 'Archivo descargado',
-                        text2: 'El archivo se guardó correctamente',
-                    });
-                } else {
-                    Toast.show({
-                        type: 'info',
-                        text1: 'Archivo guardado',
-                        text2: `Guardado en: ${result.uri}`,
-                    });
-                }
-            }
-
-            setIsDownloading(false);
-            setDownloadProgress(0);
-        } catch (error) {
-            console.error('Error descargando archivo:', error);
-            Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'No se pudo descargar el archivo',
-            });
-            setIsDownloading(false);
-            setDownloadProgress(0);
-        }
-    };
-
-    const handleOpenInBrowser = () => {
-        Linking.openURL(fileUri);
-    };
-
-    return (
-        <Modal
-            visible={visible}
-            transparent={true}
-            animationType="slide"
-            onRequestClose={onClose}
-        >
-            <View style={{
-                flex: 1,
-                backgroundColor: 'rgba(0,0,0,0.7)',
-                justifyContent: 'flex-end',
-            }}>
-                <View style={{
-                    backgroundColor: theme.background,
-                    borderTopLeftRadius: 20,
-                    borderTopRightRadius: 20,
-                    padding: 20,
-                    maxHeight: SCREEN_HEIGHT * 0.7,
-                }}>
-                    {/* Header */}
-                    <View style={{
-                        flexDirection: 'row',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: 20,
-                    }}>
-                        <Text style={{
-                            fontSize: 18,
-                            fontWeight: 'bold',
-                            color: theme.text,
-                            flex: 1,
-                        }}>
-                            Vista Previa
-                        </Text>
-                        <TouchableOpacity onPress={onClose}>
-                            <Ionicons name="close" size={28} color={theme.text} />
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* File Info */}
-                    <View style={{
-                        alignItems: 'center',
-                        paddingVertical: 30,
-                    }}>
-                        <View style={{
-                            width: 100,
-                            height: 100,
-                            borderRadius: 50,
-                            backgroundColor: theme.primary + '20',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            marginBottom: 20,
-                        }}>
-                            <Ionicons 
-                                name={getFileIcon(fileName)} 
-                                size={50} 
-                                color={theme.primary} 
-                            />
-                        </View>
-
-                        <Text style={{
-                            fontSize: 16,
-                            fontWeight: '600',
-                            color: theme.text,
-                            textAlign: 'center',
-                            marginBottom: 8,
-                        }}>
-                            {fileName}
-                        </Text>
-
-                        <Text style={{
-                            fontSize: 14,
-                            color: theme.placeholder,
-                            marginBottom: 20,
-                        }}>
-                            {formatFileSize(fileSize)}
-                        </Text>
-
-                        {/* Progress Bar */}
-                        {isDownloading && (
-                            <View style={{ width: '100%', marginBottom: 20 }}>
-                                <View style={{
-                                    height: 4,
-                                    backgroundColor: theme.placeholder + '30',
-                                    borderRadius: 2,
-                                    overflow: 'hidden',
-                                }}>
-                                    <View style={{
-                                        height: '100%',
-                                        width: `${downloadProgress}%`,
-                                        backgroundColor: theme.primary,
-                                    }} />
-                                </View>
-                                <Text style={{
-                                    fontSize: 12,
-                                    color: theme.placeholder,
-                                    textAlign: 'center',
-                                    marginTop: 8,
-                                }}>
-                                    Descargando... {downloadProgress.toFixed(0)}%
-                                </Text>
-                            </View>
-                        )}
-                    </View>
-
-                    {/* Actions */}
-                    <View style={{ marginBottom: 12 }}>
-                        <TouchableOpacity
-                            style={{
-                                backgroundColor: theme.primary,
-                                padding: 16,
-                                borderRadius: 12,
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginBottom: 8,
-                            }}
-                            onPress={handleDownload}
-                            disabled={isDownloading}
-                        >
-                            {isDownloading ? (
-                                <ActivityIndicator size="small" color={theme.white} />
-                            ) : (
-                                <Ionicons name="download-outline" size={24} color={theme.white} />
-                            )}
-                            <Text style={{
-                                color: theme.white,
-                                fontSize: 16,
-                                fontWeight: '600',
-                                marginLeft: 8,
-                            }}>
-                                {isDownloading ? 'Descargando...' : 'Descargar Archivo'}
-                            </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={{
-                                backgroundColor: colorScheme === 'dark' ? '#2C2C2E' : '#E8E8E8',
-                                padding: 16,
-                                borderRadius: 12,
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginBottom: 8,
-                            }}
-                            onPress={handleOpenInBrowser}
-                        >
-                            <Ionicons name="open-outline" size={24} color={theme.text} />
-                            <Text style={{
-                                color: theme.text,
-                                fontSize: 16,
-                                fontWeight: '600',
-                                marginLeft: 8,
-                            }}>
-                                Abrir en Navegador
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </View>
-        </Modal>
-    );
-};
-
-// Componente de Animación de Onda de Sonido (para grabación)
-const SoundWaveAnimation: React.FC = () => {
-    const [heights] = useState([
-        useState(new Animated.Value(4))[0],
-        useState(new Animated.Value(8))[0],
-        useState(new Animated.Value(12))[0],
-        useState(new Animated.Value(8))[0],
-        useState(new Animated.Value(4))[0],
-    ]);
-
-    useEffect(() => {
-        const animations = heights.map((height, index) => {
-            return Animated.loop(
-                Animated.sequence([
-                    Animated.timing(height, {
-                        toValue: 16,
-                        duration: 300 + index * 100,
-                        useNativeDriver: false,
-                    }),
-                    Animated.timing(height, {
-                        toValue: 4,
-                        duration: 300 + index * 100,
-                        useNativeDriver: false,
-                    }),
-                ])
-            );
-        });
-
-        animations.forEach(anim => anim.start());
-
-        return () => {
-            animations.forEach(anim => anim.stop());
-        };
-    }, []);
-
-    return (
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {heights.map((height, index) => (
-                <Animated.View
-                    key={index}
-                    style={{
-                        width: 3,
-                        height: height,
-                        backgroundColor: '#FF69B4',
-                        borderRadius: 2,
-                        marginRight: index < heights.length - 1 ? 2 : 0,
-                    }}
-                />
-            ))}
-        </View>
-    );
-};
-
-// Modal para ver foto de perfil de la pareja
-const ProfilePhotoModal: React.FC<{
-    visible: boolean;
-    photoURL?: string;
-    name: string;
-    size: 'medium' | 'full';
-    onClose: () => void;
-    onExpand: () => void;
-}> = ({ visible, photoURL, name, size, onClose, onExpand }) => {
-    const colorScheme = useColorScheme();
-    const theme = colorScheme === 'dark' ? themes.dark : themes.light;
-
-    if (!visible) return null;
-
-    return (
-        <Modal
-            visible={visible}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={onClose}
-        >
-            <TouchableOpacity
-                activeOpacity={1}
-                onPress={onClose}
-                style={{
-                    flex: 1,
-                    backgroundColor: 'rgba(0,0,0,0.9)',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                }}
-            >
-                {/* Botón Cerrar */}
-                <TouchableOpacity
-                    style={{
-                        position: 'absolute',
-                        top: 50,
-                        right: 20,
-                        zIndex: 10,
-                        backgroundColor: 'rgba(255,255,255,0.2)',
-                        borderRadius: 20,
-                        padding: 8,
-                    }}
-                    onPress={onClose}
-                >
-                    <Ionicons name="close" size={28} color="#FFF" />
-                </TouchableOpacity>
-
-                {/* Foto de perfil */}
-                <TouchableOpacity
-                    activeOpacity={0.9}
-                    onPress={size === 'medium' ? onExpand : undefined}
-                    style={{
-                        alignItems: 'center',
-                    }}
-                >
-                    {photoURL ? (
-                        <Image
-                            source={{ uri: photoURL }}
-                            style={{
-                                width: size === 'medium' ? 200 : SCREEN_WIDTH,
-                                height: size === 'medium' ? 200 : SCREEN_HEIGHT * 0.8,
-                                borderRadius: size === 'medium' ? 100 : 0,
-                                resizeMode: size === 'medium' ? 'cover' : 'contain',
-                            }}
-                        />
-                    ) : (
-                        <View style={{
-                            width: size === 'medium' ? 200 : 300,
-                            height: size === 'medium' ? 200 : 300,
-                            borderRadius: size === 'medium' ? 100 : 150,
-                            backgroundColor: theme.primary,
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                        }}>
-                            <Text style={{
-                                color: theme.white,
-                                fontSize: size === 'medium' ? 80 : 120,
-                                fontWeight: '600',
-                            }}>
-                                {name?.charAt(0).toUpperCase() || '❤️'}
-                            </Text>
-                        </View>
-                    )}
-
-                    {size === 'medium' && (
-                        <Text style={{
-                            color: '#FFF',
-                            fontSize: 24,
-                            fontWeight: '600',
-                            marginTop: 20,
-                        }}>
-                            {name}
-                        </Text>
-                    )}
-                </TouchableOpacity>
-            </TouchableOpacity>
-        </Modal>
-    );
-};
-
-// Componente de Animación de Onda de Audio (para reproducción en mensaje)
-const AudioWaveAnimation: React.FC<{ color: string }> = ({ color }) => {
-    const [heights] = useState([
-        useState(new Animated.Value(4))[0],
-        useState(new Animated.Value(8))[0],
-        useState(new Animated.Value(14))[0],
-        useState(new Animated.Value(10))[0],
-        useState(new Animated.Value(6))[0],
-        useState(new Animated.Value(12))[0],
-        useState(new Animated.Value(8))[0],
-        useState(new Animated.Value(4))[0],
-    ]);
-
-    useEffect(() => {
-        const animations = heights.map((height, index) => {
-            return Animated.loop(
-                Animated.sequence([
-                    Animated.timing(height, {
-                        toValue: 18 + Math.random() * 6,
-                        duration: 400 + index * 80,
-                        useNativeDriver: false,
-                    }),
-                    Animated.timing(height, {
-                        toValue: 4 + Math.random() * 4,
-                        duration: 400 + index * 80,
-                        useNativeDriver: false,
-                    }),
-                ])
-            );
-        });
-
-        animations.forEach(anim => anim.start());
-
-        return () => {
-            animations.forEach(anim => anim.stop());
-        };
-    }, []);
-
-    return (
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-            {heights.map((height, index) => (
-                <Animated.View
-                    key={index}
-                    style={{
-                        width: 3,
-                        height: height,
-                        backgroundColor: color,
-                        borderRadius: 1.5,
-                        marginHorizontal: 2,
-                    }}
-                />
-            ))}
-        </View>
-    );
-};
-
 // Componente Principal del Chat
 const ChatScreen = () => {
-    const colorScheme = useColorScheme();
-    const theme = colorScheme === 'dark' ? themes.dark : themes.light;
+    const { theme, isDarkMode, fontFamilies } = useTheme();
+    const { isWide } = useResponsive();
     const router = useRouter();
-    const insets = useSafeAreaInsets();
-    const headerHeight = useHeaderHeight();
-    const { showActionSheetWithOptions } = useActionSheet();
 
     // Context de Plan
-    const { user, userData, partnerData, relationshipData, plan, isLoading: planLoading } = usePlan();
+    const { userData, relationshipData, plan, isLoading: planLoading } = usePlan();
 
-    // Estados principales
-    const [messages, setMessages] = useState<ExtendedMessage[]>([]);
     const [inputText, setInputText] = useState('');
-    const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [uploadProgress, setUploadProgress] = useState(0);
-    const [isUploading, setIsUploading] = useState(false);
-
-    // Estados para reproducción de audio SIMPLIFICADOS
-    const [currentSound, setCurrentSound] = useState<Audio.Sound | null>(null);
-    const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
-    const [audioProgress, setAudioProgress] = useState<{ [key: string]: number }>({});
-    const [audioDurations, setAudioDurations] = useState<{ [key: string]: number }>({});
-    const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
-    const notificationSoundRef = useRef<Audio.Sound | null>(null);
-    const completionSoundRef = useRef<Audio.Sound | null>(null);
-
-    // Estados para grabación de audio
-    const [recording, setRecording] = useState<Audio.Recording | null>(null);
-    const [isRecording, setIsRecording] = useState(false);
-    const [recordingDuration, setRecordingDuration] = useState(0);
-    const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // Estados de UI
-    const [imageViewerVisible, setImageViewerVisible] = useState(false);
-    const [videoViewerVisible, setVideoViewerVisible] = useState(false);
-    const [selectedMediaUri, setSelectedMediaUri] = useState('');
+    // Índice dentro de 'chatImages'; null = visor cerrado.
+    const [imageViewerIndex, setImageViewerIndex] = useState<number | null>(null);
+
+    // Sprint 9.6: el carril derecho muestra las fotos compartidas, y la app
+    // puede estar abierta en una oficina con gente alrededor. Se puede plegar,
+    // y la preferencia se recuerda: si alguien lo cierra por privacidad, no
+    // tiene sentido que vuelva a abrirse solo en la próxima visita.
+    const [isRailCollapsed, setIsRailCollapsed] = useState(false);
+
+    useEffect(() => {
+        AsyncStorage.getItem(RAIL_COLLAPSED_KEY)
+            .then(stored => { if (stored === '1') setIsRailCollapsed(true); })
+            .catch(() => { /* sin preferencia guardada se queda abierto */ });
+    }, []);
+
+    const toggleRail = () => {
+        const next = !isRailCollapsed;
+        setIsRailCollapsed(next);
+        AsyncStorage.setItem(RAIL_COLLAPSED_KEY, next ? '1' : '0').catch(() => {});
+    };
+
+    // Sprint 9.14 — igual que el carril, la preferencia se recuerda: si
+    // alguien lo activó porque trabaja rodeado de gente, su situación no
+    // cambia entre una visita y la siguiente.
+    const [isProtectionOn, setIsProtectionOn] = useState(false);
+
+    useEffect(() => {
+        AsyncStorage.getItem(PROTECTION_KEY)
+            .then(stored => { if (stored === '1') setIsProtectionOn(true); })
+            .catch(() => { /* sin preferencia guardada queda apagado */ });
+    }, []);
+
+    const toggleProtection = () => {
+        if (plan !== 'premium') {
+            setIsProtectionPaywallVisible(true);
+            return;
+        }
+        const next = !isProtectionOn;
+        setIsProtectionOn(next);
+        AsyncStorage.setItem(PROTECTION_KEY, next ? '1' : '0').catch(() => {});
+        Toast.show({
+            type: 'success',
+            text1: next ? 'Modo protección activado' : 'Modo protección desactivado',
+            text2: next ? 'Las fotos se ven al abrirlas' : undefined,
+        });
+    };
+
+    // El difuminado solo aplica en premium: si alguien deja de pagar, sus
+    // fotos no se quedan borrosas para siempre.
+    const photoBlur = isProtectionOn && plan === 'premium' ? PROTECTION_BLUR : 0;
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-    
+    // Separado del de almacenamiento: son dos motivos distintos y cada uno
+    // tiene que explicar el suyo.
+    const [showHistoryPaywall, setShowHistoryPaywall] = useState(false);
+    const [isProtectionPaywallVisible, setIsProtectionPaywallVisible] = useState(false);
+
     // Estados para el modal de archivos
     const [fileViewerVisible, setFileViewerVisible] = useState(false);
-    const [selectedFile, setSelectedFile] = useState<{uri: string; name: string; size?: number} | null>(null);
+    const [selectedFile, setSelectedFile] = useState<{ uri: string; name: string; size?: number } | null>(null);
 
-    // Estados para el header (info de la pareja)
-    const [partnerInfo, setPartnerInfo] = useState<{
-        name: string;
-        isOnline: boolean;
-        lastSeen: Timestamp | null;
-        photoURL?: string;
-    } | null>(null);
     const [showProfilePhoto, setShowProfilePhoto] = useState(false);
     const [profilePhotoSize, setProfilePhotoSize] = useState<'medium' | 'full'>('medium');
-    
+
+    // Hoja de adjuntar propia (Sprint 7.4b) — reemplaza el action sheet nativo.
+    const [videoViewerUri, setVideoViewerUri] = useState<string | null>(null);
+    const [isAttachSheetVisible, setIsAttachSheetVisible] = useState(false);
+
     // Estado para manejar el teclado
-    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const [, setKeyboardHeight] = useState(0);
 
     // Calcular almacenamiento usado
     const usedStorage = relationshipData?.usedStorage || 0;
-    const maxStorage = plan === 'premium' ? 25 * 1024 * 1024 * 1024 : 100 * 1024 * 1024; // 25GB vs 100MB
+    const maxStorage = storageLimitFor(plan);
+    // Aviso de almacenamiento — solo aplica al plan gratuito (premium ya tiene 25GB).
+    const storageUsageRatio = maxStorage > 0 ? usedStorage / maxStorage : 0;
+    const showStorageWarning = plan === 'free' && storageUsageRatio >= 0.9;
+    const formatStorageMB = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
+
+    const {
+        currentUser,
+        loading,
+        messages,
+        hasMoreMessages,
+        historyLimitReached,
+        isLoadingEarlier,
+        handleLoadEarlier,
+        onSend,
+        deleteMessage,
+    } = useChatMessages(userData, () => setInputText(''), plan);
+
+    // Mantener presionado un mensaje propio (no borrado) ofrece borrarlo.
+    const handleMessageLongPress = (_context: unknown, message: ExtendedMessage) => {
+        if (message.deleted || message.user._id !== currentUser?.uid) return;
+
+        Alert.alert(
+            'Eliminar mensaje',
+            'Se mostrará como eliminado para los dos.',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Eliminar', style: 'destructive', onPress: () => deleteMessage(message._id.toString()) },
+            ]
+        );
+    };
+
+    const {
+        isUploading,
+        uploadProgress,
+        uploadAudio,
+        pickFromCamera,
+        pickFromGallery,
+        pickVideo,
+        pickDocument,
+    } = useChatUploads({
+        currentUser,
+        userData,
+        usedStorage,
+        plan,
+        maxStorage,
+        onNeedUpgrade: () => setShowUpgradeModal(true),
+    });
+
+    const {
+        isRecording,
+        recordingDuration,
+        startRecording,
+        stopRecording,
+        cancelRecording,
+        formatRecordingTime,
+    } = useAudioRecording({
+        plan,
+        usedStorage,
+        maxStorage,
+        uploadAudio,
+        onNeedUpgrade: () => setShowUpgradeModal(true),
+    });
+
+    // Se pasa entero al AudioPlaybackProvider en vez de desarmarlo acá: las
+    // burbujas de audio lo consumen por contexto (ver AudioBubble).
+    const audioPlayback = useAudioPlayback(currentUser, userData?.partnerId);
+
+    // Todas las fotos del hilo, para que el visor pueda recorrerlas (9.2).
+    // Se arma con los mensajes YA cargados en memoria — mismo criterio que el
+    // carril de escritorio: no agrega ni una lectura a Firestore.
+    const chatImages = React.useMemo(
+        () => messages.filter(m => !!m.image && !m.deleted).map(m => m.image as string),
+        [messages]
+    );
+
+    const openImageViewer = (uri: string) => {
+        const found = chatImages.indexOf(uri);
+        setImageViewerIndex(found >= 0 ? found : 0);
+    };
+
+    const { partnerInfo } = usePartnerPresence({
+        currentUser,
+        partnerId: userData?.partnerId,
+    });
 
     // Listener del teclado para iOS
-    useEffect(() => {
+    React.useEffect(() => {
         if (Platform.OS !== 'ios') return;
 
         const keyboardWillShow = Keyboard.addListener('keyboardWillShow', (e) => {
@@ -1064,924 +237,15 @@ const ChatScreen = () => {
         };
     }, []);
 
-    // Configurar audio al montar el componente
-    useEffect(() => {
-        const configureAudio = async () => {
-            try {
-                await Audio.setAudioModeAsync({
-                    allowsRecordingIOS: false,
-                    playsInSilentModeIOS: true,
-                    staysActiveInBackground: false,
-                    shouldDuckAndroid: false,
-                    playThroughEarpieceAndroid: false, // FALSE = ALTAVOZ
-                    interruptionModeIOS: 1,
-                    interruptionModeAndroid: 1,
-                });
+    // Render de burbujas personalizadas — Sprint 7.4a (sistema de diseño).
+    const isDark = isDarkMode;
+    const formatMessageTime = (date: Date | number) =>
+        new Date(date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    // Burbuja propia: primary en claro, violeta oscuro propio en oscuro
+    // (spec del handoff: no es simplemente 'primary' a menor luminosidad).
+    const ownBubbleBg = isDark ? '#3A2D55' : theme.primary;
+    const ownBubbleTextColor = isDark ? theme.text : theme.white;
 
-                // Cargar sonidos de notificación (opcional - comentado si no tienes los archivos)
-                try {
-                    const { sound: notifSound } = await Audio.Sound.createAsync(
-                        require('../../assets/sounds/notification.mp3'),
-                        { shouldPlay: false }
-                    );
-                    notificationSoundRef.current = notifSound;
-                } catch (error) {
-                    console.log('Archivo notification.mp3 no encontrado - continuando sin sonido');
-                }
-
-                try {
-                    const { sound: completeSound } = await Audio.Sound.createAsync(
-                        require('../../assets/sounds/complete.mp3'),
-                        { shouldPlay: false }
-                    );
-                    completionSoundRef.current = completeSound;
-                } catch (error) {
-                    console.log('Archivo complete.mp3 no encontrado - continuando sin sonido');
-                }
-
-            } catch (error) {
-                console.error('Error configurando audio:', error);
-            }
-        };
-
-        configureAudio();
-
-        return () => {
-            // Limpiar sonidos al desmontar
-            if (notificationSoundRef.current) {
-                notificationSoundRef.current.unloadAsync();
-            }
-            if (completionSoundRef.current) {
-                completionSoundRef.current.unloadAsync();
-            }
-        };
-    }, []);
-
-    // Escuchar cambios en los datos de la pareja para el header
-    useEffect(() => {
-        console.log('🔍 Hook de pareja ejecutado:', {
-            hasUserData: !!userData,
-            partnerId: userData?.partnerId
-        });
-
-        if (!userData?.partnerId) {
-            console.log('⚠️ No hay partnerId aún');
-            return;
-        }
-
-        console.log('👥 Cargando datos de la pareja:', userData.partnerId);
-
-        const partnerRef = doc(db, 'users', userData.partnerId);
-        const unsubscribe = onSnapshot(partnerRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.data();
-                
-                // Intentar obtener el nombre de diferentes campos posibles
-                const partnerName = data.name || data.displayName || data.fullName || data.username || 'Pareja';
-                
-                console.log('✅ Datos de pareja recibidos:', {
-                    rawData: data,
-                    name: data.name,
-                    displayName: data.displayName,
-                    fullName: data.fullName,
-                    username: data.username,
-                    selectedName: partnerName,
-                    isOnline: data.isOnline,
-                    hasLastSeen: !!data.lastSeen,
-                    hasPhotoURL: !!data.photoURL
-                });
-                
-                setPartnerInfo({
-                    name: partnerName,
-                    isOnline: data.isOnline || false,
-                    lastSeen: data.lastSeen || null,
-                    photoURL: data.photoURL || data.photoUrl || undefined,
-                });
-            } else {
-                console.log('❌ Documento de pareja no existe');
-            }
-        }, (error) => {
-            console.error('❌ Error cargando datos de pareja:', error);
-        });
-
-        return () => unsubscribe();
-    }, [userData?.partnerId]);
-
-    // Actualizar estado de presencia del usuario actual (isOnline/lastSeen)
-    useEffect(() => {
-        if (!currentUser) return;
-
-        console.log('🟢 Iniciando sistema de presencia para:', currentUser.uid);
-
-        const userStatusRef = doc(db, 'users', currentUser.uid);
-        let updateInterval: ReturnType<typeof setInterval>;
-
-        // Función para marcar como online
-        const setUserOnline = async () => {
-            try {
-                await updateDoc(userStatusRef, {
-                    isOnline: true,
-                    lastSeen: Timestamp.now()
-                });
-                console.log('✅ Usuario marcado como online');
-            } catch (error) {
-                console.error('❌ Error actualizando presencia:', error);
-            }
-        };
-
-        // Función para marcar como offline
-        const setUserOffline = async () => {
-            try {
-                await updateDoc(userStatusRef, {
-                    isOnline: false,
-                    lastSeen: Timestamp.now()
-                });
-                console.log('🔴 Usuario marcado como offline');
-            } catch (error) {
-                console.error('❌ Error actualizando presencia:', error);
-            }
-        };
-
-        // Marcar como online al iniciar
-        setUserOnline();
-
-        // Actualizar cada 30 segundos para mantener online
-        updateInterval = setInterval(() => {
-            if (AppState.currentState === 'active') {
-                setUserOnline();
-            }
-        }, 30000);
-
-        // Listener de cambios de estado de la app
-        const subscription = AppState.addEventListener('change', async (nextAppState) => {
-            if (nextAppState === 'active') {
-                console.log('📱 App activa');
-                await setUserOnline();
-            } else if (nextAppState === 'background' || nextAppState === 'inactive') {
-                console.log('📱 App en background');
-                await setUserOffline();
-            }
-        });
-
-        // Cleanup: marcar como offline al desmontar
-        return () => {
-            clearInterval(updateInterval);
-            setUserOffline();
-            subscription.remove();
-        };
-    }, [currentUser]);
-
-    // Actualizar la visualización del tiempo de última conexión cada minuto
-    useEffect(() => {
-        const interval = setInterval(() => {
-            // Forzar re-render para actualizar "Hace X min"
-            if (partnerInfo && !partnerInfo.isOnline && partnerInfo.lastSeen) {
-                setPartnerInfo(prev => prev ? { ...prev } : null);
-            }
-        }, 60000); // Cada 60 segundos
-
-        return () => clearInterval(interval);
-    }, [partnerInfo]);
-
-    // Función para reproducir sonido de notificación
-    const playNotificationSound = async () => {
-        try {
-            if (notificationSoundRef.current) {
-                await notificationSoundRef.current.replayAsync();
-            }
-        } catch (error) {
-            console.error('Error reproduciendo sonido de notificación:', error);
-        }
-    };
-
-    // Función para reproducir sonido de completado
-    const playCompletionSound = async () => {
-        try {
-            if (completionSoundRef.current) {
-                await completionSoundRef.current.replayAsync();
-            }
-        } catch (error) {
-            console.error('Error reproduciendo sonido de completado:', error);
-        }
-    };
-
-    // Función para detener el audio actual
-    const stopCurrentAudio = async () => {
-        if (currentSound) {
-            try {
-                console.log('⏹️ Deteniendo audio actual');
-                await currentSound.stopAsync();
-                await currentSound.unloadAsync();
-            } catch (error) {
-                console.error('Error deteniendo audio:', error);
-            }
-        }
-        setCurrentSound(null);
-        setCurrentlyPlayingId(null);
-    };
-
-    // Función SIMPLIFICADA para reproducir audio (sin cola)
-    // Función SIMPLIFICADA para reproducir audio (sin cola)
-    const playAudio = async (messageId: string, audioUrl: string) => {
-        try {
-            console.log('🎬 Reproduciendo audio:', messageId);
-            setIsLoadingAudio(messageId);
-
-            // Detener cualquier audio que esté reproduciéndose
-            await stopCurrentAudio();
-            
-            // Configuración para ALTAVOZ
-            await Audio.setAudioModeAsync({
-                allowsRecordingIOS: false,
-                playsInSilentModeIOS: true,
-                staysActiveInBackground: false,
-                shouldDuckAndroid: false,
-                playThroughEarpieceAndroid: false,
-                interruptionModeIOS: 1,
-                interruptionModeAndroid: 1,
-            });
-
-            // Crear y reproducir audio
-            const { sound } = await Audio.Sound.createAsync(
-                { uri: audioUrl },
-                { shouldPlay: true }, // Reproducir inmediatamente
-                (status) => onPlaybackStatusUpdate(messageId, status)
-            );
-
-            // Obtener duración si no la tenemos
-            const status = await sound.getStatusAsync();
-            if (status.isLoaded && status.durationMillis && !audioDurations[messageId]) {
-                console.log('✅ Duración:', status.durationMillis);
-                setAudioDurations(prev => ({
-                    ...prev,
-                    [messageId]: status.durationMillis!
-                }));
-            }
-
-            setCurrentSound(sound);
-            setCurrentlyPlayingId(messageId);
-            setIsLoadingAudio(null);
-            
-            console.log('✅ Audio reproduciéndose');
-
-        } catch (error) {
-            console.error('❌ Error reproduciendo audio:', error);
-            setIsLoadingAudio(null);
-            setCurrentlyPlayingId(null);
-            Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'No se pudo reproducir el audio',
-            });
-        }
-    };
-
-    // Callback SIMPLIFICADO para actualización de estado de reproducción
-    const onPlaybackStatusUpdate = (messageId: string, status: any) => {
-        if (status.isLoaded) {
-            if (status.isPlaying && status.durationMillis) {
-                const progress = status.positionMillis / status.durationMillis;
-                setAudioProgress(prev => ({ ...prev, [messageId]: progress }));
-            }
-
-            // Si el audio terminó
-            if (status.didJustFinish) {
-                console.log('🏁 Audio terminado:', messageId);
-                setCurrentSound(null);
-                setCurrentlyPlayingId(null);
-                setAudioProgress(prev => {
-                    const { [messageId]: _, ...rest } = prev;
-                    return rest;
-                });
-            }
-        }
-    };
-
-    // Función SIMPLE para pausar/reanudar audio
-    const toggleAudioPlayback = async (messageId: string, audioUrl: string) => {
-        console.log('🎮 Toggle audio:', messageId, 'currentlyPlaying:', currentlyPlayingId);
-        
-        // Si este audio está reproduciéndose, PAUSARLO
-        if (currentlyPlayingId === messageId) {
-            console.log('⏸️ Pausando audio');
-            await stopCurrentAudio();
-        } else {
-            // Si no está reproduciéndose, REPRODUCIRLO (detendrá cualquier otro primero)
-            console.log('▶️ Reproduciendo audio');
-            await playAudio(messageId, audioUrl);
-        }
-    };
-
-    // Limpiar audio al desmontar
-    useEffect(() => {
-        return () => {
-            stopCurrentAudio();
-        };
-    }, []);
-
-    // Precargar duraciones de audios cuando se cargan mensajes
-    useEffect(() => {
-        const loadAudioDurations = async () => {
-            const audioMessages = messages.filter(m => m.audio);
-            
-            for (const message of audioMessages) {
-                const messageId = message._id.toString();
-                
-                // Solo cargar si no tenemos la duración ya
-                if (audioDurations[messageId]) {
-                    continue;
-                }
-                
-                try {
-                    const { sound } = await Audio.Sound.createAsync(
-                        { uri: message.audio! },
-                        { shouldPlay: false }
-                    );
-                    
-                    const status = await sound.getStatusAsync();
-                    
-                    if (status.isLoaded && status.durationMillis) {
-                        console.log('✅ Duración precargada:', messageId, status.durationMillis);
-                        setAudioDurations(prev => ({
-                            ...prev,
-                            [messageId]: status.durationMillis!
-                        }));
-                    }
-                    
-                    await sound.unloadAsync();
-                } catch (error) {
-                    console.error('❌ Error precargando:', messageId, error);
-                }
-            }
-        };
-
-        if (messages.length > 0) {
-            loadAudioDurations();
-        }
-    }, [messages.length]); // Solo cuando cambia el número de mensajes
-
-    // Función para formatear duración de audio
-    const formatAudioDuration = (milliseconds: number) => {
-        const totalSeconds = Math.floor(milliseconds / 1000);
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    };
-
-    // Función para formatear tiempo de grabación
-    const formatRecordingTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    // Función para iniciar grabación de audio
-    const startRecording = async () => {
-        try {
-            const permission = await Audio.requestPermissionsAsync();
-            
-            if (permission.status !== 'granted') {
-                Alert.alert(
-                    'Permiso Denegado',
-                    'Necesitamos acceso al micrófono para grabar notas de voz.',
-                    [{ text: 'OK' }]
-                );
-                return;
-            }
-
-            await Audio.setAudioModeAsync({
-                allowsRecordingIOS: true,
-                playsInSilentModeIOS: true,
-                staysActiveInBackground: false,
-                shouldDuckAndroid: true,
-                playThroughEarpieceAndroid: false,
-            });
-
-            const { recording } = await Audio.Recording.createAsync(
-                Audio.RecordingOptionsPresets.HIGH_QUALITY
-            );
-
-            setRecording(recording);
-            setIsRecording(true);
-            setRecordingDuration(0);
-            
-            // Iniciar contador de duración
-            recordingIntervalRef.current = setInterval(() => {
-                setRecordingDuration(prev => prev + 1);
-            }, 1000);
-
-            Keyboard.dismiss();
-
-        } catch (error) {
-            console.error('Error iniciando grabación:', error);
-            Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'No se pudo iniciar la grabación',
-            });
-        }
-    };
-
-    // Función para detener grabación y enviar
-    const stopRecording = async () => {
-        if (!recording) return;
-
-        try {
-            if (recordingIntervalRef.current) {
-                clearInterval(recordingIntervalRef.current);
-                recordingIntervalRef.current = null;
-            }
-
-            setIsRecording(false);
-            await recording.stopAndUnloadAsync();
-            const uri = recording.getURI();
-            
-            if (uri) {
-                // Verificar almacenamiento antes de subir
-                if (plan === 'free') {
-                    const fileInfo = await fetch(uri);
-                    const blob = await fileInfo.blob();
-                    const fileSize = blob.size;
-
-                    if (usedStorage + fileSize > maxStorage) {
-                        setShowUpgradeModal(true);
-                        setRecording(null);
-                        return;
-                    }
-                }
-
-                await uploadAudio(uri);
-            }
-            
-            setRecording(null);
-            setRecordingDuration(0);
-
-        } catch (error) {
-            console.error('Error deteniendo grabación:', error);
-            Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'No se pudo enviar el audio',
-            });
-        }
-    };
-
-    // Función para cancelar grabación
-    const cancelRecording = async () => {
-        if (!recording) return;
-
-        try {
-            if (recordingIntervalRef.current) {
-                clearInterval(recordingIntervalRef.current);
-                recordingIntervalRef.current = null;
-            }
-
-            setIsRecording(false);
-            await recording.stopAndUnloadAsync();
-            setRecording(null);
-            setRecordingDuration(0);
-
-            Toast.show({
-                type: 'info',
-                text1: 'Grabación cancelada',
-            });
-
-        } catch (error) {
-            console.error('Error cancelando grabación:', error);
-        }
-    };
-
-    // Autenticación y carga de mensajes
-    useEffect(() => {
-        const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-            setCurrentUser(user);
-            setLoading(!user);
-        });
-        return () => unsubscribeAuth();
-    }, []);
-
-    useEffect(() => {
-        if (!currentUser || !userData?.partnerId) {
-            setMessages([]);
-            setLoading(false);
-            return;
-        }
-
-        const relationshipId = [currentUser.uid, userData.partnerId].sort().join('_');
-        const messagesRef = collection(db, 'relationships', relationshipId, 'messages');
-        const q = query(messagesRef, orderBy('createdAt', 'desc'));
-
-        const unsubscribe = onSnapshot(q, async (snapshot) => {
-            const loadedMessages: ExtendedMessage[] = snapshot.docs.map(doc => {
-                const data = doc.data();
-                return {
-                    _id: doc.id,
-                    text: data.text || '',
-                    createdAt: data.createdAt?.toDate() || new Date(),
-                    user: {
-                        _id: data.user._id,
-                        name: data.user.name,
-                    },
-                    image: data.image,
-                    video: data.video,
-                    audio: data.audio,
-                    file: data.file,
-                    fileName: data.fileName,
-                    fileSize: data.fileSize,
-                    delivered: data.delivered ?? false,
-                    read: data.read ?? false,
-                    audioPlayed: data.audioPlayed ?? false,
-                    deleted: data.deleted ?? false,
-                    sentAt: data.sentAt?.toDate(),
-                };
-            });
-
-            console.log('📨 Mensajes cargados:', loadedMessages.length, 'primer mensaje:', loadedMessages[0]?._id);
-            setMessages(loadedMessages);
-            setLoading(false);
-
-            // Marcar mensajes como entregados
-            const undeliveredMessages = snapshot.docs.filter(doc => {
-                const data = doc.data();
-                return data.user._id !== currentUser.uid && !data.delivered;
-            });
-
-            for (const messageDoc of undeliveredMessages) {
-                const messageRef = doc(db, 'relationships', relationshipId, 'messages', messageDoc.id);
-                await updateDoc(messageRef, { delivered: true });
-            }
-
-            // Marcar mensajes como leídos cuando la app está activa
-            if (AppState.currentState === 'active') {
-                const unreadMessages = snapshot.docs.filter(doc => {
-                    const data = doc.data();
-                    return data.user._id !== currentUser.uid && !data.read;
-                });
-
-                for (const messageDoc of unreadMessages) {
-                    const messageRef = doc(db, 'relationships', relationshipId, 'messages', messageDoc.id);
-                    await updateDoc(messageRef, { read: true });
-                }
-            }
-        });
-
-        return () => unsubscribe();
-    }, [currentUser, userData]);
-
-    // Enviar mensaje de texto
-    const onSend = useCallback(async (newMessages: IMessage[] = []) => {
-        if (!currentUser || !userData?.partnerId) return;
-
-        const message = newMessages[0];
-        const relationshipId = [currentUser.uid, userData.partnerId].sort().join('_');
-
-        try {
-            await addDoc(collection(db, 'relationships', relationshipId, 'messages'), {
-                text: message.text,
-                createdAt: Timestamp.now(),
-                user: {
-                    _id: currentUser.uid,
-                    name: userData.name || 'Usuario',
-                },
-                delivered: false,
-                read: false,
-                sentAt: Timestamp.now(),
-            });
-
-            setInputText('');
-        } catch (error) {
-            console.error('Error enviando mensaje:', error);
-            Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'No se pudo enviar el mensaje',
-            });
-        }
-    }, [currentUser, userData]);
-
-    // Función para verificar espacio de almacenamiento
-    const checkStorage = async (fileSize: number): Promise<boolean> => {
-        if (plan === 'premium') return true;
-
-        if (usedStorage + fileSize > maxStorage) {
-            setShowUpgradeModal(true);
-            return false;
-        }
-
-        return true;
-    };
-
-    // Función para subir imagen
-    const uploadImage = async (uri: string) => {
-        if (!currentUser || !userData?.partnerId) return;
-
-        try {
-            setIsUploading(true);
-            setUploadProgress(0);
-
-            // Comprimir imagen
-            const compressedImage = await ImageManipulator.manipulateAsync(
-                uri,
-                [{ resize: { width: 1024 } }],
-                { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-            );
-
-            // Verificar tamaño y almacenamiento
-            const response = await fetch(compressedImage.uri);
-            const blob = await response.blob();
-            const fileSize = blob.size;
-
-            const hasSpace = await checkStorage(fileSize);
-            if (!hasSpace) {
-                setIsUploading(false);
-                return;
-            }
-
-            const filename = `${Crypto.randomUUID()}.jpg`;
-            const relationshipId = [currentUser.uid, userData.partnerId].sort().join('_');
-            const storageRef = ref(storage, `relationships/${relationshipId}/images/${filename}`);
-
-            const uploadTask = uploadBytesResumable(storageRef, blob);
-
-            uploadTask.on(
-                'state_changed',
-                (snapshot) => {
-                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                    setUploadProgress(progress);
-                },
-                (error) => {
-                    console.error('Error subiendo imagen:', error);
-                    setIsUploading(false);
-                    Toast.show({
-                        type: 'error',
-                        text1: 'Error',
-                        text2: 'No se pudo subir la imagen',
-                    });
-                },
-                async () => {
-                    const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                    
-                    await addDoc(collection(db, 'relationships', relationshipId, 'messages'), {
-                        image: downloadURL,
-                        text: '',
-                        createdAt: Timestamp.now(),
-                        user: {
-                            _id: currentUser.uid,
-                            name: userData.name || 'Usuario',
-                        },
-                        delivered: false,
-                        read: false,
-                        sentAt: Timestamp.now(),
-                    });
-
-                    // Actualizar almacenamiento usado
-                    const relationshipRef = doc(db, 'relationships', relationshipId);
-                    await updateDoc(relationshipRef, {
-                        usedStorage: (usedStorage || 0) + fileSize
-                    });
-
-                    setIsUploading(false);
-                    setUploadProgress(0);
-
-                    Toast.show({
-                        type: 'success',
-                        text1: 'Imagen enviada',
-                    });
-                }
-            );
-
-        } catch (error) {
-            console.error('Error en uploadImage:', error);
-            setIsUploading(false);
-            Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'No se pudo procesar la imagen',
-            });
-        }
-    };
-
-    // Función para subir audio
-    const uploadAudio = async (uri: string) => {
-        if (!currentUser || !userData?.partnerId) return;
-
-        try {
-            setIsUploading(true);
-            setUploadProgress(0);
-
-            const blob = await uriToBlob(uri);
-            const fileSize = blob.size;
-
-            // Verificar almacenamiento
-            const hasSpace = await checkStorage(fileSize);
-            if (!hasSpace) {
-                setIsUploading(false);
-                return;
-            }
-
-            const filename = `${Crypto.randomUUID()}.m4a`;
-            const relationshipId = [currentUser.uid, userData.partnerId].sort().join('_');
-            const storageRef = ref(storage, `relationships/${relationshipId}/audios/${filename}`);
-
-            const uploadTask = uploadBytesResumable(storageRef, blob);
-
-            uploadTask.on(
-                'state_changed',
-                (snapshot) => {
-                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                    setUploadProgress(progress);
-                },
-                (error) => {
-                    console.error('Error subiendo audio:', error);
-                    setIsUploading(false);
-                    Toast.show({
-                        type: 'error',
-                        text1: 'Error',
-                        text2: 'No se pudo subir el audio',
-                    });
-                },
-                async () => {
-                    const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                    
-                    await addDoc(collection(db, 'relationships', relationshipId, 'messages'), {
-                        audio: downloadURL,
-                        text: '',
-                        createdAt: Timestamp.now(),
-                        user: {
-                            _id: currentUser.uid,
-                            name: userData.name || 'Usuario',
-                        },
-                        delivered: false,
-                        read: false,
-                        audioPlayed: false,
-                        sentAt: Timestamp.now(),
-                    });
-
-                    // Actualizar almacenamiento usado
-                    const relationshipRef = doc(db, 'relationships', relationshipId);
-                    await updateDoc(relationshipRef, {
-                        usedStorage: (usedStorage || 0) + fileSize
-                    });
-
-                    setIsUploading(false);
-                    setUploadProgress(0);
-
-                    Toast.show({
-                        type: 'success',
-                        text1: 'Audio enviado',
-                    });
-                }
-            );
-
-        } catch (error) {
-            console.error('Error en uploadAudio:', error);
-            setIsUploading(false);
-            Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'No se pudo enviar el audio',
-            });
-        }
-    };
-
-    // Función para subir archivo
-    const uploadFile = async (fileUri: string, fileName: string, fileSize: number) => {
-        if (!currentUser || !userData?.partnerId) return;
-
-        try {
-            setIsUploading(true);
-            setUploadProgress(0);
-
-            // Verificar almacenamiento
-            const hasSpace = await checkStorage(fileSize);
-            if (!hasSpace) {
-                setIsUploading(false);
-                return;
-            }
-
-            const blob = await uriToBlob(fileUri);
-            const relationshipId = [currentUser.uid, userData.partnerId].sort().join('_');
-            const storageRef = ref(storage, `relationships/${relationshipId}/files/${fileName}`);
-
-            const uploadTask = uploadBytesResumable(storageRef, blob);
-
-            uploadTask.on(
-                'state_changed',
-                (snapshot) => {
-                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                    setUploadProgress(progress);
-                },
-                (error) => {
-                    console.error('Error subiendo archivo:', error);
-                    setIsUploading(false);
-                    Toast.show({
-                        type: 'error',
-                        text1: 'Error',
-                        text2: 'No se pudo subir el archivo',
-                    });
-                },
-                async () => {
-                    const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                    
-                    await addDoc(collection(db, 'relationships', relationshipId, 'messages'), {
-                        file: downloadURL,
-                        fileName: fileName,
-                        fileSize: fileSize,
-                        text: '',
-                        createdAt: Timestamp.now(),
-                        user: {
-                            _id: currentUser.uid,
-                            name: userData.name || 'Usuario',
-                        },
-                        delivered: false,
-                        read: false,
-                        sentAt: Timestamp.now(),
-                    });
-
-                    // Actualizar almacenamiento usado
-                    const relationshipRef = doc(db, 'relationships', relationshipId);
-                    await updateDoc(relationshipRef, {
-                        usedStorage: (usedStorage || 0) + fileSize
-                    });
-
-                    setIsUploading(false);
-                    setUploadProgress(0);
-
-                    Toast.show({
-                        type: 'success',
-                        text1: 'Archivo enviado',
-                    });
-                }
-            );
-
-        } catch (error) {
-            console.error('Error en uploadFile:', error);
-            setIsUploading(false);
-            Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'No se pudo enviar el archivo',
-            });
-        }
-    };
-
-    // Función para mostrar menú de adjuntos
-    const showAttachmentMenu = () => {
-        const options = ['Cámara', 'Galería', 'Documento', 'Cancelar'];
-        const cancelButtonIndex = 3;
-
-        showActionSheetWithOptions(
-            {
-                options,
-                cancelButtonIndex,
-                title: 'Adjuntar archivo',
-            },
-            async (buttonIndex) => {
-                if (buttonIndex === 0) {
-                    // Cámara
-                    const permission = await ImagePicker.requestCameraPermissionsAsync();
-                    if (permission.granted) {
-                        const result = await ImagePicker.launchCameraAsync({
-                            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                            allowsEditing: true,
-                            quality: 0.8,
-                        });
-
-                        if (!result.canceled && result.assets[0]) {
-                            await uploadImage(result.assets[0].uri);
-                        }
-                    }
-                } else if (buttonIndex === 1) {
-                    // Galería
-                    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                    if (permission.granted) {
-                        const result = await ImagePicker.launchImageLibraryAsync({
-                            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                            allowsEditing: true,
-                            quality: 0.8,
-                        });
-
-                        if (!result.canceled && result.assets[0]) {
-                            await uploadImage(result.assets[0].uri);
-                        }
-                    }
-                } else if (buttonIndex === 2) {
-                    // Documento
-                    const result = await DocumentPicker.getDocumentAsync({
-                        type: '*/*',
-                        copyToCacheDirectory: true,
-                    });
-
-                    if (!result.canceled && result.assets[0]) {
-                        const file = result.assets[0];
-                        await uploadFile(file.uri, file.name, file.size || 0);
-                    }
-                }
-            }
-        );
-    };
-
-    // Render de burbujas personalizadas
     const renderBubble = (props: any) => {
         const isOwn = props.currentMessage.user._id === currentUser?.uid;
         const message: ExtendedMessage = props.currentMessage;
@@ -1989,173 +253,79 @@ const ChatScreen = () => {
         if (message.deleted) {
             return (
                 <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
                     padding: 12,
                     marginVertical: 4,
                     marginHorizontal: 8,
-                    backgroundColor: colorScheme === 'dark' ? '#2A2A2A' : '#F0F0F0',
-                    borderRadius: 12,
+                    alignSelf: isOwn ? 'flex-end' : 'flex-start',
+                    backgroundColor: theme.divider,
+                    borderWidth: 1,
+                    borderStyle: 'dashed',
+                    borderColor: theme.borderStrong,
+                    borderRadius: 16,
                 }}>
-                    <Text style={{ 
-                        color: theme.placeholder, 
+                    <Ionicons name="ban-outline" size={16} color={theme.textFaint} />
+                    <Text style={{
+                        color: theme.textFaint,
                         fontStyle: 'italic',
-                        fontSize: 14,
+                        fontSize: 13.5,
                     }}>
-                        🚫 Mensaje eliminado
+                        Este mensaje fue eliminado
                     </Text>
                 </View>
             );
         }
 
-        // Renderizar mensaje de audio
+        // Renderizar mensaje de audio. Vive en su propio componente para que
+        // pueda leer el estado de reproducción por contexto: GiftedChat
+        // memoiza las filas mirando solo el mensaje, así que desde acá el
+        // botón nunca se enteraba de que el audio había arrancado.
         if (message.audio) {
-            const messageId = message._id.toString();
-            const isPlaying = currentlyPlayingId === messageId;
-            const progress = audioProgress[messageId] || 0;
-            const duration = audioDurations[messageId];
-            const isLoading = isLoadingAudio === messageId;
-
-            console.log('🎵 Audio bubble:', {
-                messageId: messageId.substring(0, 10),
-                isPlaying,
-                duration,
-                isLoading,
-                currentlyPlayingId: currentlyPlayingId?.substring(0, 10)
-            });
-
             return (
-                <View style={{
-                    marginVertical: 4,
-                    marginHorizontal: 8,
-                }}>
-                    <View style={{
-                        backgroundColor: isOwn ? theme.primary : (colorScheme === 'dark' ? '#2C2C2E' : '#E8E8E8'),
-                        borderRadius: 16,
-                        padding: 12,
-                        minWidth: 200,
-                        maxWidth: 280,
-                    }}>
-                        <View style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            marginBottom: 8,
-                        }}>
-                            <TouchableOpacity
-                                onPress={() => {
-                                    console.log('🔘 Botón audio presionado:', messageId.substring(0, 10));
-                                    toggleAudioPlayback(messageId, message.audio!);
-                                }}
-                                disabled={isLoading}
-                                style={{
-                                    width: 44,
-                                    height: 44,
-                                    borderRadius: 22,
-                                    backgroundColor: isOwn ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.15)',
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    marginRight: 12,
-                                }}
-                            >
-                                {isLoading ? (
-                                    <ActivityIndicator size="small" color={isOwn ? theme.white : theme.primary} />
-                                ) : (
-                                    <Ionicons 
-                                        name={isPlaying ? 'pause' : 'play'} 
-                                        size={22} 
-                                        color={isOwn ? theme.white : theme.primary} 
-                                    />
-                                )}
-                            </TouchableOpacity>
+                <AudioBubble
+                    message={message}
+                    isOwn={isOwn}
+                    onLongPress={() => handleMessageLongPress(null, message)}
+                />
+            );
+        }
 
-                            <View style={{ flex: 1, marginRight: 8 }}>
-                                {/* Ondas de audio animadas cuando está reproduciendo */}
-                                {isPlaying ? (
-                                    <View style={{
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        height: 30,
-                                        marginBottom: 4,
-                                    }}>
-                                        <AudioWaveAnimation color={isOwn ? theme.white : theme.primary} />
-                                    </View>
-                                ) : (
-                                    /* Barra de progreso cuando está pausado */
-                                    <View style={{
-                                        height: 30,
-                                        justifyContent: 'center',
-                                        marginBottom: 4,
-                                    }}>
-                                        <View style={{
-                                            height: 3,
-                                            backgroundColor: isOwn ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.1)',
-                                            borderRadius: 2,
-                                            overflow: 'hidden',
-                                        }}>
-                                            <View style={{
-                                                height: '100%',
-                                                width: `${progress * 100}%`,
-                                                backgroundColor: isOwn ? theme.white : theme.primary,
-                                            }} />
-                                        </View>
-                                    </View>
-                                )}
-
-                                {/* Duración */}
-                                <Text style={{
-                                    fontSize: 12,
-                                    color: isOwn ? theme.white : theme.text,
-                                    opacity: 0.8,
-                                }}>
-                                    {duration ? formatAudioDuration(duration) : '0:00'}
-                                </Text>
-                            </View>
-
-                            {/* Indicador de no reproducido */}
-                            {!isOwn && !message.audioPlayed && (
-                                <View style={{
-                                    width: 8,
-                                    height: 8,
-                                    borderRadius: 4,
-                                    backgroundColor: theme.primary,
-                                    marginLeft: 4,
-                                }} />
-                            )}
-                        </View>
-
-                        {/* Hora y estado */}
-                        <View style={{
-                            flexDirection: 'row',
-                            justifyContent: isOwn ? 'flex-end' : 'flex-start',
-                            alignItems: 'center',
-                            marginTop: 4,
-                        }}>
-                            <Text style={{ 
-                                fontSize: 11, 
-                                color: isOwn ? theme.white : theme.placeholder,
-                                opacity: 0.7,
-                            }}>
-                                {new Date(message.createdAt).toLocaleTimeString('es-ES', { 
-                                    hour: '2-digit', 
-                                    minute: '2-digit' 
-                                })}
-                            </Text>
-                            {isOwn && <MessageStatus message={message} isOwn={isOwn} />}
-                        </View>
-                    </View>
-                </View>
+        // Sprint 9.23: video. Va antes que el archivo porque un video
+        // también llega con 'file' vacío, y después del audio por el mismo
+        // motivo: cada tipo de adjunto reclama su burbuja en orden.
+        if (message.video) {
+            return (
+                <VideoBubble
+                    message={message}
+                    isOwn={isOwn}
+                    protected={photoBlur > 0}
+                    onPress={() => setVideoViewerUri(message.video ?? null)}
+                    onLongPress={() => handleMessageLongPress(null, message)}
+                />
             );
         }
 
         // Renderizar mensaje de archivo
         if (message.file) {
             return (
-                <View style={{
-                    marginVertical: 4,
-                    marginHorizontal: 8,
-                }}>
+                <TouchableOpacity
+                    activeOpacity={1}
+                    onLongPress={() => handleMessageLongPress(null, message)}
+                    style={{
+                        marginVertical: 4,
+                        marginHorizontal: 8,
+                        alignSelf: isOwn ? 'flex-end' : 'flex-start',
+                    }}>
                     <View style={{
-                        backgroundColor: isOwn ? theme.primary : (colorScheme === 'dark' ? '#2C2C2E' : '#E8E8E8'),
-                        borderRadius: 16,
-                        padding: 12,
+                        backgroundColor: isOwn ? ownBubbleBg : theme.surface,
+                        borderWidth: isOwn ? 0 : 1,
+                        borderColor: theme.borderSoft,
+                        borderRadius: 20,
+                        borderBottomRightRadius: isOwn ? 6 : 20,
+                        borderBottomLeftRadius: isOwn ? 20 : 6,
+                        padding: 11,
                         maxWidth: 280,
                     }}>
                         <TouchableOpacity
@@ -2170,149 +340,157 @@ const ChatScreen = () => {
                             style={{
                                 flexDirection: 'row',
                                 alignItems: 'center',
-                                marginBottom: 12,
+                                gap: 10,
                             }}
                         >
                             <View style={{
-                                width: 48,
-                                height: 48,
-                                borderRadius: 24,
-                                backgroundColor: isOwn ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.1)',
+                                width: 36,
+                                height: 36,
+                                borderRadius: 11,
+                                backgroundColor: isOwn ? 'rgba(255,255,255,0.2)' : theme.primaryTint,
                                 justifyContent: 'center',
                                 alignItems: 'center',
                             }}>
-                                <Ionicons 
-                                    name="document-text" 
-                                    size={24} 
-                                    color={isOwn ? theme.white : theme.primary} 
-                                />
+                                <Ionicons name="document-text" size={20} color={isOwn ? ownBubbleTextColor : theme.primary} />
                             </View>
 
                             <View style={{ flex: 1 }}>
-                                <Text 
-                                    style={{ 
-                                        color: isOwn ? theme.white : theme.text,
-                                        fontSize: 14,
-                                        fontWeight: '500',
-                                    }}
+                                <Text
+                                    style={{ color: isOwn ? ownBubbleTextColor : theme.text, fontSize: 13, fontWeight: '700' }}
                                     numberOfLines={1}
                                 >
                                     {message.fileName || 'Archivo'}
                                 </Text>
                                 {message.fileSize && (
-                                    <Text style={{ 
-                                        color: isOwn ? theme.white : theme.placeholder,
-                                        fontSize: 12,
-                                        marginTop: 2,
-                                        opacity: 0.7,
-                                    }}>
-                                        {(message.fileSize / 1024).toFixed(2)} KB
+                                    <Text style={{ color: isOwn ? ownBubbleTextColor : theme.textFaint, fontSize: 11, marginTop: 2, opacity: isOwn ? 0.8 : 1 }}>
+                                        {(message.fileSize / 1024).toFixed(1)} KB
                                     </Text>
                                 )}
                             </View>
+
+                            <Ionicons name="download-outline" size={20} color={isOwn ? ownBubbleTextColor : theme.textMuted} />
                         </TouchableOpacity>
 
-                        {/* Hora y estado - CORREGIDO */}
                         <View style={{
                             flexDirection: 'row',
                             justifyContent: isOwn ? 'flex-end' : 'flex-start',
                             alignItems: 'center',
                             marginTop: 8,
                         }}>
-                            <Text style={{ 
-                                fontSize: 11, 
-                                color: isOwn ? theme.white : theme.placeholder,
-                                opacity: 0.7,
-                            }}>
-                                {new Date(message.createdAt).toLocaleTimeString('es-ES', { 
-                                    hour: '2-digit', 
-                                    minute: '2-digit' 
-                                })}
+                            <Text style={{ fontSize: 10, color: isOwn ? ownBubbleTextColor : theme.textFaint, opacity: isOwn ? 0.8 : 1 }}>
+                                {formatMessageTime(message.createdAt)}
                             </Text>
                             {isOwn && <MessageStatus message={message} isOwn={isOwn} />}
                         </View>
                     </View>
-                </View>
+                </TouchableOpacity>
             );
         }
 
-        // Renderizar burbuja de texto/imagen estándar con hora corregida
+        // Renderizar burbuja de texto/imagen estándar
         return (
             <Bubble
                 {...props}
                 wrapperStyle={{
                     left: {
-                        backgroundColor: colorScheme === 'dark' ? '#2C2C2E' : '#E8E8E8',
+                        backgroundColor: theme.surface,
+                        borderWidth: 1,
+                        borderColor: theme.borderSoft,
+                        borderRadius: 20,
+                        borderBottomLeftRadius: 6,
                         marginVertical: 4,
                     },
                     right: {
-                        backgroundColor: theme.primary,
+                        backgroundColor: ownBubbleBg,
+                        borderRadius: 20,
+                        borderBottomRightRadius: 6,
                         marginVertical: 4,
                     },
                 }}
                 textStyle={{
-                    left: { color: theme.text },
-                    right: { color: theme.white },
+                    left: { color: theme.text, fontSize: 14.5, lineHeight: 20 },
+                    right: { color: ownBubbleTextColor, fontSize: 14.5, lineHeight: 20 },
                 }}
-                timeTextStyle={{
-                    left: { 
-                        color: theme.placeholder,
-                        fontSize: 11,
-                        marginTop: 4,
-                        marginLeft: 0,  // CORREGIDO: eliminar margen izquierdo excesivo
-                    },
-                    right: { 
-                        color: theme.white,
-                        fontSize: 11,
-                        marginTop: 4,
-                    },
-                }}
-                renderTime={(timeProps) => (
+                renderTime={(timeProps: any) => (
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: isOwn ? 'flex-end' : 'flex-start',
                         marginTop: 4,
-                        paddingHorizontal: 8,  // CORREGIDO: padding horizontal consistente
+                        paddingHorizontal: 8,
                         paddingBottom: 4,
                     }}>
-                        <Text style={{
-                            fontSize: 11,
-                            color: isOwn ? theme.white : theme.placeholder,
-                            opacity: 0.7,
-                        }}>
-                            {new Date(message.createdAt).toLocaleTimeString('es-ES', { 
-                                hour: '2-digit', 
-                                minute: '2-digit' 
-                            })}
+                        <Text style={{ fontSize: 10, color: isOwn ? ownBubbleTextColor : theme.textFaint, opacity: isOwn ? 0.8 : 1 }}>
+                            {formatMessageTime(timeProps.currentMessage.createdAt)}
                         </Text>
                         {isOwn && <MessageStatus message={message} isOwn={isOwn} />}
                     </View>
                 )}
-                renderMessageImage={(imageProps) => (
+                renderMessageImage={(imageProps: any) => (
                     <TouchableOpacity
                         onPress={() => {
                             if (imageProps.currentMessage.image) {
-                                setSelectedMediaUri(imageProps.currentMessage.image);
-                                setImageViewerVisible(true);
+                                openImageViewer(imageProps.currentMessage.image);
                             }
                         }}
+                        accessibilityRole="imagebutton"
+                        accessibilityLabel="Ver la foto en grande"
                     >
                         <Image
                             source={{ uri: imageProps.currentMessage.image }}
                             style={styles.chatImage}
+                            blurRadius={photoBlur}
                         />
+                        {/* El ojo dice que ahí hay una foto y que se abre para
+                            verla; si no, la mancha borrosa no se entiende. */}
+                        {photoBlur > 0 && (
+                            <View style={styles.protectionHint} pointerEvents="none">
+                                <Ionicons name="eye" size={22} color="#FFFFFF" />
+                            </View>
+                        )}
                     </TouchableOpacity>
                 )}
             />
         );
     };
 
+    // Separador de día — pill centrado (spec del handoff). El handoff da
+    // '#EFEFF7'/'#5C5C68' como valores de claro; en oscuro se reemplazan
+    // por los tokens de superficie/texto atenuado (Sprint 7.9, auditoría
+    // de modo oscuro — antes quedaba fijo en claro sin importar el tema).
+    const renderDay = (props: any) => (
+        <View style={{ alignItems: 'center', marginVertical: 10 }}>
+            <View style={{ backgroundColor: isDark ? theme.surfaceAlt : '#EFEFF7', borderRadius: 999, paddingVertical: 4, paddingHorizontal: 12 }}>
+                <Text style={{ fontSize: 10.5, fontWeight: '600', color: isDark ? theme.textMuted : '#5C5C68' }}>
+                    {new Date(props.currentMessage.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}
+                </Text>
+            </View>
+        </View>
+    );
+
+    // Sprint 8.4: "Enter envía" en escritorio (handoff, "Detalles de PC").
+    // react-native-web reenvía el evento de teclado completo a onKeyPress
+    // (no solo nativeEvent.key como en nativo), así que Enter sin Shift se
+    // puede interceptar acá mismo — Shift+Enter sigue insertando salto de
+    // línea. 'onSend' de useChatMessages solo lee 'message.text' del
+    // primer elemento del array (ver ese hook): no hace falta reconstruir
+    // _id/user/createdAt como hace GiftedChat internamente, esos campos
+    // los pone Firestore al guardar.
+    const handleComposerKeyPress = (e: any) => {
+        if (Platform.OS !== 'web') return;
+        if (e.key !== 'Enter' || e.shiftKey) return;
+        e.preventDefault?.();
+        const text = inputText.trim();
+        if (text.length === 0) return;
+        onSend([{ text } as any]);
+        setInputText('');
+    };
+
     // Loading state
     if (loading || planLoading) {
         return (
-            <View style={{ 
-                flex: 1, 
+            <View style={{
+                flex: 1,
                 backgroundColor: theme.background,
                 justifyContent: 'center',
                 alignItems: 'center',
@@ -2329,15 +507,15 @@ const ChatScreen = () => {
     if (!userData?.partnerId) {
         return (
             <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
-                <View style={{ 
-                    flex: 1, 
-                    justifyContent: 'center', 
+                <View style={{
+                    flex: 1,
+                    justifyContent: 'center',
                     alignItems: 'center',
                     padding: 20,
                 }}>
                     <Ionicons name="heart-outline" size={64} color={theme.placeholder} />
-                    <Text style={{ 
-                        color: theme.text, 
+                    <Text style={{
+                        color: theme.text,
                         fontSize: 18,
                         fontWeight: '600',
                         marginTop: 16,
@@ -2345,8 +523,8 @@ const ChatScreen = () => {
                     }}>
                         Aún no tienes pareja conectada
                     </Text>
-                    <Text style={{ 
-                        color: theme.placeholder, 
+                    <Text style={{
+                        color: theme.placeholder,
                         fontSize: 14,
                         marginTop: 8,
                         textAlign: 'center',
@@ -2360,25 +538,29 @@ const ChatScreen = () => {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
+            <View style={{ flex: 1, flexDirection: 'row' }}>
+            <DesktopContentWrap>
             {/* Header */}
             <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                paddingHorizontal: 16,
-                paddingVertical: 12,
+                paddingHorizontal: spacing.s16,
+                paddingVertical: spacing.s12,
                 backgroundColor: theme.background,
                 borderBottomWidth: 1,
-                borderBottomColor: theme.borderColor,
+                borderBottomColor: theme.borderSoft,
             }}>
                 {/* Botón de regreso */}
                 <TouchableOpacity
                     onPress={() => router.back()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Volver"
                     style={{
-                        marginRight: 12,
+                        marginRight: spacing.s12,
                         padding: 4,
                     }}
                 >
-                    <Ionicons name="chevron-back" size={28} color={theme.text} />
+                    <Ionicons name="arrow-back" size={24} color={theme.text} />
                 </TouchableOpacity>
 
                 {/* Info de pareja (clickeable) */}
@@ -2399,26 +581,26 @@ const ChatScreen = () => {
                         <Image
                             source={{ uri: partnerInfo.photoURL }}
                             style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                marginRight: 12,
+                                width: 42,
+                                height: 42,
+                                borderRadius: 21,
+                                marginRight: spacing.s12,
                             }}
                         />
                     ) : (
                         <View style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 20,
+                            width: 42,
+                            height: 42,
+                            borderRadius: 21,
                             backgroundColor: theme.primary,
                             justifyContent: 'center',
                             alignItems: 'center',
-                            marginRight: 12,
+                            marginRight: spacing.s12,
                         }}>
                             <Text style={{
                                 color: theme.white,
                                 fontSize: 18,
-                                fontWeight: '600',
+                                fontFamily: fontFamilies.bodySemiBold,
                             }}>
                                 {partnerInfo?.name?.charAt(0).toUpperCase() || '❤️'}
                             </Text>
@@ -2428,23 +610,30 @@ const ChatScreen = () => {
                     {/* Nombre e info */}
                     <View style={{ flex: 1 }}>
                         <Text style={{
-                            fontSize: 17,
-                            fontWeight: '600',
+                            fontSize: 16,
+                            fontFamily: fontFamilies.bodyBold,
                             color: theme.text,
                         }}>
                             {partnerInfo?.name || 'Pareja'}
                         </Text>
                         {partnerInfo?.isOnline ? (
-                            <Text style={{
-                                fontSize: 13,
-                                color: '#34C759',
-                            }}>
-                                En línea
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                                <View style={{
+                                    width: 7,
+                                    height: 7,
+                                    borderRadius: 3.5,
+                                    backgroundColor: theme.success,
+                                    marginRight: 5,
+                                }} />
+                                <Text style={{ fontSize: 13, color: theme.success }}>
+                                    En línea
+                                </Text>
+                            </View>
                         ) : partnerInfo?.lastSeen ? (
                             <Text style={{
                                 fontSize: 13,
-                                color: theme.placeholder,
+                                color: theme.textFaint,
+                                marginTop: 2,
                             }}>
                                 {(() => {
                                     const lastSeenDate = partnerInfo.lastSeen.toDate();
@@ -2464,6 +653,41 @@ const ChatScreen = () => {
                         ) : null}
                     </View>
                 </TouchableOpacity>
+
+                {/* Modo protección (9.14). Va en el encabezado junto al otro
+                    control de privacidad, y existe en todos los tamaños: la
+                    pantalla se puede mirar por encima del hombro igual en un
+                    teléfono. */}
+                <TouchableOpacity
+                    onPress={toggleProtection}
+                    style={{ padding: 6, marginLeft: spacing.s8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={isProtectionOn ? 'Desactivar el modo protección' : 'Activar el modo protección'}
+                >
+                    <Ionicons
+                        name={photoBlur > 0 ? 'eye-off' : 'eye-outline'}
+                        size={22}
+                        color={photoBlur > 0 ? theme.primary : theme.textFaint}
+                    />
+                </TouchableOpacity>
+
+                {/* Plegar/desplegar el carril derecho. Solo existe donde el
+                    carril cabe (>=1080px); en pantallas menores no hay nada
+                    que plegar. */}
+                {isWide && (
+                    <TouchableOpacity
+                        onPress={toggleRail}
+                        style={{ padding: 6, marginLeft: spacing.s8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={isRailCollapsed ? 'Mostrar el panel de la conversación' : 'Ocultar el panel de la conversación'}
+                    >
+                        <Ionicons
+                            name={isRailCollapsed ? 'information-circle-outline' : 'information-circle'}
+                            size={24}
+                            color={theme.primary}
+                        />
+                    </TouchableOpacity>
+                )}
             </View>
 
             <KeyboardAvoidingView
@@ -2496,17 +720,51 @@ const ChatScreen = () => {
                     </View>
                 )}
 
+                <AudioPlaybackProvider value={audioPlayback}>
                 <GiftedChat
                     messages={messages}
                     onSend={onSend}
+                    // Al tocar el tope del plan free se sigue ocupando esta
+                    // ranura, pero con el aviso en vez del botón: es el punto
+                    // exacto donde el usuario quiere seguir hacia atrás.
+                    loadEarlier={hasMoreMessages || historyLimitReached}
+                    onLoadEarlier={handleLoadEarlier}
+                    isLoadingEarlier={isLoadingEarlier}
+                    renderLoadEarlier={historyLimitReached ? () => (
+                        <TouchableOpacity
+                            onPress={() => setShowHistoryPaywall(true)}
+                            style={{
+                                flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
+                                marginHorizontal: spacing.s16, marginVertical: spacing.s12,
+                                borderWidth: 1, borderStyle: 'dashed', borderColor: theme.primary,
+                                backgroundColor: theme.primaryTint, borderRadius: radii.card,
+                                padding: spacing.s14,
+                            }}
+                        >
+                            <Ionicons name="lock-closed" size={16} color={theme.premium} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: theme.text }}>
+                                    Aquí empiezan sus últimos 90 días
+                                </Text>
+                                <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>
+                                    La conversación anterior sigue guardada
+                                </Text>
+                            </View>
+                            <Text style={{ fontFamily: fontFamilies.bodyBold, fontSize: 12, color: theme.primary }}>
+                                Ver todo
+                            </Text>
+                        </TouchableOpacity>
+                    ) : undefined}
                     user={{
                         _id: currentUser?.uid || '',
                         name: userData?.name || 'Usuario',
                     }}
-                    placeholder="Escribe un mensaje..."
+                    placeholder="Escribe algo lindo…"
                     alwaysShowSend
                     showUserAvatar={false}
                     renderBubble={renderBubble}
+                    renderDay={renderDay}
+                    onLongPress={handleMessageLongPress}
                     renderAvatar={null}
                     text={inputText}
                     onInputTextChanged={setInputText}
@@ -2517,22 +775,22 @@ const ChatScreen = () => {
                     bottomOffset={Platform.OS === 'ios' ? -170 : 0}
                     keyboardShouldPersistTaps="handled"
                     renderChatEmpty={() => (
-                        <View style={{ 
-                            flex: 1, 
+                        <View style={{
+                            flex: 1,
                             transform: [{ scaleY: -1 }],
                             justifyContent: 'center',
                             alignItems: 'center',
                         }}>
                             <Ionicons name="chatbubbles-outline" size={64} color={theme.placeholder} />
-                            <Text style={{ 
-                                color: theme.placeholder, 
+                            <Text style={{
+                                color: theme.placeholder,
                                 marginTop: 12,
                                 fontSize: 16,
                             }}>
                                 No hay mensajes aún
                             </Text>
-                            <Text style={{ 
-                                color: theme.placeholder, 
+                            <Text style={{
+                                color: theme.placeholder,
                                 marginTop: 4,
                                 fontSize: 14,
                             }}>
@@ -2541,30 +799,66 @@ const ChatScreen = () => {
                         </View>
                     )}
                     renderInputToolbar={(toolbarProps) => (
-                        !isRecording ? (
-                            <InputToolbar
-                                {...toolbarProps}
-                                containerStyle={{
-                                    backgroundColor: theme.background,
-                                    borderTopColor: theme.borderColor,
-                                    borderTopWidth: 1,
-                                    paddingVertical: 4,
-                                    paddingHorizontal: 8,
-                                    minHeight: 48,
-                                    marginBottom: 0,
-                                }}
-                                primaryStyle={{
+                        <View>
+                            {showStorageWarning && (
+                                <View style={{
+                                    flexDirection: 'row',
                                     alignItems: 'center',
-                                    justifyContent: 'center',
-                                    minHeight: 44,
-                                }}
-                                renderActions={(actionsProps) => 
-                                    !isRecording ? (
+                                    gap: spacing.s10,
+                                    backgroundColor: theme.warnBg,
+                                    borderTopWidth: 1,
+                                    borderTopColor: theme.warnBorder,
+                                    paddingHorizontal: spacing.s16,
+                                    paddingVertical: spacing.s10,
+                                }}>
+                                    <Ionicons name="cloud-offline-outline" size={18} color={theme.warnText} />
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 12, color: theme.warnText }}>
+                                            {formatStorageMB(usedStorage)} de {formatStorageMB(maxStorage)} usados
+                                        </Text>
+                                        <Text style={{ fontFamily: fontFamilies.body, fontSize: 11, color: theme.warnText, opacity: 0.85 }}>
+                                            Premium sube a 25 GB compartidos
+                                        </Text>
+                                    </View>
+                                    <TouchableOpacity
+                                        onPress={() => setShowUpgradeModal(true)}
+                                        style={{
+                                            paddingHorizontal: spacing.s14,
+                                            paddingVertical: spacing.s8,
+                                            borderRadius: radii.pill,
+                                            backgroundColor: theme.premium,
+                                        }}
+                                    >
+                                        <Text style={{ fontFamily: fontFamilies.actionBold, fontSize: 12, color: theme.premiumTextOnFill }}>
+                                            Ampliar
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+
+                            {!isRecording ? (
+                                <InputToolbar
+                                    {...toolbarProps}
+                                    containerStyle={{
+                                        backgroundColor: theme.background,
+                                        borderTopColor: theme.borderSoft,
+                                        borderTopWidth: showStorageWarning ? 0 : 1,
+                                        paddingVertical: 4,
+                                        paddingHorizontal: 8,
+                                        minHeight: 48,
+                                        marginBottom: 0,
+                                    }}
+                                    primaryStyle={{
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        minHeight: 44,
+                                    }}
+                                    renderActions={(actionsProps) => (
                                         <Actions
                                             {...actionsProps}
-                                            containerStyle={{ 
-                                                width: 44,
-                                                height: 44,
+                                            containerStyle={{
+                                                width: 40,
+                                                height: 40,
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
                                                 marginLeft: 4,
@@ -2572,59 +866,25 @@ const ChatScreen = () => {
                                                 marginBottom: 0,
                                             }}
                                             icon={() => (
-                                                <Ionicons 
-                                                    name="add-circle" 
-                                                    size={32} 
-                                                    color={theme.primary} 
+                                                <Ionicons
+                                                    name="add-circle"
+                                                    size={23}
+                                                    color={theme.primary}
                                                 />
                                             )}
-                                            onPressActionButton={showAttachmentMenu}
+                                            onPressActionButton={() => setIsAttachSheetVisible(true)}
                                         />
-                                    ) : null
-                                }
-                                renderComposer={(composerProps) => (
-                                    isRecording ? (
-                                        <View style={{
-                                            flex: 1,
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            backgroundColor: theme.inputBackground,
-                                            borderRadius: 20,
-                                            paddingHorizontal: 12,
-                                            marginLeft: 0,
-                                            marginTop: 0,
-                                            marginBottom: 0,
-                                            height: 40,
-                                        }}>
-                                            <View style={{
-                                                width: 8,
-                                                height: 8,
-                                                borderRadius: 4,
-                                                backgroundColor: '#FF5252',
-                                                marginRight: 8,
-                                            }} />
-                                            
-                                            <SoundWaveAnimation />
-                                            
-                                            <Text style={{
-                                                color: theme.text,
-                                                fontSize: 14,
-                                                marginLeft: 12,
-                                                fontWeight: '500',
-                                            }}>
-                                                {formatRecordingTime(recordingDuration)}
-                                            </Text>
-                                        </View>
-                                    ) : (
+                                    )}
+                                    renderComposer={(composerProps) => (
                                         <Composer
                                             {...composerProps}
                                             textInputStyle={{
                                                 backgroundColor: theme.inputBackground,
                                                 color: theme.text,
-                                                borderRadius: 20,
+                                                borderRadius: radii.pill,
                                                 paddingTop: Platform.OS === 'ios' ? 10 : 8,
                                                 paddingBottom: Platform.OS === 'ios' ? 10 : 8,
-                                                paddingHorizontal: 12,
+                                                paddingHorizontal: spacing.s16,
                                                 marginLeft: 0,
                                                 marginTop: 0,
                                                 marginBottom: 0,
@@ -2635,83 +895,47 @@ const ChatScreen = () => {
                                                 multiline: true,
                                                 returnKeyType: 'default',
                                                 blurOnSubmit: false,
+                                                onKeyPress: handleComposerKeyPress,
                                             }}
                                         />
-                                    )
-                                )}
-                                renderSend={(sendProps) => (
-                                    isRecording ? (
-                                        <View style={{
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            marginBottom: 8,
-                                            marginLeft: 4,
-                                            marginRight: 4,
-                                 
-                                        }}>
-                                            <TouchableOpacity
-                                                onPress={cancelRecording}
-                                                style={{
-                                                    width: 40,
-                                                    height: 40,
-                                                    borderRadius: 20,
-                                                    backgroundColor: theme.placeholder + '30',
-                                                    justifyContent: 'center',
-                                                    alignItems: 'center',
-                                                }}
-                                            >
-                                                <Ionicons name="close" size={24} color={theme.text} />
-                                            </TouchableOpacity>
-
-                                            <TouchableOpacity
-                                                onPress={stopRecording}
-                                                style={{
-                                                    width: 44,
-                                                    height: 44,
-                                                    borderRadius: 22,
-                                                    backgroundColor: theme.primary,
-                                                    justifyContent: 'center',
-                                                    alignItems: 'center',
-                                                }}
-                                            >
-                                                <Ionicons name="send" size={20} color={theme.white} />
-                                            </TouchableOpacity>
-                                        </View>
-                                    ) : (
+                                    )}
+                                    renderSend={(sendProps) => (
                                         inputText.trim().length > 0 ? (
                                             <Send
                                                 {...sendProps}
                                                 disabled={!inputText.trim()}
                                                 containerStyle={{
-                                                    width: 44, 
-                                                    height: 44, 
+                                                    width: 40,
+                                                    height: 40,
                                                     alignItems: 'center',
-                                                    justifyContent: 'center', 
-                                                    marginLeft: 4, 
-                                                    marginRight: 4, 
+                                                    justifyContent: 'center',
+                                                    marginLeft: 4,
+                                                    marginRight: 4,
                                                     marginBottom: 0,
                                                 }}
                                             >
                                                 <View
                                                     style={{
                                                         backgroundColor: theme.primary,
-                                                        borderRadius: 22, 
-                                                        width: 44, 
-                                                        height: 44,
-                                                        justifyContent: 'center', 
+                                                        borderRadius: 20,
+                                                        width: 40,
+                                                        height: 40,
+                                                        justifyContent: 'center',
                                                         alignItems: 'center',
                                                     }}
                                                 >
-                                                    <Feather name="arrow-up" size={24} color={theme.white} />
+                                                    <Ionicons name="send" size={20} color={theme.white} />
                                                 </View>
                                             </Send>
                                         ) : (
                                             <TouchableOpacity
                                                 onPress={startRecording}
+                                                accessibilityRole="button"
+                                                accessibilityLabel="Grabar una nota de voz"
                                                 style={{
-                                                    width: 44,
-                                                    height: 44,
-                                                    borderRadius: 22,
+                                                    width: 40,
+                                                    height: 40,
+                                                    borderRadius: 20,
                                                     backgroundColor: theme.primary,
                                                     justifyContent: 'center',
                                                     alignItems: 'center',
@@ -2720,104 +944,116 @@ const ChatScreen = () => {
                                                     marginBottom: 0,
                                                 }}
                                             >
-                                                <Ionicons name="mic" size={24} color={theme.white} />
+                                                <Ionicons name="mic" size={23} color={theme.white} />
                                             </TouchableOpacity>
                                         )
-                                    )
-                                )}
-                            />
-                        ) : (
-                            <InputToolbar
-                                {...toolbarProps}
-                                containerStyle={{
-                                    backgroundColor: theme.background,
-                                    borderTopColor: theme.borderColor,
-                                    borderTopWidth: 1,
-                                    paddingVertical: 4,
-                                    paddingHorizontal: 8,
-                                    minHeight: 48,
-                                    marginBottom: 0,
-                                }}
-                                primaryStyle={{
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    minHeight: 44,
-                                }}
-                                renderComposer={(composerProps) => (
-                                    <View style={{
-                                        flex: 1,
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        backgroundColor: theme.inputBackground,
-                                        borderRadius: 20,
-                                        paddingHorizontal: 12,
-                                        marginLeft: 0,
-                                        marginTop: 0,
-                                        marginBottom: 4,
-                                        height: 40,
-                                    }}>
-                                        <View style={{
-                                            width: 8,
-                                            height: 8,
-                                            borderRadius: 4,
-                                            backgroundColor: '#FF5252',
-                                            marginRight: 8,
-                                        }} />
-                                        
-                                        <SoundWaveAnimation />
-                                        
-                                        <Text style={{
-                                            color: theme.text,
-                                            fontSize: 14,
-                                            marginLeft: 12,
-                                            fontWeight: '500',
-                                        }}>
-                                            {formatRecordingTime(recordingDuration)}
-                                        </Text>
-                                    </View>
-                                )}
-                                renderSend={(sendProps) => (
-                                    <View style={{
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
+                                    )}
+                                />
+                            ) : (
+                                <InputToolbar
+                                    {...toolbarProps}
+                                    containerStyle={{
+                                        backgroundColor: theme.background,
+                                        borderTopColor: theme.borderSoft,
+                                        borderTopWidth: showStorageWarning ? 0 : 1,
+                                        paddingVertical: 8,
+                                        paddingHorizontal: 8,
+                                        minHeight: 64,
                                         marginBottom: 0,
-                                        marginLeft: 4,
-                                        marginRight: 4,
-                                    
-                                    }}>
+                                    }}
+                                    primaryStyle={{
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        minHeight: 48,
+                                    }}
+                                    renderActions={() => (
                                         <TouchableOpacity
                                             onPress={cancelRecording}
+                                            accessibilityRole="button"
+                                            accessibilityLabel="Descartar la grabación"
                                             style={{
                                                 width: 40,
                                                 height: 40,
                                                 borderRadius: 20,
-                                                backgroundColor: theme.placeholder + '30',
-                                                justifyContent: 'center',
                                                 alignItems: 'center',
+                                                justifyContent: 'center',
+                                                marginLeft: 4,
+                                                marginRight: 4,
                                             }}
                                         >
-                                            <Ionicons name="close" size={24} color={theme.text} />
+                                            <Ionicons name="trash-outline" size={22} color={theme.danger} />
                                         </TouchableOpacity>
+                                    )}
+                                    renderComposer={() => (
+                                        <View style={{ flex: 1 }}>
+                                            <View style={{
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                backgroundColor: theme.dangerBg,
+                                                borderRadius: radii.pill,
+                                                paddingHorizontal: spacing.s14,
+                                                height: 40,
+                                            }}>
+                                                <View style={{
+                                                    width: 8,
+                                                    height: 8,
+                                                    borderRadius: 4,
+                                                    backgroundColor: theme.danger,
+                                                    marginRight: spacing.s8,
+                                                }} />
 
-                                        <TouchableOpacity
-                                            onPress={stopRecording}
-                                            style={{
-                                                width: 44,
-                                                height: 44,
-                                                borderRadius: 22,
-                                                backgroundColor: theme.primary,
-                                                justifyContent: 'center',
-                                                alignItems: 'center',
-                                            }}
-                                        >
-                                            <Ionicons name="send" size={20} color={theme.white} />
-                                        </TouchableOpacity>
-                                    </View>
-                                )}
-                            />
-                        )
+                                                <SoundWaveAnimation />
+
+                                                <Text style={{
+                                                    color: theme.danger,
+                                                    fontSize: 13,
+                                                    marginLeft: spacing.s10,
+                                                    fontFamily: fontFamilies.bodySemiBold,
+                                                }}>
+                                                    {formatRecordingTime(recordingDuration)}
+                                                </Text>
+                                            </View>
+                                            <Text style={{
+                                                fontSize: 10.5,
+                                                color: theme.textFaint,
+                                                marginTop: 3,
+                                                marginLeft: spacing.s14,
+                                            }}>
+                                                Suelta para enviar
+                                            </Text>
+                                        </View>
+                                    )}
+                                    renderSend={() => (
+                                        <View style={{
+                                            padding: 6,
+                                            borderRadius: 29,
+                                            backgroundColor: 'rgba(187,134,252,0.18)',
+                                            marginLeft: 4,
+                                            marginRight: 4,
+                                        }}>
+                                            <TouchableOpacity
+                                                onPress={stopRecording}
+                                                accessibilityRole="button"
+                                                accessibilityLabel="Enviar la nota de voz"
+                                                style={{
+                                                    width: 46,
+                                                    height: 46,
+                                                    borderRadius: 23,
+                                                    backgroundColor: theme.primary,
+                                                    justifyContent: 'center',
+                                                    alignItems: 'center',
+                                                }}
+                                            >
+                                                <Ionicons name="send" size={20} color={theme.white} />
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+                                />
+                            )}
+                        </View>
                     )}
                 />
+                </AudioPlaybackProvider>
 
             {/* Profile Photo Modal */}
             <ProfilePhotoModal
@@ -2830,18 +1066,19 @@ const ChatScreen = () => {
             />
 
             {/* Image Viewer Modal */}
-            <ImageViewerModal
-                visible={imageViewerVisible}
-                imageUri={selectedMediaUri}
-                onClose={() => setImageViewerVisible(false)}
+            <VideoViewerModal
+                visible={!!videoViewerUri}
+                videoUri={videoViewerUri ?? ''}
+                onClose={() => setVideoViewerUri(null)}
             />
 
-            {/* Video Viewer Modal */}
-            <VideoViewerModal
-                visible={videoViewerVisible}
-                videoUri={selectedMediaUri}
-                onClose={() => setVideoViewerVisible(false)}
+            <ImageViewerModal
+                images={chatImages}
+                index={imageViewerIndex}
+                onIndexChange={setImageViewerIndex}
+                onClose={() => setImageViewerIndex(null)}
             />
+
 
             {/* File Viewer Modal */}
             {selectedFile && (
@@ -2857,18 +1094,193 @@ const ChatScreen = () => {
                 />
             )}
 
-            {/* Upgrade Modal */}
-            <UpgradeModal
+            {/* Upgrade Modal — Sprint 7.9: reemplaza el UpgradeModal propio del
+                chat (hardcoded en claro, sin conectar a la compra real) por
+                el PaywallSheet compartido, igual que el resto de la app. */}
+            <PaywallSheet
                 visible={showUpgradeModal}
                 onClose={() => setShowUpgradeModal(false)}
-                usedStorage={usedStorage}
-                maxStorage={maxStorage}
+                onUpgradePress={() => { setShowUpgradeModal(false); router.push('/(tabs)/config'); }}
+                icon="cloud-upload"
+                title="Almacenamiento lleno"
+                description={`Usaron ${Math.round(usedStorage / (1024 * 1024))} MB de ${Math.round(maxStorage / (1024 * 1024))} MB disponibles.`}
+                benefits={['25 GB de almacenamiento compartido', 'Envío ilimitado de fotos, audios y archivos', 'Calidad original sin compresión']}
             />
+
+            <PaywallSheet
+                visible={showHistoryPaywall}
+                onClose={() => setShowHistoryPaywall(false)}
+                onUpgradePress={() => { setShowHistoryPaywall(false); router.push('/(tabs)/config'); }}
+                icon="chatbubbles"
+                title="Toda su conversación"
+                description="El plan free muestra los últimos 90 días. Nada se borra: lo anterior sigue guardado esperándolos."
+                benefits={['Historial completo del chat, desde el primer mensaje', 'Buscar recuerdos de cualquier época', '25 GB de almacenamiento compartido']}
+            />
+
+            <PaywallSheet
+                visible={isProtectionPaywallVisible}
+                onClose={() => setIsProtectionPaywallVisible(false)}
+                onUpgradePress={() => { setIsProtectionPaywallVisible(false); router.push('/(tabs)/config'); }}
+                icon="eye-off"
+                title="Que solo lo vean ustedes"
+                description="El modo protección difumina las fotos del chat hasta que las abres. Útil cuando trabajas rodeado de gente o alguien pasa por detrás de la pantalla."
+                benefits={['Fotos difuminadas hasta que tú las abras', 'Se mantiene activo entre visitas', 'Carril de la conversación plegable']}
+            />
+
+            {/* Hoja de adjuntar — Sprint 7.4b: reemplaza el action sheet nativo */}
+            <Modal
+                visible={isAttachSheetVisible}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setIsAttachSheetVisible(false)}
+            >
+                <TouchableOpacity
+                    style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}
+                    activeOpacity={1}
+                    onPress={() => setIsAttachSheetVisible(false)}
+                >
+                    <View
+                        style={{
+                            backgroundColor: theme.surface,
+                            borderTopLeftRadius: radii.sheetTop,
+                            borderTopRightRadius: radii.sheetTop,
+                            paddingTop: spacing.s12,
+                            paddingBottom: spacing.s26,
+                            paddingHorizontal: spacing.s20,
+                        }}
+                    >
+                        <View style={{
+                            width: 40,
+                            height: 4,
+                            borderRadius: 2,
+                            backgroundColor: theme.borderStrong,
+                            alignSelf: 'center',
+                            marginBottom: spacing.s20,
+                        }} />
+                        <View style={{ flexDirection: 'row', gap: spacing.s12 }}>
+                            <TouchableOpacity
+                                style={{
+                                    flex: 1,
+                                    alignItems: 'center',
+                                    paddingVertical: spacing.s16,
+                                    borderRadius: 16,
+                                    backgroundColor: theme.surfaceAlt,
+                                }}
+                                onPress={() => {
+                                    setIsAttachSheetVisible(false);
+                                    pickFromCamera();
+                                }}
+                            >
+                                <Ionicons name="camera" size={26} color={theme.primary} />
+                                <Text style={{
+                                    fontFamily: fontFamilies.bodySemiBold,
+                                    fontSize: 11,
+                                    color: theme.text,
+                                    marginTop: spacing.s8,
+                                }}>
+                                    Cámara
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={{
+                                    flex: 1,
+                                    alignItems: 'center',
+                                    paddingVertical: spacing.s16,
+                                    borderRadius: 16,
+                                    backgroundColor: theme.surfaceAlt,
+                                }}
+                                onPress={() => {
+                                    setIsAttachSheetVisible(false);
+                                    pickFromGallery();
+                                }}
+                            >
+                                <Ionicons name="image" size={26} color={theme.primary} />
+                                <Text style={{
+                                    fontFamily: fontFamilies.bodySemiBold,
+                                    fontSize: 11,
+                                    color: theme.text,
+                                    marginTop: spacing.s8,
+                                }}>
+                                    Galería
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={{
+                                    flex: 1,
+                                    alignItems: 'center',
+                                    paddingVertical: spacing.s16,
+                                    borderRadius: 16,
+                                    backgroundColor: theme.surfaceAlt,
+                                }}
+                                onPress={() => {
+                                    setIsAttachSheetVisible(false);
+                                    pickVideo();
+                                }}
+                            >
+                                <Ionicons name="videocam" size={26} color={theme.primary} />
+                                <Text style={{
+                                    fontFamily: fontFamilies.bodySemiBold,
+                                    fontSize: 11,
+                                    color: theme.text,
+                                    marginTop: spacing.s8,
+                                }}>
+                                    Video
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={{
+                                    flex: 1,
+                                    alignItems: 'center',
+                                    paddingVertical: spacing.s16,
+                                    borderRadius: 16,
+                                    backgroundColor: theme.surfaceAlt,
+                                }}
+                                onPress={() => {
+                                    setIsAttachSheetVisible(false);
+                                    pickDocument();
+                                }}
+                            >
+                                <Ionicons name="attach" size={26} color={theme.primary} />
+                                <Text style={{
+                                    fontFamily: fontFamilies.bodySemiBold,
+                                    fontSize: 11,
+                                    color: theme.text,
+                                    marginTop: spacing.s8,
+                                }}>
+                                    Documento
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
 
             {/* Toast Container */}
             <Toast />
             </View>
             </KeyboardAvoidingView>
+            </DesktopContentWrap>
+
+            {/* Carril derecho — Sprint 8.8, solo en escritorio ancho (>=1080px).
+                Al plegarlo (9.6) la conversación se queda con todo el ancho. */}
+            {isWide && !isRailCollapsed && (
+                <ChatDesktopRail
+                    partnerInfo={partnerInfo}
+                    messages={messages}
+                    usedStorage={usedStorage}
+                    maxStorage={maxStorage}
+                    photoBlur={photoBlur}
+                    onOpenImage={openImageViewer}
+                    onOpenFile={(file) => {
+                        setSelectedFile(file);
+                        setFileViewerVisible(true);
+                    }}
+                />
+            )}
+            </View>
         </SafeAreaView>
     );
 };
@@ -2878,19 +1290,15 @@ const styles = StyleSheet.create({
     chatImage: {
         width: 250,
         height: 150,
-        borderRadius: 13,
-        margin: 3,
+        borderRadius: 16,
+        margin: 5,
         resizeMode: 'cover',
-    }
+    },
+    protectionHint: {
+        ...StyleSheet.absoluteFillObject,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
 });
 
-// Exportar envuelto en ActionSheetProvider
-const ChatScreenWithActions = () => {
-    return (
-        <ActionSheetProvider>
-            <ChatScreen />
-        </ActionSheetProvider>
-    );
-};
-
-export default ChatScreenWithActions;
+export default ChatScreen;

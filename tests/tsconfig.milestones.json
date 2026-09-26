@@ -1,0 +1,14 @@
+{
+  // Mismo truco que tests/tsconfig.pricing.json: "types": [] para que tsc no
+  // cargue los @types del proyecto, que chocan entre sí y no hacen falta acá.
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "es2020",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": [],
+    "outDir": ".tmp-milestones"
+  },
+  "files": ["../src/services/milestones.ts"]
+}

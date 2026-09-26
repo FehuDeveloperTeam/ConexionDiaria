@@ -13,5 +13,17 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  // 'functions/' es un proyecto aparte: tiene su propio package.json, su
+  // propio node_modules y su propio tsconfig, y el CI lo compila en su
+  // propio trabajo. Incluirlo acá lo compilaba con las dependencias de la
+  // app, que no tiene firebase-functions ni firebase-admin: en el entorno
+  // local pasaba desapercibido porque functions/node_modules ya existía,
+  // pero en CI el trabajo de la app solo instala la raíz y salieron 47
+  // errores de módulos que no puede ver. Se excluye tambien lo compilado.
+  "exclude": [
+    "node_modules",
+    "functions",
+    "dist"
   ]
 }
