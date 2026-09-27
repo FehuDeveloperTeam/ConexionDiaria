@@ -18,7 +18,7 @@ const require = createRequire(import.meta.url);
 const {
     isNotifyTarget, isReminderLead, recipientsFor, remindAtFor, isReminderStale,
     calendarDayInTz, addDays, annualDateFallsOn, dueDateAlertDays, isCouplePremium,
-    anniversaryYearsAt, birthdayText, anniversaryText, whenText, decideReminder,
+    anniversaryYearsAt, birthdayText, anniversaryText, whenText, decideReminder, planDateAlerts,
 } = require('./.tmp-reminders/reminderLogic.js');
 
 let pass = 0, fail = 0;
@@ -113,6 +113,87 @@ check('un destinatario inválido no se manda', eq(decide({ notify: 'todos' }), {
 check(
     'más de 30 minutos tarde se descarta',
     eq(decide({ now: new Date('2026-10-10T20:31:00Z') }), { action: 'expire' })
+);
+
+console.log('\nPlan del día: cumpleaños y aniversarios');
+
+// Hoy es 1 de octubre de 2026, 09:00 en Chile. Así se guardan las fechas desde
+// la app: medianoche chilena, que en UTC es de madrugada — a las 03:00 con
+// horario de verano (UTC-3) y a las 04:00 con el de invierno (UTC-4).
+//
+// Ojo con el segundo argumento: la primera versión de esta prueba suponía
+// siempre UTC-3, y el 1 de octubre de 1995 Chile todavía estaba en invierno.
+// Esa "medianoche" caía el 30 de septiembre, y la lógica —con razón— decía
+// que no era el cumpleaños. Es justo el error que esta suite existe para ver.
+// Los desfases de abajo están comprobados contra la base de husos de Node, no
+// supuestos: en 1995 el horario de verano chileno empezaba recién a mediados
+// de octubre.
+const HOY = new Date('2026-10-01T12:00:00Z');
+const medianocheChile = (iso, horasUtc = 3) => new Date(`${iso}T0${horasUtc}:00:00Z`);
+const persona = (uid, partnerId, extra = {}) => ({
+    uid, partnerId, displayName: uid === ALICE ? 'Alice' : 'Bob', plan: 'free',
+    birthDate: null, relationshipStartDate: null, ...extra,
+});
+const resumen = (alerts) => alerts.map(a => `${a.to}:${a.kind}:${a.daysLeft}`).sort();
+
+check(
+    'cumpleaños hoy: le llega a la pareja, no a quien cumple',
+    eq(resumen(planDateAlerts([
+        persona(ALICE, BOB, { birthDate: medianocheChile('1995-10-01', 4) }),
+        persona(BOB, ALICE),
+    ], HOY)), [`${BOB}:birthday:0`])
+);
+check(
+    'free: el cumpleaños en 14 días no avisa',
+    planDateAlerts([
+        persona(ALICE, BOB, { birthDate: medianocheChile('1995-10-15', 4) }),
+        persona(BOB, ALICE),
+    ], HOY).length === 0
+);
+check(
+    // "Uno paga, ambos disfrutan": paga Bob y el cumpleaños es de Alice.
+    'premium de la pareja: el cumpleaños en 14 días sí avisa',
+    eq(resumen(planDateAlerts([
+        persona(ALICE, BOB, { birthDate: medianocheChile('1995-10-15', 4) }),
+        persona(BOB, ALICE, { plan: 'premium' }),
+    ], HOY)), [`${BOB}:birthday:14`])
+);
+check(
+    'aniversario hoy: le llega a los dos, una sola vez a cada uno',
+    eq(resumen(planDateAlerts([
+        persona(ALICE, BOB, { relationshipStartDate: medianocheChile('2020-10-01') }),
+        persona(BOB, ALICE, { relationshipStartDate: medianocheChile('2020-10-01') }),
+    ], HOY)), [`${ALICE}:anniversary:0`, `${BOB}:anniversary:0`])
+);
+check(
+    'el aniversario dice los años que se cumplen',
+    planDateAlerts([
+        persona(ALICE, BOB, { relationshipStartDate: medianocheChile('2020-10-01') }),
+        persona(BOB, ALICE, { relationshipStartDate: medianocheChile('2020-10-01') }),
+    ], HOY)[0].text.title === '💞 Hoy cumplen 6 años juntos'
+);
+check(
+    'el día en que empezaron no es aniversario',
+    planDateAlerts([
+        persona(ALICE, BOB, { relationshipStartDate: medianocheChile('2026-10-01') }),
+        persona(BOB, ALICE, { relationshipStartDate: medianocheChile('2026-10-01') }),
+    ], HOY).length === 0
+);
+check(
+    // El peor error posible: avisarle a alguien el cumpleaños de su ex.
+    'REGRESIÓN: si la pareja ya no es mutua, no se avisa nada',
+    planDateAlerts([
+        persona(ALICE, BOB, { birthDate: medianocheChile('1995-10-01', 4), relationshipStartDate: medianocheChile('2020-10-01') }),
+        persona(BOB, 'otraPersona', { relationshipStartDate: medianocheChile('2020-10-01') }),
+    ], HOY).length === 0
+);
+check(
+    'si la pareja no está en la lista, no se avisa nada',
+    planDateAlerts([persona(ALICE, BOB, { birthDate: medianocheChile('1995-10-01', 4) })], HOY).length === 0
+);
+check(
+    'sin fecha de nacimiento no hay aviso de cumpleaños',
+    planDateAlerts([persona(ALICE, BOB), persona(BOB, ALICE)], HOY).length === 0
 );
 
 console.log('\nFechas de calendario en hora de Chile (con el proceso en UTC)');

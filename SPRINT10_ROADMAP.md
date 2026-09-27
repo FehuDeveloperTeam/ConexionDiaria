@@ -31,7 +31,7 @@ llega a la pareja; el aniversario, a los dos. Cada quien los apaga en Ajustes.
 | 10.3a | Lógica pura: quién recibe, cuándo toca, qué dice | ✅ |
 | 10.3b | Recordatorios en el servidor: modelo, reglas, índice, función cada minuto | ✅ |
 | 10.3c | Selector en el calendario y preferencia en Ajustes | ✅ |
-| 10.3d | Cumpleaños y aniversario: función diaria y preferencias | |
+| 10.3d | Cumpleaños y aniversario: función diaria y preferencias | ✅ |
 | 10.3e | Retiro de las notificaciones locales y documentación | |
 
 **Decidido en 10.3a.** La lógica vive en `functions/src/reminderLogic.ts`, sin
@@ -79,6 +79,27 @@ límite del sistema viejo, y puede sonar una vez de más en ese aparato.
 
 La app ya no programa notificaciones locales para eventos nuevos. Borrar el
 código que queda es 10.3e.
+
+**Decidido en 10.3d.** `sendDateAlerts` corre a las 09:00 de Chile. Qué sale
+cada día lo decide `planDateAlerts()`, con sus pruebas. Solo cuentan las
+parejas **mutuas**: si A dice que su pareja es B pero B ya no dice lo mismo,
+no se avisa nada. Mandarle a alguien el cumpleaños de su ex es el peor error
+posible de esta función, y es la prueba de regresión que la cubre: quitando
+la condición, falla.
+
+Se ejecuta una sola vez por día: anota la fecha en `dateAlertRuns` con
+`create()`, que falla si ya existe. La contracara es que si la función se cae
+a mitad de camino, ese día no se reintenta. Se prefirió así: un aviso de
+cumpleaños repetido es peor que uno perdido. Esa colección no tiene regla, y
+dos pruebas fijan que ningún cliente pueda crearla ni leerla.
+
+Las pruebas nuevas atraparon un error en mis propios datos de prueba: suponía
+que la medianoche chilena era siempre a las 03:00 UTC, y en octubre de 1995
+Chile todavía estaba en horario de invierno. Los desfases quedaron
+comprobados contra la base de husos de Node.
+
+Es la cuarta tarea programada del proyecto. Google da tres gratis por cuenta
+de facturación; la cuarta cuesta del orden de US$0,10 al mes.
 
 El 29 de febrero se celebra el 28 en los años no bisiestos. **Pendiente
 anotado:** el calendario de la app hace otra cosa —`nextAnniversary` en

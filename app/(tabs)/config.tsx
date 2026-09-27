@@ -311,7 +311,7 @@ const ConfigScreen: React.FC = () => {
         setIsSaving(false);
     }, [user, displayName]);
 
-    const handleToggleNotificationPref = useCallback(async (key: 'newMessages' | 'missYou' | 'albumActivity' | 'eventReminders', value: boolean) => {
+    const handleToggleNotificationPref = useCallback(async (key: 'newMessages' | 'missYou' | 'albumActivity' | 'eventReminders' | 'partnerBirthday' | 'anniversary', value: boolean) => {
         if (!user) return;
         try {
             await updateDoc(doc(db, 'users', user.uid), { [`notificationPrefs.${key}`]: value });
@@ -715,6 +715,34 @@ const ConfigScreen: React.FC = () => {
                                 accessibilityLabel="Recordatorios de eventos"
                                 trackColor={{ false: theme.borderSoft, true: theme.primarySoft }}
                                 thumbColor={userData?.notificationPrefs?.eventReminders !== false ? theme.primary : theme.surface}
+                            />
+                        </View>
+
+                        {/* Sprint 10.3d: avisos de fecha. En free llega el del
+                            mismo día; en premium, además 7 y 14 días antes. */}
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.s8 }}>
+                            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 15, color: theme.text, flex: 1 }}>
+                                Cumpleaños de tu pareja
+                            </Text>
+                            <Switch
+                                value={userData?.notificationPrefs?.partnerBirthday !== false}
+                                onValueChange={(value) => handleToggleNotificationPref('partnerBirthday', value)}
+                                accessibilityLabel="Cumpleaños de tu pareja"
+                                trackColor={{ false: theme.borderSoft, true: theme.primarySoft }}
+                                thumbColor={userData?.notificationPrefs?.partnerBirthday !== false ? theme.primary : theme.surface}
+                            />
+                        </View>
+
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.s8 }}>
+                            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 15, color: theme.text, flex: 1 }}>
+                                Aniversario
+                            </Text>
+                            <Switch
+                                value={userData?.notificationPrefs?.anniversary !== false}
+                                onValueChange={(value) => handleToggleNotificationPref('anniversary', value)}
+                                accessibilityLabel="Aniversario"
+                                trackColor={{ false: theme.borderSoft, true: theme.primarySoft }}
+                                thumbColor={userData?.notificationPrefs?.anniversary !== false ? theme.primary : theme.surface}
                             />
                         </View>
 

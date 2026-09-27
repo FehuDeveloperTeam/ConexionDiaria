@@ -236,3 +236,73 @@ export const decideReminder = (input: ReminderInput): ReminderDecision => {
 
     return { action: 'send', recipients };
 };
+
+// --- Plan del día: cumpleaños y aniversarios ---
+
+export interface DateAlertUser {
+    uid: string;
+    partnerId: string | null;
+    displayName: string;
+    plan: unknown;
+    birthDate: Date | null;
+    relationshipStartDate: Date | null;
+}
+
+export type DateAlertPref = 'partnerBirthday' | 'anniversary';
+
+export interface PlannedDateAlert {
+    to: string;
+    pref: DateAlertPref;
+    kind: 'birthday' | 'anniversary';
+    daysLeft: number;
+    text: PushText;
+}
+
+// Qué avisos de fecha salen hoy. Recibe a todos los usuarios con pareja y
+// devuelve la lista de envíos; la función programada solo la recorre.
+//
+// Solo cuentan parejas MUTUAS: si A dice que su pareja es B pero B ya no
+// dice lo mismo (se desvincularon a medias), no se avisa nada. Mandarle a
+// alguien el cumpleaños de su ex es el peor error posible de esta función.
+export const planDateAlerts = (users: DateAlertUser[], now: Date): PlannedDateAlert[] => {
+    const byUid = new Map(users.map(u => [u.uid, u]));
+    const today = calendarDayInTz(now);
+    const alerts: PlannedDateAlert[] = [];
+
+    for (const user of users) {
+        const partner = user.partnerId ? byUid.get(user.partnerId) : undefined;
+        if (!partner || partner.partnerId !== user.uid) continue;
+
+        const premium = isCouplePremium(user.plan, partner.plan);
+
+        // El cumpleaños de 'user' le llega a su pareja, no a él.
+        if (user.birthDate) {
+            const daysLeft = dueDateAlertDays(calendarDayInTz(user.birthDate), today, premium);
+            if (daysLeft !== null) {
+                alerts.push({
+                    to: partner.uid, pref: 'partnerBirthday', kind: 'birthday', daysLeft,
+                    text: birthdayText(user.displayName, daysLeft),
+                });
+            }
+        }
+
+        // El aniversario es de los dos y se recorre dos veces (una por cada
+        // uno): se procesa solo desde el uid menor para no mandarlo doble.
+        if (user.uid < partner.uid && user.relationshipStartDate) {
+            const start = calendarDayInTz(user.relationshipStartDate);
+            const daysLeft = dueDateAlertDays(start, today, premium);
+            if (daysLeft !== null) {
+                const years = anniversaryYearsAt(start, today, daysLeft);
+                // Cero años es el mismo día en que empezaron: nada que celebrar.
+                if (years >= 1) {
+                    const text = anniversaryText(years, daysLeft);
+                    for (const to of [user.uid, partner.uid]) {
+                        alerts.push({ to, pref: 'anniversary', kind: 'anniversary', daysLeft, text });
+                    }
+                }
+            }
+        }
+    }
+
+    return alerts;
+};

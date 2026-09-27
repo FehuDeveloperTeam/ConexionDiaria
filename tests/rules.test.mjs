@@ -667,6 +667,21 @@ await check(
     assertSucceeds(updateDoc(eventoRef(alice, 'antiguo'), { title: 'Evento antiguo editado' }))
 );
 
+console.log('\nAvisos de cumpleaños y aniversario (Firestore) — Sprint 10.3d');
+
+// La función diaria anota cada día en dateAlertRuns para no mandar dos veces.
+// Si alguien pudiera crear ese registro antes que ella, los avisos de TODOS
+// los usuarios se saltarían ese día. No hay regla para esa colección, y estas
+// pruebas fijan que siga así.
+await check(
+    'ATAQUE: nadie puede marcar los avisos de hoy como ya enviados',
+    assertFails(setDoc(doc(alice.firestore(), 'dateAlertRuns', '2026-10-01'), { startedAt: Timestamp.now() }))
+);
+await check(
+    'ATAQUE: nadie puede leer el registro de avisos',
+    assertFails(getDoc(doc(alice.firestore(), 'dateAlertRuns', '2026-10-01')))
+);
+
 await testEnv.cleanup();
 
 console.log(`\n${'='.repeat(58)}`);

@@ -68,6 +68,10 @@ export {
 // functions/src/reminders.ts.
 export { sendDueReminders } from './reminders';
 
+// Avisos de cumpleaños y aniversario (Sprint 10.3d) — ver
+// functions/src/dateAlerts.ts.
+export { sendDateAlerts } from './dateAlerts';
+
 // Contabilidad de almacenamiento del plan gratuito (F-04, F-05) — ver
 // functions/src/storageAccounting.ts.
 export { onStorageObjectFinalized, onStorageObjectDeleted } from './storageAccounting';

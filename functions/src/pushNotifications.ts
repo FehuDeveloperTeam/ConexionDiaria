@@ -63,8 +63,11 @@ export const partnerUidFromRelationshipId = (relationshipId: string, authorUid: 
  * pareja sepa si querés avisos no tiene ningún riesgo.
  */
 // 'eventReminders' (Sprint 10.3b): los recordatorios de eventos, incluidos
-// los que la pareja crea para uno.
-export type PushPrefKey = 'newMessages' | 'missYou' | 'albumActivity' | 'eventReminders';
+// los que la pareja crea para uno. 'partnerBirthday' y 'anniversary' (10.3d):
+// los avisos de fecha.
+export type PushPrefKey =
+  | 'newMessages' | 'missYou' | 'albumActivity' | 'eventReminders'
+  | 'partnerBirthday' | 'anniversary';
 
 export const getPushTargetIfAllowed = async (
   uid: string,
