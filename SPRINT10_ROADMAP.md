@@ -30,7 +30,7 @@ llega a la pareja; el aniversario, a los dos. Cada quien los apaga en Ajustes.
 |---|---|---|
 | 10.3a | Lógica pura: quién recibe, cuándo toca, qué dice | ✅ |
 | 10.3b | Recordatorios en el servidor: modelo, reglas, índice, función cada minuto | ✅ |
-| 10.3c | Selector en el calendario y preferencia en Ajustes | |
+| 10.3c | Selector en el calendario y preferencia en Ajustes | ✅ |
 | 10.3d | Cumpleaños y aniversario: función diaria y preferencias | |
 | 10.3e | Retiro de las notificaciones locales y documentación | |
 
@@ -61,8 +61,24 @@ después de crear el evento, a la ex pareja no le llega nada. Cada aviso se
 marca antes de mandarse, en una transacción: preferimos que uno se pierda por
 una caída a que llegue dos veces.
 
-**Inerte hasta 10.3c.** El servidor ya sabe mandarlos, pero la app todavía no
-escribe estos campos.
+**Decidido en 10.3c.** El interruptor sí/no pasó a ser un selector
+(`src/components/ReminderPicker.tsx`): a quién avisa y con cuánta anticipación.
+Las anticipaciones que ya pasaron se ven deshabilitadas en vez de
+desaparecer: si "1 semana antes" se esfumara para un evento de mañana,
+parecería que la opción no existe.
+
+El aviso se rearma solo si cambia algo que lo afecta —a quién, cuándo o la
+hora del evento—. Editar solo el título conserva el estado y no vuelve a
+avisar. Un evento que ya pasó se guarda sin aviso en vez de bloquear el
+guardado: si no, no se le podría corregir ni el título.
+
+Los eventos de antes de 10.3 abren como "a mí, a la hora", que es lo que
+eran. Al guardarlos pasan al servidor y se cancela la notificación local, si
+está en este teléfono. **Desde otro teléfono no se puede cancelar**: es el
+límite del sistema viejo, y puede sonar una vez de más en ese aparato.
+
+La app ya no programa notificaciones locales para eventos nuevos. Borrar el
+código que queda es 10.3e.
 
 El 29 de febrero se celebra el 28 en los años no bisiestos. **Pendiente
 anotado:** el calendario de la app hace otra cosa —`nextAnniversary` en

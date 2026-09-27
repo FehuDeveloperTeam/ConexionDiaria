@@ -92,6 +92,9 @@ export interface UserDoc {
     missYou?: boolean;
     // Sprint 9.27: reacciones y comentarios en las fotos del álbum.
     albumActivity?: boolean;
+    // Sprint 10.3c: recordatorios de eventos, incluidos los que la pareja
+    // crea para uno. Lo lee functions/src/reminders.ts.
+    eventReminders?: boolean;
   };
 }
 

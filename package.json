@@ -14,13 +14,14 @@
     "test:milestones": "npx tsc -p tests/tsconfig.milestones.json && TZ=America/Santiago node tests/milestones.test.mjs",
     "test:questions": "npx tsc -p tests/tsconfig.questions.json && node tests/dailyQuestions.test.mjs",
     "test:memories": "npx tsc -p tests/tsconfig.memories.json && TZ=America/Santiago node tests/memories.test.mjs",
-    "test:logic": "npm run test:pricing && npm run test:milestones && npm run test:questions && npm run test:memories && npm run test:storage && npm run test:dateinput && npm run test:reminders",
+    "test:logic": "npm run test:pricing && npm run test:milestones && npm run test:questions && npm run test:memories && npm run test:storage && npm run test:dateinput && npm run test:reminders && npm run test:eventreminder",
     "test": "npm run test:logic && npm run test:ui && npm run test:rules",
     "typecheck": "tsc --noEmit",
     "test:storage": "npx tsc -p tests/tsconfig.storage.json && node tests/storageQuota.test.mjs",
     "test:ui": "jest",
     "test:dateinput": "npx tsc -p tests/tsconfig.dateinput.json && TZ=America/Santiago node tests/dateInput.test.mjs",
-    "test:reminders": "npx tsc -p tests/tsconfig.reminders.json && node tests/reminderLogic.test.mjs"
+    "test:reminders": "npx tsc -p tests/tsconfig.reminders.json && node tests/reminderLogic.test.mjs",
+    "test:eventreminder": "npx tsc -p tests/tsconfig.eventreminder.json && node tests/eventReminder.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

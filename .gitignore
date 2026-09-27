@@ -63,3 +63,4 @@ tests/.tmp-memories/
 tests/.tmp-storage/
 tests/.tmp-dateinput/
 tests/.tmp-reminders/
+tests/.tmp-eventreminder/

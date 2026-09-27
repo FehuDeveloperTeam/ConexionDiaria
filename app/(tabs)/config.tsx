@@ -311,7 +311,7 @@ const ConfigScreen: React.FC = () => {
         setIsSaving(false);
     }, [user, displayName]);
 
-    const handleToggleNotificationPref = useCallback(async (key: 'newMessages' | 'missYou' | 'albumActivity', value: boolean) => {
+    const handleToggleNotificationPref = useCallback(async (key: 'newMessages' | 'missYou' | 'albumActivity' | 'eventReminders', value: boolean) => {
         if (!user) return;
         try {
             await updateDoc(doc(db, 'users', user.uid), { [`notificationPrefs.${key}`]: value });
@@ -699,6 +699,22 @@ const ConfigScreen: React.FC = () => {
                                 onValueChange={(value) => handleToggleNotificationPref('albumActivity', value)}
                                 trackColor={{ false: theme.borderSoft, true: theme.primarySoft }}
                                 thumbColor={userData?.notificationPrefs?.albumActivity !== false ? theme.primary : theme.surface}
+                            />
+                        </View>
+
+                        {/* Sprint 10.3c: silencia también los que la pareja creó
+                            para uno. Quien crea el evento decide a quién avisar;
+                            quien lo recibe decide si quiere recibirlos. */}
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.s8 }}>
+                            <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 15, color: theme.text, flex: 1 }}>
+                                Recordatorios de eventos
+                            </Text>
+                            <Switch
+                                value={userData?.notificationPrefs?.eventReminders !== false}
+                                onValueChange={(value) => handleToggleNotificationPref('eventReminders', value)}
+                                accessibilityLabel="Recordatorios de eventos"
+                                trackColor={{ false: theme.borderSoft, true: theme.primarySoft }}
+                                thumbColor={userData?.notificationPrefs?.eventReminders !== false ? theme.primary : theme.surface}
                             />
                         </View>
 

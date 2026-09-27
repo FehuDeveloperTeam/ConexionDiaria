@@ -30,7 +30,7 @@ Las suites:
 
 | Comando | Qué cubre |
 |---|---|
-| `npm run test:logic` | Siete suites de lógica pura (precios, hitos, preguntas, recuerdos, cupos, fechas, avisos) |
+| `npm run test:logic` | Ocho suites de lógica pura (precios, hitos, preguntas, recuerdos, cupos, fechas, avisos del servidor, recordatorio en la app) |
 | `npm run test:ui` | Interfaz con jest-expo + Testing Library |
 | `npm run test:rules` | Reglas de Firestore y Storage contra los emuladores (necesita Java) |
 
