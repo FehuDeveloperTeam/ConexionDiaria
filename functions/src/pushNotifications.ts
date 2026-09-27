@@ -62,7 +62,9 @@ export const partnerUidFromRelationshipId = (relationshipId: string, authorUid: 
  * Las preferencias (notificationPrefs) sí siguen en el perfil: que la
  * pareja sepa si querés avisos no tiene ningún riesgo.
  */
-export type PushPrefKey = 'newMessages' | 'missYou' | 'albumActivity';
+// 'eventReminders' (Sprint 10.3b): los recordatorios de eventos, incluidos
+// los que la pareja crea para uno.
+export type PushPrefKey = 'newMessages' | 'missYou' | 'albumActivity' | 'eventReminders';
 
 export const getPushTargetIfAllowed = async (
   uid: string,

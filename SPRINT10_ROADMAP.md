@@ -29,7 +29,7 @@ llega a la pareja; el aniversario, a los dos. Cada quien los apaga en Ajustes.
 | Sesión | Qué | Estado |
 |---|---|---|
 | 10.3a | Lógica pura: quién recibe, cuándo toca, qué dice | ✅ |
-| 10.3b | Recordatorios en el servidor: modelo, reglas, índice, función cada minuto | |
+| 10.3b | Recordatorios en el servidor: modelo, reglas, índice, función cada minuto | ✅ |
 | 10.3c | Selector en el calendario y preferencia en Ajustes | |
 | 10.3d | Cumpleaños y aniversario: función diaria y preferencias | |
 | 10.3e | Retiro de las notificaciones locales y documentación | |
@@ -41,6 +41,28 @@ las 23:30 de Chile ya es "mañana" en UTC, y una fecha guardada de noche cae
 en otro día. Se comprobó que la suite los atrapa rompiendo el código a
 propósito: leyendo las fechas en UTC fallan dos pruebas, y quitando el caso
 del 29 de febrero fallan otras dos.
+
+**Decidido en 10.3b.** Un barrido cada minuto y no una tarea programada por
+evento: con tareas, editar o borrar el evento obliga a cancelar la vieja, que
+es el mismo problema que tenían las notificaciones locales. Con el barrido,
+editar el evento corrige el aviso solo.
+
+El servidor confía en `remindAt` sin recalcularlo, así que las reglas
+comprueban que sea exactamente la hora del evento menos la anticipación, y
+que el cliente solo pueda dejar el aviso como pendiente: enviado, vencido y
+omitido los escribe el servidor. Cambiar solo el título conserva el estado
+—no vuelve a avisar—; mover la hora exige dejarlo pendiente. 13 pruebas de
+reglas nuevas, y rompiendo cada una de las dos condiciones a propósito falla
+exactamente la prueba que la cubre.
+
+El recordatorio sigue siendo Premium y el plan se mira **al enviar**: si la
+pareja dejó de pagar entremedio, no se sigue regalando. Si se desvincularon
+después de crear el evento, a la ex pareja no le llega nada. Cada aviso se
+marca antes de mandarse, en una transacción: preferimos que uno se pierda por
+una caída a que llegue dos veces.
+
+**Inerte hasta 10.3c.** El servidor ya sabe mandarlos, pero la app todavía no
+escribe estos campos.
 
 El 29 de febrero se celebra el 28 en los años no bisiestos. **Pendiente
 anotado:** el calendario de la app hace otra cosa —`nextAnniversary` en

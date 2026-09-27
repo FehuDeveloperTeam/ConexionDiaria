@@ -18,7 +18,7 @@ const require = createRequire(import.meta.url);
 const {
     isNotifyTarget, isReminderLead, recipientsFor, remindAtFor, isReminderStale,
     calendarDayInTz, addDays, annualDateFallsOn, dueDateAlertDays, isCouplePremium,
-    anniversaryYearsAt, birthdayText, anniversaryText, whenText,
+    anniversaryYearsAt, birthdayText, anniversaryText, whenText, decideReminder,
 } = require('./.tmp-reminders/reminderLogic.js');
 
 let pass = 0, fail = 0;
@@ -74,6 +74,45 @@ check(
     // terminó es peor que no avisar.
     '31 minutos tarde ya no se manda',
     isReminderStale(hora, new Date(hora.getTime() + 31 * 60000))
+);
+
+console.log('\nQué hace el servidor con un recordatorio vencido');
+
+const base = {
+    notify: 'both', authorUid: ALICE, relationshipPartnerUid: BOB, authorCurrentPartnerId: BOB,
+    authorPlan: 'free', partnerPlan: 'premium',
+    remindAt: new Date('2026-10-10T20:00:00Z'), now: new Date('2026-10-10T20:00:30Z'),
+};
+const decide = (cambios) => decideReminder({ ...base, ...cambios });
+
+check('pareja premium, a los dos: se manda a ambos', eq(decide({}), { action: 'send', recipients: [ALICE, BOB] }));
+check(
+    // "Uno paga, ambos disfrutan": acá paga Bob y el evento es de Alice.
+    'basta con que pague la pareja del autor',
+    decide({}).action === 'send'
+);
+check(
+    // El plan se mira al enviar: si dejaron de pagar entremedio, no se regala.
+    'si ninguno paga al momento de enviar, no se manda',
+    eq(decide({ partnerPlan: 'free' }), { action: 'skip', reason: 'not-premium' })
+);
+check(
+    'desvinculados: a la ex pareja no le llega nada',
+    eq(decide({ authorCurrentPartnerId: null, authorPlan: 'premium' }), { action: 'send', recipients: [ALICE] })
+);
+check(
+    // Si ya no son pareja, el plan de quien era su pareja no le sirve.
+    'desvinculados: el plan de la ex pareja ya no cuenta',
+    eq(decide({ authorCurrentPartnerId: 'otraPersona' }), { action: 'skip', reason: 'not-premium' })
+);
+check(
+    'desvinculados y "solo a mi pareja": no hay a quién mandar',
+    eq(decide({ notify: 'partner', authorCurrentPartnerId: null, authorPlan: 'premium' }), { action: 'skip', reason: 'no-recipients' })
+);
+check('un destinatario inválido no se manda', eq(decide({ notify: 'todos' }), { action: 'skip', reason: 'invalid' }));
+check(
+    'más de 30 minutos tarde se descarta',
+    eq(decide({ now: new Date('2026-10-10T20:31:00Z') }), { action: 'expire' })
 );
 
 console.log('\nFechas de calendario en hora de Chile (con el proceso en UTC)');

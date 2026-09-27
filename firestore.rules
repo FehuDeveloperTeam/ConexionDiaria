@@ -339,14 +339,61 @@ service cloud.firestore {
 
       // --- SUB-COLECCIÓN: Calendario ('events') ---
       match /events/{eventId} {
+        // [Calendario] Recordatorio (Sprint 10.3b). Lo manda el servidor
+        // (functions/src/reminders.ts) a la hora que diga 'remindAt', y confía
+        // en ese valor sin recalcularlo, así que es acá donde se comprueba:
+        //   - 'notify' es a quién avisa, y solo admite los tres valores;
+        //   - la anticipación es una de las cinco opciones de la app (la misma
+        //     lista vive en reminderLogic.ts y en src/config/reminders.ts);
+        //   - remindAt es EXACTAMENTE la hora del evento menos la anticipación:
+        //     sin esto, cualquiera podría programar un aviso para cuando
+        //     quisiera, desligado del evento;
+        //   - el estado solo lo pone en 'pending' el cliente. 'sent',
+        //     'expired' y 'skipped' los escribe el servidor. Conservar el
+        //     estado que había se permite solo si la hora de aviso no cambió:
+        //     si cambió, el aviso tiene que volver a quedar pendiente.
+        // Un evento sin recordatorio no lleva nada de esto, y los eventos
+        // anteriores a 10.3b tampoco: la validación solo aplica si hay 'notify'.
+        function hasNoReminder(d) {
+          return d.get('notify', null) == null && d.get('remindAt', null) == null;
+        }
+
+        function reminderShapeOk(d) {
+          return d.get('notify', null) in ['me', 'partner', 'both']
+            && d.get('reminderLeadMinutes', null) in [0, 15, 60, 1440, 10080]
+            && d.dateTime is timestamp
+            && d.get('remindAt', null) is timestamp
+            && d.remindAt == d.dateTime - duration.value(d.reminderLeadMinutes, 'm');
+        }
+
+        // Al crear no hay estado anterior que conservar: nace pendiente.
+        function validNewEventReminder() {
+          let d = request.resource.data;
+          return hasNoReminder(d)
+            || (reminderShapeOk(d) && d.get('reminderStatus', null) == 'pending');
+        }
+
+        function validEventReminderUpdate() {
+          let d = request.resource.data;
+          let before = resource.data;
+          return hasNoReminder(d)
+            || (reminderShapeOk(d)
+                && (d.get('reminderStatus', null) == 'pending'
+                    || (d.get('reminderStatus', null) == before.get('reminderStatus', null)
+                        && d.remindAt == before.get('remindAt', null))));
+        }
+
         // [Calendario] Solo los 2 usuarios pueden leer eventos
         allow read: if isInRelationship(relationshipId);
 
         // [Calendario] Solo puedes crear eventos si eres el autor
-        allow create: if isInRelationship(relationshipId) && isAuthorOfNewData();
+        allow create: if isInRelationship(relationshipId) && isAuthorOfNewData()
+          && validNewEventReminder();
 
         // [Calendario] Solo el autor puede editar o borrar su propio evento
-        allow update, delete: if isInRelationship(relationshipId) && isAuthorOfExistingData();
+        allow update: if isInRelationship(relationshipId) && isAuthorOfExistingData()
+          && validEventReminderUpdate();
+        allow delete: if isInRelationship(relationshipId) && isAuthorOfExistingData();
       }
 
       // --- SUB-COLECCIÓN: Tareas ('tasks') ---

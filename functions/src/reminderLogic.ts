@@ -194,3 +194,45 @@ export const whenText = (eventDate: Date, now: Date): string => {
     }).format(eventDate);
     return `El ${fecha} a las ${hora}`;
 };
+
+// --- Qué hacer con un recordatorio que ya venció ---
+
+export type ReminderDecision =
+    | { action: 'send'; recipients: string[] }
+    | { action: 'expire' }
+    | { action: 'skip'; reason: 'invalid' | 'not-premium' | 'no-recipients' };
+
+export interface ReminderInput {
+    notify: unknown;
+    authorUid: string;
+    // La pareja según el id de la relación ('uid1_uid2'), y la pareja que el
+    // autor tiene HOY en su perfil. Si no coinciden, se desvincularon: el id
+    // de la relación sigue existiendo, pero esa persona ya no es su pareja y
+    // no tiene por qué recibir nada.
+    relationshipPartnerUid: string | null;
+    authorCurrentPartnerId: string | null | undefined;
+    authorPlan: unknown;
+    partnerPlan: unknown;
+    remindAt: Date;
+    now: Date;
+}
+
+// El recordatorio es Premium, y el plan se mira AL ENVIAR, no al crear el
+// evento: si la pareja dejó de pagar entremedio, no se sigue regalando. El
+// cliente ya bloquea el selector en free; esto es lo que lo hace cumplir.
+export const decideReminder = (input: ReminderInput): ReminderDecision => {
+    if (!isNotifyTarget(input.notify)) return { action: 'skip', reason: 'invalid' };
+    if (isReminderStale(input.remindAt, input.now)) return { action: 'expire' };
+
+    const stillPartners =
+        !!input.relationshipPartnerUid && input.authorCurrentPartnerId === input.relationshipPartnerUid;
+    const partnerUid = stillPartners ? input.relationshipPartnerUid : null;
+
+    const premium = isCouplePremium(input.authorPlan, partnerUid ? input.partnerPlan : undefined);
+    if (!premium) return { action: 'skip', reason: 'not-premium' };
+
+    const recipients = recipientsFor(input.notify, input.authorUid, partnerUid);
+    if (recipients.length === 0) return { action: 'skip', reason: 'no-recipients' };
+
+    return { action: 'send', recipients };
+};

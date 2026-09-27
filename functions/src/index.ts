@@ -64,6 +64,10 @@ export {
   onPhotoReactionCreated, onPhotoReactionDeleted,
 } from './albumActivity';
 
+// Recordatorios de eventos desde el servidor (Sprint 10.3b) — ver
+// functions/src/reminders.ts.
+export { sendDueReminders } from './reminders';
+
 // Contabilidad de almacenamiento del plan gratuito (F-04, F-05) — ver
 // functions/src/storageAccounting.ts.
 export { onStorageObjectFinalized, onStorageObjectDeleted } from './storageAccounting';
