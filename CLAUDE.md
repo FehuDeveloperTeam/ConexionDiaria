@@ -95,6 +95,15 @@ documento no existiera. No se puede probar una regla así, y una regla de
 seguridad no verificable es una ilusión de control — el tope de almacenamiento
 se hace cumplir en una Cloud Function por eso (ver `storage.rules`).
 
+**Fechas en el servidor.** Cloud Functions corre en **UTC**. Una fecha que la
+app guardó como "medianoche del 5 de marzo en Chile" es, en UTC, las 03:00 o
+las 04:00 del 5 —según sea horario de verano o de invierno—, y un evento a las
+23:30 de Chile ya es "mañana" en UTC. En el servidor, nunca `getDate()` ni
+`getUTCDate()`: usar `calendarDayInTz()` de `functions/src/reminderLogic.ts`.
+Y en las pruebas, no suponer el desfase: en octubre de 1995 Chile seguía en
+invierno. Las suites que tocan fechas del servidor corren con el proceso en
+UTC, a propósito.
+
 ## Arquitectura
 
 **Rutas.** Expo Router con grupos. Las pantallas que no son pestañas pero
@@ -118,7 +127,17 @@ cambian juntos.
 **Lógica pura.** Todo lo que sea fechas, precios o decisiones va en un módulo
 sin Firebase ni React, con su propia suite y su `tests/tsconfig.*.json`. Es lo
 que permite probarlo. Ejemplos: `pricing.ts`, `milestones.ts`, `memories.ts`,
-`dailyQuestions.ts`, `storageQuota.ts`, `dateInput.ts`.
+`dailyQuestions.ts`, `storageQuota.ts`, `dateInput.ts`, `reminderLogic.ts`,
+`eventReminder.ts`.
+
+**Avisos.** Todo el push lo manda el servidor; la app solo registra su token.
+Los recordatorios de eventos los barre `sendDueReminders` cada minuto, y los
+cumpleaños y aniversarios `sendDateAlerts` a las 09:00 de Chile. El servidor
+confía en el `remindAt` que escribe la app, así que las **reglas** comprueban
+que sea la hora del evento menos la anticipación. La lista de anticipaciones
+vive en tres lugares —`reminderLogic.ts`, `eventReminder.ts` y
+`firestore.rules`— y cambia en los tres a la vez. Cada envío se marca antes de
+mandarse: se prefiere perder un aviso a repetirlo.
 
 **Errores.** `captureError()` de `src/services/errorReporter.ts` en los puntos
 donde alguien pierde algo o falla dinero. El destino es intercambiable: pasar a
@@ -134,7 +153,10 @@ npx firebase deploy --only storage
 ```
 
 Los índices importan: el resumen del panel cuenta sobre **grupos** de
-colección, y Firestore no los indexa a ese nivel por omisión.
+colección, y Firestore no los indexa a ese nivel por omisión. El barrido de
+recordatorios además necesita el índice compuesto sobre `events`
+(`reminderStatus`, `remindAt`): sin él, la consulta falla y no sale ningún
+recordatorio.
 
 Para dar permiso de panel a alguien, desde `functions/`:
 
@@ -160,3 +182,13 @@ válido hasta que caduca.
 - Sin persistencia offline en móvil: la caché persistente de Firestore va sobre
   IndexedDB, que no existe en React Native. Resolverlo exige migrar a
   `@react-native-firebase`.
+- `nextAnniversary` (`src/services/milestones.ts`) corre un aniversario del 29
+  de febrero al **1 de marzo** en los años no bisiestos; el aviso del servidor
+  lo pone el **28**. Para esas parejas, la app y el aviso no coinciden.
+- Los scripts `test:pricing`, `test:milestones`, `test:memories` y
+  `test:dateinput` fijan la zona con `TZ=America/Santiago node ...`, forma que
+  no existe en el cmd de Windows. La suite de avisos ya la fija dentro del
+  archivo; las otras cuatro, no.
+- Los push solo llegan a teléfonos con la app instalada y permiso concedido. La
+  entrega real no se puede probar desde el entorno remoto: la lógica tiene
+  pruebas, que suene hay que verlo en un teléfono.

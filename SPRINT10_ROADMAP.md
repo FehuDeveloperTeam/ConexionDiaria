@@ -12,7 +12,7 @@ después qué funcionó. Los datos que no se recogen no se recuperan.
 |---|---|---|---|
 | 10.1 | Panel administrativo | ✅ | Métricas agregadas, resumen diario y ficha de soporte. Ruta `/admin` dentro de la misma app, con permiso por *custom claim*. |
 | 10.2 | Onboarding al emparejarse | ✅ | Cinco pasos, saltable y repetible desde Ajustes. Incluye pedir el permiso de notificaciones en el momento correcto —cuando ya se explicó para qué— y el estado vacío del álbum, que hoy no dibuja nada cuando no hay recuerdos. |
-| 10.3 | Avisos: para uno o para ambos | ◐ en curso | Cada evento guarda a quién avisa. Es el mismo trabajo que arreglar el recordatorio compartido, que hoy es una notificación **local**: solo suena en el aparato que creó el evento. Necesita una función programada. Se suman los avisos de cumpleaños y aniversario, que no existen. |
+| 10.3 | Avisos: para uno o para ambos | ✅ | Cada evento guarda a quién avisa. Es el mismo trabajo que arreglar el recordatorio compartido, que hoy es una notificación **local**: solo suena en el aparato que creó el evento. Necesita una función programada. Se suman los avisos de cumpleaños y aniversario, que no existen. |
 
 ## Plan de 10.3 — decidido con el usuario
 
@@ -32,7 +32,7 @@ llega a la pareja; el aniversario, a los dos. Cada quien los apaga en Ajustes.
 | 10.3b | Recordatorios en el servidor: modelo, reglas, índice, función cada minuto | ✅ |
 | 10.3c | Selector en el calendario y preferencia en Ajustes | ✅ |
 | 10.3d | Cumpleaños y aniversario: función diaria y preferencias | ✅ |
-| 10.3e | Retiro de las notificaciones locales y documentación | |
+| 10.3e | Retiro de las notificaciones locales y documentación | ✅ |
 
 **Decidido en 10.3a.** La lógica vive en `functions/src/reminderLogic.ts`, sin
 Firebase, y su suite corre con el proceso en **UTC** —la zona real de Cloud
