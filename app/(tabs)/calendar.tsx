@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     View, Text, TextInput,
-    Modal, TouchableOpacity, ScrollView, Switch,
+    Modal, TouchableOpacity, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../src/config/firebaseConfig';
@@ -21,7 +21,14 @@ import { DateTimeModal } from '../../src/components/DateTimeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlan } from '../../src/contexts/planContext';
 import { useTheme } from '../../src/contexts/themeContext';
-import { scheduleEventReminder, cancelEventReminder } from '../../src/services/notifications';
+// Sprint 10.3c: los recordatorios los manda el servidor. Solo queda cancelar
+// los locales que dejaron los eventos de antes, al editarlos o borrarlos.
+import { cancelEventReminder } from '../../src/services/notifications';
+import { ReminderPicker } from '../../src/components/ReminderPicker';
+import {
+    ReminderChoice, StoredReminder, NotifyTarget, DEFAULT_LEAD,
+    reminderFields, choiceFromEvent, isLeadAvailable, describeReminder,
+} from '../../src/services/eventReminder';
 import { getChileanHolidaysForYears } from '../../src/services/holidays';
 import {
     isAnniversaryDay, isMonthiversaryDay, monthiversaryTitle, monthsElapsed,
@@ -50,7 +57,14 @@ interface CalendarEvent {
     title: string;
     dateTime: Timestamp;
     description?: string;
-    reminder: boolean;
+    // Sprint 10.3b/c — el recordatorio que manda el servidor: a quién, con
+    // cuánta anticipación, a qué hora y en qué estado está.
+    notify?: NotifyTarget | null;
+    reminderLeadMinutes?: number | null;
+    remindAt?: Timestamp | null;
+    reminderStatus?: string | null;
+    // Los de antes de 10.3: una notificación local en el teléfono del autor.
+    reminder?: boolean;
     notificationId?: string | null;
     authorId: string;
     authorName: string;
@@ -81,7 +95,7 @@ const CalendarScreen: React.FC = () => {
     const { theme, isDarkMode: isDark, fontFamilies } = useTheme();
     const { isDesktop } = useResponsive();
 
-    const { user, userData, plan, isLoading: planLoading } = usePlan();
+    const { user, userData, partnerData, plan, isLoading: planLoading } = usePlan();
     const [loading, setLoading] = useState(true);
 
     const [allEvents, setAllEvents] = useState<CalendarEvent[]>([]);
@@ -91,7 +105,10 @@ const CalendarScreen: React.FC = () => {
     const [eventTitle, setEventTitle] = useState('');
     const [eventDescription, setEventDescription] = useState('');
     const [eventDateTime, setEventDateTime] = useState<Date>(new Date());
-    const [eventReminder, setEventReminder] = useState(false);
+    const [reminderChoice, setReminderChoice] = useState<ReminderChoice>({ notify: null, lead: DEFAULT_LEAD });
+    // Lo que el evento tenía guardado al abrirlo, para saber si el aviso se
+    // rearma o conserva su estado (ver reminderFields).
+    const [editingStoredReminder, setEditingStoredReminder] = useState<StoredReminder | null>(null);
     const [editingEventNotificationId, setEditingEventNotificationId] = useState<string | null>(null);
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
@@ -249,7 +266,8 @@ const CalendarScreen: React.FC = () => {
         setEventTitle('');
         setEventDescription('');
         setEventDateTime(new Date());
-        setEventReminder(false);
+        setReminderChoice({ notify: null, lead: DEFAULT_LEAD });
+        setEditingStoredReminder(null);
         setEditingEventId(null);
         setEditingEventNotificationId(null);
         setIsEventModalVisible(true);
@@ -259,7 +277,13 @@ const CalendarScreen: React.FC = () => {
         setEventTitle(event.title);
         setEventDescription(event.description || '');
         setEventDateTime(event.dateTime.toDate());
-        setEventReminder(event.reminder);
+        setReminderChoice(choiceFromEvent(event));
+        setEditingStoredReminder({
+            notify: event.notify ?? null,
+            reminderLeadMinutes: event.reminderLeadMinutes ?? null,
+            remindAt: event.remindAt?.toDate() ?? null,
+            reminderStatus: event.reminderStatus ?? null,
+        });
         setEditingEventId(event.id);
         setEditingEventNotificationId(event.notificationId ?? null);
         setIsDetailModalVisible(false);
@@ -335,14 +359,6 @@ const CalendarScreen: React.FC = () => {
         });
     }, [eventDateTime, dateTimePickerMode, pendingDateTimeSelection]);
 
-    const handleReminderToggle = (value: boolean) => {
-        if (value && plan === 'free') {
-            setShowUpgradeModal(true);
-            return;
-        }
-        setEventReminder(value);
-    };
-
     const handleAddEvent = useCallback(async () => {
         const title = eventTitle.trim();
         if (title === '' || !userData || !userData.partnerId || !user || !eventDateTime) {
@@ -350,21 +366,46 @@ const CalendarScreen: React.FC = () => {
             return;
         }
 
-        if (eventReminder && plan === 'free') {
+        if (reminderChoice.notify && plan === 'free') {
             Toast.show({ type: 'error', text1: 'Función Premium', text2: 'Los recordatorios requieren Premium' });
             return;
         }
 
+
         const chatId = [user.uid, userData.partnerId].sort().join('_');
         const eventsCollectionRef = collection(db, 'relationships', chatId, 'events');
 
+        const previousReminder = editingEventId ? editingStoredReminder : null;
+        let fields = reminderFields(reminderChoice, eventDateTime, previousReminder);
+        // Solo importa si el aviso se está (re)programando: editar el título de
+        // un evento ya avisado conserva su estado y no se valida de nuevo.
+        if (fields.reminderStatus === 'pending' && !isLeadAvailable(eventDateTime, reminderChoice.lead, new Date())) {
+            if (eventDateTime.getTime() > Date.now()) {
+                // El selector ya deshabilita las que pasaron, pero la hora del
+                // evento se puede cambiar después de elegir la anticipación.
+                Toast.show({ type: 'error', text1: 'Ese aviso ya pasó', text2: 'Elige una anticipación más corta.' });
+                return;
+            }
+            // El evento ya pasó: un aviso pendiente no tiene sentido, y bloquear
+            // el guardado impediría corregirle el título. Se guarda sin aviso.
+            fields = reminderFields({ notify: null, lead: reminderChoice.lead }, eventDateTime, previousReminder);
+        }
+        const reminderData = {
+            notify: fields.notify,
+            reminderLeadMinutes: fields.reminderLeadMinutes,
+            remindAt: fields.remindAt ? Timestamp.fromDate(fields.remindAt) : null,
+            reminderStatus: fields.reminderStatus,
+        };
+
         try {
+            // Un evento de antes de 10.3 puede tener una notificación local
+            // programada en este teléfono. Al guardarlo pasa al servidor, así
+            // que la local se cancela para que no suene dos veces. Desde otro
+            // teléfono no se puede cancelar: es el límite que tenía el sistema
+            // viejo, y la razón por la que se reemplazó.
             if (editingEventId && editingEventNotificationId) {
                 await cancelEventReminder(editingEventNotificationId);
             }
-            const notificationId = eventReminder
-                ? await scheduleEventReminder(title, eventDescription.trim() || 'Tu evento es ahora', eventDateTime)
-                : null;
 
             if (editingEventId) {
                 const eventDocRef = doc(db, 'relationships', chatId, 'events', editingEventId);
@@ -372,8 +413,11 @@ const CalendarScreen: React.FC = () => {
                     title,
                     dateTime: Timestamp.fromDate(eventDateTime),
                     description: eventDescription.trim() || null,
-                    reminder: eventReminder,
-                    notificationId,
+                    ...reminderData,
+                    // Se apaga la marca vieja: si quedara en true y después se
+                    // quitara el aviso, el evento volvería a abrir como "a mí".
+                    reminder: false,
+                    notificationId: null,
                 });
                 Toast.show({ type: 'success', text1: 'Evento actualizado' });
             } else {
@@ -381,8 +425,7 @@ const CalendarScreen: React.FC = () => {
                     title,
                     dateTime: Timestamp.fromDate(eventDateTime),
                     description: eventDescription.trim() || null,
-                    reminder: eventReminder,
-                    notificationId,
+                    ...reminderData,
                     authorId: user.uid,
                     authorName: userData.displayName || 'Usuario',
                     createdAt: serverTimestamp(),
@@ -394,7 +437,7 @@ const CalendarScreen: React.FC = () => {
             console.error("Error al guardar evento:", error);
             Toast.show({ type: 'error', text1: 'Error al guardar el evento' });
         }
-    }, [eventTitle, eventDescription, eventDateTime, eventReminder, userData, user, editingEventId, editingEventNotificationId, plan]);
+    }, [eventTitle, eventDescription, eventDateTime, reminderChoice, editingStoredReminder, userData, user, editingEventId, editingEventNotificationId, plan]);
 
     const confirmDeleteEvent = async () => {
         if (!deletingEvent || !user || !userData?.partnerId) return;
@@ -761,36 +804,14 @@ const CalendarScreen: React.FC = () => {
                             </TouchableOpacity>
                         </View>
 
-                        {plan === 'free' ? (
-                            <TouchableOpacity
-                                onPress={() => setShowUpgradeModal(true)}
-                                style={{
-                                    flexDirection: 'row', alignItems: 'center', gap: spacing.s10,
-                                    backgroundColor: theme.primaryTint, borderWidth: 1, borderStyle: 'dashed',
-                                    borderColor: theme.primary, borderRadius: radii.field, padding: spacing.s14,
-                                }}
-                            >
-                                <Ionicons name="lock-closed" size={18} color={theme.premium} />
-                                <View style={{ flex: 1 }}>
-                                    <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.text }}>Recordatorio</Text>
-                                    <Text style={{ fontFamily: fontFamilies.body, fontSize: 12, color: theme.textFaint }}>Disponible en Conexión Total</Text>
-                                </View>
-                                <Switch value={false} disabled trackColor={{ false: theme.borderSoft, true: theme.borderSoft }} />
-                            </TouchableOpacity>
-                        ) : (
-                            <View style={{
-                                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                                backgroundColor: theme.surfaceAlt, borderRadius: radii.field, padding: spacing.s14,
-                            }}>
-                                <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: theme.text }}>Recordatorio</Text>
-                                <Switch
-                                    value={eventReminder}
-                                    onValueChange={handleReminderToggle}
-                                    trackColor={{ false: theme.borderSoft, true: theme.primarySoft }}
-                                    thumbColor={eventReminder ? theme.primary : theme.surface}
-                                />
-                            </View>
-                        )}
+                        <ReminderPicker
+                            choice={reminderChoice}
+                            eventDate={eventDateTime}
+                            partnerName={partnerData?.displayName || ''}
+                            locked={plan === 'free'}
+                            onChange={setReminderChoice}
+                            onLockedPress={() => setShowUpgradeModal(true)}
+                        />
 
                         <View style={{ flexDirection: 'row', gap: spacing.s10, marginTop: spacing.s4 }}>
                             <View style={{ flex: 1 }}>
@@ -827,9 +848,18 @@ const CalendarScreen: React.FC = () => {
                                 Agregó {selectedEvent.authorName}
                             </Text>
 
-                            {selectedEvent.reminder && plan === 'premium' && (
+                            {plan === 'premium' && (selectedEvent.notify || selectedEvent.reminder) && (
                                 <Text style={{ fontFamily: fontFamilies.bodySemiBold, fontSize: 12, color: theme.primary }}>
-                                    🔔 Recordatorio activado
+                                    🔔 {selectedEvent.notify
+                                        ? describeReminder(
+                                            selectedEvent.notify,
+                                            selectedEvent.reminderLeadMinutes ?? 0,
+                                            user?.uid === selectedEvent.authorId,
+                                            selectedEvent.authorName,
+                                            partnerData?.displayName || '',
+                                        )
+                                        // Evento de antes de 10.3: aviso local en el teléfono del autor.
+                                        : 'Recordatorio activado'}
                                 </Text>
                             )}
 

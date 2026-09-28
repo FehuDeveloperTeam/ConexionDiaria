@@ -57,7 +57,7 @@ jobs:
       - name: Lint (máximo 3 avisos, la línea base)
         run: npm run lint -- --max-warnings 3
 
-      - name: Pruebas de lógica (precios, hitos, preguntas, recuerdos, cupos, fechas)
+      - name: Pruebas de lógica (precios, hitos, preguntas, recuerdos, cupos, fechas, avisos, recordatorio)
         run: npm run test:logic
 
       - name: Pruebas de interfaz

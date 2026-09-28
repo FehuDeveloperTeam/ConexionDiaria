@@ -12,7 +12,100 @@ después qué funcionó. Los datos que no se recogen no se recuperan.
 |---|---|---|---|
 | 10.1 | Panel administrativo | ✅ | Métricas agregadas, resumen diario y ficha de soporte. Ruta `/admin` dentro de la misma app, con permiso por *custom claim*. |
 | 10.2 | Onboarding al emparejarse | ✅ | Cinco pasos, saltable y repetible desde Ajustes. Incluye pedir el permiso de notificaciones en el momento correcto —cuando ya se explicó para qué— y el estado vacío del álbum, que hoy no dibuja nada cuando no hay recuerdos. |
-| 10.3 | Avisos: para uno o para ambos | | Cada evento guarda a quién avisa. Es el mismo trabajo que arreglar el recordatorio compartido, que hoy es una notificación **local**: solo suena en el aparato que creó el evento. Necesita una función programada. Se suman los avisos de cumpleaños y aniversario, que no existen. |
+| 10.3 | Avisos: para uno o para ambos | ✅ | Cada evento guarda a quién avisa. Es el mismo trabajo que arreglar el recordatorio compartido, que hoy es una notificación **local**: solo suena en el aparato que creó el evento. Necesita una función programada. Se suman los avisos de cumpleaños y aniversario, que no existen. |
+
+## Plan de 10.3 — decidido con el usuario
+
+**Recordatorios de eventos.** Quien crea el evento elige a quién avisa —solo a
+mí, solo a mi pareja o a los dos— y con cuánta anticipación: a la hora, 15
+minutos, 1 hora, 1 día o 1 semana antes. Sigue siendo Premium. Los manda el
+servidor, no el teléfono del autor.
+
+**Cumpleaños y aniversario.** Avisos el mismo día, 7 y 14 días antes. En free
+solo el del mismo día; los de anticipación —los que dan tiempo de preparar
+algo— son Premium, y basta con que uno de los dos pague. El cumpleaños solo le
+llega a la pareja; el aniversario, a los dos. Cada quien los apaga en Ajustes.
+
+| Sesión | Qué | Estado |
+|---|---|---|
+| 10.3a | Lógica pura: quién recibe, cuándo toca, qué dice | ✅ |
+| 10.3b | Recordatorios en el servidor: modelo, reglas, índice, función cada minuto | ✅ |
+| 10.3c | Selector en el calendario y preferencia en Ajustes | ✅ |
+| 10.3d | Cumpleaños y aniversario: función diaria y preferencias | ✅ |
+| 10.3e | Retiro de las notificaciones locales y documentación | ✅ |
+
+**Decidido en 10.3a.** La lógica vive en `functions/src/reminderLogic.ts`, sin
+Firebase, y su suite corre con el proceso en **UTC** —la zona real de Cloud
+Functions—. Los dos errores que importan solo se ven desde ahí: un evento a
+las 23:30 de Chile ya es "mañana" en UTC, y una fecha guardada de noche cae
+en otro día. Se comprobó que la suite los atrapa rompiendo el código a
+propósito: leyendo las fechas en UTC fallan dos pruebas, y quitando el caso
+del 29 de febrero fallan otras dos.
+
+**Decidido en 10.3b.** Un barrido cada minuto y no una tarea programada por
+evento: con tareas, editar o borrar el evento obliga a cancelar la vieja, que
+es el mismo problema que tenían las notificaciones locales. Con el barrido,
+editar el evento corrige el aviso solo.
+
+El servidor confía en `remindAt` sin recalcularlo, así que las reglas
+comprueban que sea exactamente la hora del evento menos la anticipación, y
+que el cliente solo pueda dejar el aviso como pendiente: enviado, vencido y
+omitido los escribe el servidor. Cambiar solo el título conserva el estado
+—no vuelve a avisar—; mover la hora exige dejarlo pendiente. 13 pruebas de
+reglas nuevas, y rompiendo cada una de las dos condiciones a propósito falla
+exactamente la prueba que la cubre.
+
+El recordatorio sigue siendo Premium y el plan se mira **al enviar**: si la
+pareja dejó de pagar entremedio, no se sigue regalando. Si se desvincularon
+después de crear el evento, a la ex pareja no le llega nada. Cada aviso se
+marca antes de mandarse, en una transacción: preferimos que uno se pierda por
+una caída a que llegue dos veces.
+
+**Decidido en 10.3c.** El interruptor sí/no pasó a ser un selector
+(`src/components/ReminderPicker.tsx`): a quién avisa y con cuánta anticipación.
+Las anticipaciones que ya pasaron se ven deshabilitadas en vez de
+desaparecer: si "1 semana antes" se esfumara para un evento de mañana,
+parecería que la opción no existe.
+
+El aviso se rearma solo si cambia algo que lo afecta —a quién, cuándo o la
+hora del evento—. Editar solo el título conserva el estado y no vuelve a
+avisar. Un evento que ya pasó se guarda sin aviso en vez de bloquear el
+guardado: si no, no se le podría corregir ni el título.
+
+Los eventos de antes de 10.3 abren como "a mí, a la hora", que es lo que
+eran. Al guardarlos pasan al servidor y se cancela la notificación local, si
+está en este teléfono. **Desde otro teléfono no se puede cancelar**: es el
+límite del sistema viejo, y puede sonar una vez de más en ese aparato.
+
+La app ya no programa notificaciones locales para eventos nuevos. Borrar el
+código que queda es 10.3e.
+
+**Decidido en 10.3d.** `sendDateAlerts` corre a las 09:00 de Chile. Qué sale
+cada día lo decide `planDateAlerts()`, con sus pruebas. Solo cuentan las
+parejas **mutuas**: si A dice que su pareja es B pero B ya no dice lo mismo,
+no se avisa nada. Mandarle a alguien el cumpleaños de su ex es el peor error
+posible de esta función, y es la prueba de regresión que la cubre: quitando
+la condición, falla.
+
+Se ejecuta una sola vez por día: anota la fecha en `dateAlertRuns` con
+`create()`, que falla si ya existe. La contracara es que si la función se cae
+a mitad de camino, ese día no se reintenta. Se prefirió así: un aviso de
+cumpleaños repetido es peor que uno perdido. Esa colección no tiene regla, y
+dos pruebas fijan que ningún cliente pueda crearla ni leerla.
+
+Las pruebas nuevas atraparon un error en mis propios datos de prueba: suponía
+que la medianoche chilena era siempre a las 03:00 UTC, y en octubre de 1995
+Chile todavía estaba en horario de invierno. Los desfases quedaron
+comprobados contra la base de husos de Node.
+
+Es la cuarta tarea programada del proyecto. Google da tres gratis por cuenta
+de facturación; la cuarta cuesta del orden de US$0,10 al mes.
+
+El 29 de febrero se celebra el 28 en los años no bisiestos. **Pendiente
+anotado:** el calendario de la app hace otra cosa —`nextAnniversary` en
+`src/services/milestones.ts` lo corre al 1 de marzo—, así que para quien
+empezó un 29 de febrero, la app y el aviso no coinciden. Es un error del
+cliente, anterior a este sprint, y queda para su propia sesión.
 
 ## Corregido en 10.2b
 

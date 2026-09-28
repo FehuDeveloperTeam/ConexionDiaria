@@ -1,7 +1,9 @@
-// Push remoto a la pareja — Sprint 5, sesión 5.2 (primera mitad: mensajes
-// nuevos y "te extraño"; el recordatorio compartido de un evento queda para
-// una sesión aparte, porque necesita dispararse a una hora futura en vez de
-// al crearse un documento, y eso pide un poller programado, no un trigger).
+// Push remoto a la pareja — Sprint 5, sesión 5.2: mensajes nuevos y "te
+// extraño". Acá viven también las piezas que comparten todos los avisos
+// (sendExpoPush, getPushTargetIfAllowed). Los recordatorios de eventos y los
+// avisos de cumpleaños y aniversario (Sprint 10.3) necesitan dispararse a una
+// hora futura y no al crearse un documento, así que viven en funciones
+// programadas aparte: reminders.ts y dateAlerts.ts.
 //
 // Cómo funciona: el teléfono de cada usuario guarda su token de Expo Push en
 // users/{uid}.expoPushToken (ver src/services/notifications.ts en el
@@ -62,7 +64,12 @@ export const partnerUidFromRelationshipId = (relationshipId: string, authorUid: 
  * Las preferencias (notificationPrefs) sí siguen en el perfil: que la
  * pareja sepa si querés avisos no tiene ningún riesgo.
  */
-export type PushPrefKey = 'newMessages' | 'missYou' | 'albumActivity';
+// 'eventReminders' (Sprint 10.3b): los recordatorios de eventos, incluidos
+// los que la pareja crea para uno. 'partnerBirthday' y 'anniversary' (10.3d):
+// los avisos de fecha.
+export type PushPrefKey =
+  | 'newMessages' | 'missYou' | 'albumActivity' | 'eventReminders'
+  | 'partnerBirthday' | 'anniversary';
 
 export const getPushTargetIfAllowed = async (
   uid: string,

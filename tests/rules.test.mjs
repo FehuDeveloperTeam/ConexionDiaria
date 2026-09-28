@@ -18,7 +18,7 @@ import {
     assertFails,
     assertSucceeds,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getBytes, deleteObject } from 'firebase/storage';
 
 const firestoreRules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
@@ -569,6 +569,117 @@ await check(
 await check(
     'ATAQUE: Alice tampoco puede bajar usedStorage y storageLimit en la misma escritura',
     assertFails(updateDoc(doc(alice.firestore(), 'relationships', REL), { usedStorage: 0, storageLimit: CUPO_PREMIUM }))
+);
+
+console.log('\nRecordatorios de eventos (Firestore) — Sprint 10.3b');
+
+// El servidor manda el aviso a la hora que diga 'remindAt' sin recalcularla,
+// así que las reglas son las que garantizan que esa hora sea la del evento
+// menos la anticipación elegida, y que 'notify' solo nombre a la pareja.
+const EVENTO_MS = Date.parse('2026-12-24T23:00:00Z');
+const cuando = (ms) => Timestamp.fromMillis(ms);
+const eventoCon = (extra) => ({
+    title: 'Cena de Navidad', dateTime: cuando(EVENTO_MS),
+    authorId: ALICE, authorName: 'Alice', ...extra,
+});
+const avisoUnaHoraAntes = {
+    notify: 'both', reminderLeadMinutes: 60,
+    remindAt: cuando(EVENTO_MS - 60 * 60000), reminderStatus: 'pending',
+};
+const eventoRef = (ctx, id) => doc(ctx.firestore(), 'relationships', REL, 'events', id);
+
+await check(
+    'LEGÍTIMO: Alice crea un evento sin recordatorio',
+    assertSucceeds(setDoc(eventoRef(alice, 'sinAviso'), eventoCon({})))
+);
+await check(
+    'LEGÍTIMO: Alice crea un evento que avisa a los dos una hora antes',
+    assertSucceeds(setDoc(eventoRef(alice, 'navidad'), eventoCon(avisoUnaHoraAntes)))
+);
+await check(
+    'ATAQUE: un aviso para alguien que no es la pareja ("everyone") no se acepta',
+    assertFails(setDoc(eventoRef(alice, 'x1'), eventoCon({ ...avisoUnaHoraAntes, notify: 'everyone' })))
+);
+await check(
+    'ATAQUE: una anticipación que la app no ofrece (37 min) no se acepta',
+    assertFails(setDoc(eventoRef(alice, 'x2'), eventoCon({
+        ...avisoUnaHoraAntes, reminderLeadMinutes: 37, remindAt: cuando(EVENTO_MS - 37 * 60000),
+    })))
+);
+await check(
+    // Sin esto, se podría programar un push para cuando uno quisiera,
+    // desligado del evento.
+    'ATAQUE: una hora de aviso que no calza con el evento no se acepta',
+    assertFails(setDoc(eventoRef(alice, 'x3'), eventoCon({ ...avisoUnaHoraAntes, remindAt: cuando(Date.parse('2026-10-01T12:00:00Z')) })))
+);
+await check(
+    'ATAQUE: un evento nuevo no puede nacer como "ya enviado"',
+    assertFails(setDoc(eventoRef(alice, 'x4'), eventoCon({ ...avisoUnaHoraAntes, reminderStatus: 'sent' })))
+);
+await check(
+    'ATAQUE: una hora de aviso sin destinatario no se acepta',
+    assertFails(setDoc(eventoRef(alice, 'x5'), eventoCon({ remindAt: cuando(EVENTO_MS) })))
+);
+await check(
+    'ATAQUE: Bob NO puede cambiar a quién avisa el evento de Alice',
+    assertFails(updateDoc(eventoRef(bob, 'navidad'), { notify: 'partner' }))
+);
+
+// El servidor ya lo envió. Lo marca con el Admin SDK, que no pasa por reglas.
+await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await updateDoc(doc(ctx.firestore(), 'relationships', REL, 'events', 'navidad'), { reminderStatus: 'sent' });
+});
+
+await check(
+    // Cambiar solo el título no debe volver a mandar el aviso.
+    'LEGÍTIMO: Alice edita el título de un evento ya avisado y conserva el estado',
+    assertSucceeds(updateDoc(eventoRef(alice, 'navidad'), { title: 'Cena de Nochebuena' }))
+);
+await check(
+    // Si se mueve la hora, el aviso tiene que volver a quedar pendiente: dejar
+    // "enviado" lo haría desaparecer en silencio.
+    'INTEGRIDAD: mover la hora del evento dejando el aviso como "enviado" no se acepta',
+    assertFails(updateDoc(eventoRef(alice, 'navidad'), {
+        dateTime: cuando(EVENTO_MS + 3600000), remindAt: cuando(EVENTO_MS),
+    }))
+);
+await check(
+    'LEGÍTIMO: Alice mueve la hora del evento y el aviso vuelve a quedar pendiente',
+    assertSucceeds(updateDoc(eventoRef(alice, 'navidad'), {
+        dateTime: cuando(EVENTO_MS + 3600000), remindAt: cuando(EVENTO_MS), reminderStatus: 'pending',
+    }))
+);
+await check(
+    'LEGÍTIMO: Alice quita el recordatorio de un evento',
+    assertSucceeds(updateDoc(eventoRef(alice, 'navidad'), {
+        notify: null, reminderLeadMinutes: null, remindAt: null, reminderStatus: null,
+    }))
+);
+
+// Eventos creados antes de 10.3b: traen el recordatorio local de antes
+// ('reminder' y 'notificationId') y nada de lo nuevo. Tienen que seguir
+// pudiéndose editar.
+await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'relationships', REL, 'events', 'antiguo'), eventoCon({ reminder: true, notificationId: 'local-123' }));
+});
+await check(
+    'LEGÍTIMO: un evento con el recordatorio local de antes se sigue pudiendo editar',
+    assertSucceeds(updateDoc(eventoRef(alice, 'antiguo'), { title: 'Evento antiguo editado' }))
+);
+
+console.log('\nAvisos de cumpleaños y aniversario (Firestore) — Sprint 10.3d');
+
+// La función diaria anota cada día en dateAlertRuns para no mandar dos veces.
+// Si alguien pudiera crear ese registro antes que ella, los avisos de TODOS
+// los usuarios se saltarían ese día. No hay regla para esa colección, y estas
+// pruebas fijan que siga así.
+await check(
+    'ATAQUE: nadie puede marcar los avisos de hoy como ya enviados',
+    assertFails(setDoc(doc(alice.firestore(), 'dateAlertRuns', '2026-10-01'), { startedAt: Timestamp.now() }))
+);
+await check(
+    'ATAQUE: nadie puede leer el registro de avisos',
+    assertFails(getDoc(doc(alice.firestore(), 'dateAlertRuns', '2026-10-01')))
 );
 
 await testEnv.cleanup();

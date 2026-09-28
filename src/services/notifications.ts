@@ -1,18 +1,18 @@
-// Notificaciones: recordatorios locales de eventos (Sprint 5, sesión 5.1)
-// y registro del token para push remoto (sesión 5.2).
+// Notificaciones del lado de la app: permiso y registro del token de push
+// (Sprint 5.2), y la cancelación de los recordatorios locales que quedaron
+// de antes del Sprint 10.3.
 //
-// Los recordatorios de evento no necesitan backend: son una notificación
-// programada en el propio dispositivo del autor, vía expo-notifications.
+// Los recordatorios de eventos ya NO se programan en el teléfono. Hasta el
+// 10.3 eran una notificación local en el aparato del autor: sonaba solo ahí,
+// la pareja nunca se enteraba, y si se editaba el evento desde otro teléfono
+// el aviso viejo no se podía cancelar. Ahora los manda el servidor
+// (functions/src/reminders.ts) a quien corresponda. Lo único que queda de
+// aquello es cancelEventReminder(), para los eventos antiguos que todavía
+// tienen una notificación local programada en este teléfono.
 //
-// Límite conocido y aceptado: si el autor edita o borra el evento desde un
-// dispositivo distinto al que programó la notificación, ese otro
-// dispositivo no puede cancelarla (las notificaciones locales no se
-// sincronizan entre teléfonos).
-//
-// El push remoto (avisar a LA PAREJA de un mensaje nuevo o un "te extraño")
-// sí necesita backend: este archivo solo registra el token de Expo Push en
-// el perfil del usuario; quien lo envía es la Cloud Function en
-// functions/src/index.ts, disparada al crearse el mensaje o el "ping".
+// Todo el push —mensajes, "te extraño", álbum, recordatorios, cumpleaños y
+// aniversario— lo envían Cloud Functions. Este archivo solo registra el
+// token de Expo Push del dispositivo; sin token, al usuario no le llega nada.
 //
 // registerPushToken() requiere que el proyecto tenga un ID de EAS
 // configurado (correr 'eas init' una vez, gratis, no depende de Play
@@ -53,30 +53,10 @@ export const ensureNotificationPermissions = async (): Promise<boolean> => {
 };
 
 /**
- * Programa una notificación local para la fecha exacta del evento. Devuelve
- * el id de la notificación programada (para poder cancelarla después), o
- * null si no se programó nada — sin permiso, o porque la fecha ya pasó.
+ * Cancela una notificación local programada antes del Sprint 10.3. Solo
+ * funciona en el teléfono que la programó: desde otro, el id no existe y no
+ * hace nada. No hace nada tampoco si no hay id.
  */
-export const scheduleEventReminder = async (
-    title: string,
-    body: string,
-    date: Date
-): Promise<string | null> => {
-    if (date.getTime() <= Date.now()) return null;
-
-    const granted = await ensureNotificationPermissions();
-    if (!granted) return null;
-
-    return Notifications.scheduleNotificationAsync({
-        content: { title, body },
-        trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DATE,
-            date,
-        },
-    });
-};
-
-/** Cancela una notificación ya programada. No hace nada si no hay id. */
 export const cancelEventReminder = async (notificationId?: string | null): Promise<void> => {
     if (!notificationId) return;
     try {

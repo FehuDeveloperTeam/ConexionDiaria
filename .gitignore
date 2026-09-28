@@ -62,3 +62,5 @@ tests/.tmp-memories/
 *-firebase-adminsdk-*.json
 tests/.tmp-storage/
 tests/.tmp-dateinput/
+tests/.tmp-reminders/
+tests/.tmp-eventreminder/
